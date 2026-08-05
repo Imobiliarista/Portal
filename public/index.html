@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portal Imobiliarista — Rede de portais imobiliários com minisites individuais para corretores">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <title>Portal Imobiliarista</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%232563eb'>🏠</text></svg>">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Tailwind CSS -->
+  <link rel="stylesheet" href="/assets/css/tailwind.css">
+
+  <!-- Service Worker Registration (será adicionado depois) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header class="bg-white shadow">
+      <div class="container-app py-4">
+        <h1 class="text-3xl font-bold text-primaria">Portal Imobiliarista</h1>
+        <p class="text-neutro-600 mt-1">Rede de portais de imóveis</p>
+      </div>
+    </header>
+
+    <main class="container-app py-8">
+      <section class="text-center">
+        <div class="inline-block text-6xl mb-4">🏗️</div>
+        <h2 class="text-3xl font-bold mb-4">Portal em Construção</h2>
+        <p class="text-lg text-neutro-600 mb-8">
+          Estamos preparando a melhor experiência de busca de imóveis para você.
+        </p>
+        <div class="flex gap-4 justify-center">
+          <button class="btn-primario">Pré-Cadastro</button>
+          <button class="btn-secundario">Saiba Mais</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-neutro-900 text-white mt-16">
+      <div class="container-app py-8">
+        <p class="text-center text-neutro-400">
+          © 2024 Portal Imobiliarista. Todos os direitos reservados.
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/assets/js/app.js" defer></script>
+</body>
+</html>
