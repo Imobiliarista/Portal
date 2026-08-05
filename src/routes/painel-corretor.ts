@@ -1,0 +1,265 @@
+// Rotas do painel do corretor — APIs de suporte para dashboard, perfil, anúncios, cotas
+// Conforme seção 6.1 e Lote 8 do project.md
+
+import { Env } from "../index";
+import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoPorCorretorId, buscarMinisiteDoCorretor } from "../db/queries-perfil";
+import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
+import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
+
+// ========== Auxiliares ==========
+
+// Extrai ID do corretor da sessão (cookie)
+async function obterCorretorIdDaSessao(request: Request, env: Env): Promise<number | null> {
+  const cookie = request.headers.get("cookie") || "";
+  const sessionIdMatch = cookie.match(/session_id=([^;]+)/);
+
+  if (!sessionIdMatch) return null;
+
+  const sessionId = sessionIdMatch[1];
+
+  try {
+    const sessao = await env.DB.prepare("SELECT corretor_id FROM sessoes WHERE session_id = ? AND expira_em > datetime('now') LIMIT 1")
+      .bind(sessionId)
+      .first() as { corretor_id: number } | null;
+
+    return sessao?.corretor_id || null;
+  } catch {
+    return null;
+  }
+}
+
+// Resposta de erro padrão
+function respostaErro(msg: string, status = 400): Response {
+  return new Response(JSON.stringify({ erro: msg }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// Resposta de sucesso
+function respostaSucesso(dados: any): Response {
+  return new Response(JSON.stringify(dados), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// ========== Rota: GET /painel/perfil ==========
+
+async function rotaPainelPerfil(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const corretor = await buscarCorretorPorId(env.DB, corretor_id);
+    if (!corretor) return respostaErro("Corretor não encontrado", 404);
+
+    const minisite = await buscarMinisiteDoCorretor(env.DB, corretor_id);
+    const plano = await buscarPlanoPorCorretorId(env.DB, corretor_id);
+
+    // Monta resposta sem dados sensíveis
+    return respostaSucesso({
+      id: corretor.id,
+      nome_completo: corretor.nome_completo,
+      cpf: corretor.cpf,
+      creci: corretor.creci,
+      sexo: corretor.sexo,
+      data_nascimento: corretor.data_nascimento,
+      nacionalidade: corretor.nacionalidade,
+      email: corretor.email,
+      telefone: corretor.telefone,
+      whatsapp: corretor.whatsapp,
+      endereco_residencial: corretor.endereco_residencial,
+      status: corretor.status,
+      minisite_slug: minisite?.slug,
+      minisite_offline: minisite?.offline,
+      plano: plano ? {
+        max_anuncios: plano.max_anuncios,
+        max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
+        google_maps_api_key: plano.google_maps_api_key ? "***" : null,
+      } : null,
+    });
+  } catch (erro) {
+    console.error("Erro ao buscar perfil:", erro);
+    return respostaErro("Erro ao buscar perfil", 500);
+  }
+}
+
+// ========== Rota: PUT /painel/perfil/editar ==========
+
+async function rotaPainelPerfilEditar(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const corpo = await request.json() as any;
+
+    // Valida quais campos podem ser editados
+    const campos_editaveis = {
+      endereco_residencial: corpo.endereco_residencial,
+      telefone: corpo.telefone,
+      email: corpo.email,
+      whatsapp: corpo.whatsapp,
+    };
+
+    await atualizarPerfilEditavelDoCorretor(env.DB, corretor_id, campos_editaveis);
+
+    return respostaSucesso({ mensagem: "Perfil atualizado com sucesso" });
+  } catch (erro) {
+    console.error("Erro ao atualizar perfil:", erro);
+    return respostaErro("Erro ao atualizar perfil", 500);
+  }
+}
+
+// ========== Rota: GET /painel/plano ==========
+
+async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const plano = await buscarPlanoPorCorretorId(env.DB, corretor_id);
+    if (!plano) return respostaErro("Plano não encontrado", 404);
+
+    // Conta uso atual
+    const anuncios_ativos = await contarAnunciosAtivosDoCorretor(env.DB, corretor_id);
+
+    return respostaSucesso({
+      max_anuncios: plano.max_anuncios,
+      anuncios_usados: anuncios_ativos,
+      max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
+      google_maps_key_configurada: !!plano.google_maps_api_key,
+    });
+  } catch (erro) {
+    console.error("Erro ao buscar plano:", erro);
+    return respostaErro("Erro ao buscar plano", 500);
+  }
+}
+
+// ========== Rota: GET /painel/anuncios ==========
+
+async function rotaPainelAnuncios(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const url = new URL(request.url);
+    const pagina = parseInt(url.searchParams.get("pagina") || "1", 10);
+
+    const { anuncios, total } = await listarAnunciosDoCorretor(env.DB, corretor_id, pagina, 10);
+
+    return respostaSucesso({
+      anuncios,
+      total,
+      pagina,
+      per_page: 10,
+    });
+  } catch (erro) {
+    console.error("Erro ao listar anúncios:", erro);
+    return respostaErro("Erro ao listar anúncios", 500);
+  }
+}
+
+// ========== Rota: GET /painel/cotas-portal ==========
+
+async function rotaPainelCotasPortal(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const cotas = await listarCotasPortalDoCorretor(env.DB, corretor_id);
+    const totalElegivel = await contarAnunciosElegiveisParaPortal(env.DB, corretor_id);
+
+    // Formata resposta com contadores
+    const cotasComContador = cotas.map((cota) => ({
+      ...cota,
+      contador: cota.quantidade_contratada ? `${Math.min(totalElegivel, cota.quantidade_contratada)}/${cota.quantidade_contratada}` : "Ilimitado",
+      total_elegivel: totalElegivel,
+    }));
+
+    return respostaSucesso({
+      cotas: cotasComContador,
+      total_elegivel: totalElegivel,
+    });
+  } catch (erro) {
+    console.error("Erro ao listar cotas de portal:", erro);
+    return respostaErro("Erro ao listar cotas", 500);
+  }
+}
+
+// ========== Rota: PUT /painel/cotas-portal ==========
+
+async function rotaPainelCotasPortalAtualizar(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const corpo = await request.json() as any;
+
+    if (!corpo.portal_nome) return respostaErro("portal_nome é obrigatório");
+
+    await atualizarCotaPortal(env.DB, corretor_id, corpo.portal_nome, {
+      quantidade_contratada: corpo.quantidade_contratada === null || corpo.quantidade_contratada === undefined
+        ? null
+        : parseInt(corpo.quantidade_contratada, 10),
+      ativo: corpo.ativo === true,
+    });
+
+    return respostaSucesso({ mensagem: "Cota atualizada com sucesso" });
+  } catch (erro) {
+    console.error("Erro ao atualizar cota:", erro);
+    return respostaErro("Erro ao atualizar cota", 500);
+  }
+}
+
+// ========== Roteador principal ==========
+
+export async function rotasPainelCorretor(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+
+  // Todas as rotas do painel requerem autenticação
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) {
+    return respostaErro("Não autenticado. Acesso ao painel requer login.", 401);
+  }
+
+  // Roteamento por pathname
+  if (pathname === "/painel/perfil" && request.method === "GET") {
+    return rotaPainelPerfil(request, env);
+  }
+
+  if (pathname === "/painel/perfil/editar" && request.method === "PUT") {
+    return rotaPainelPerfilEditar(request, env);
+  }
+
+  if (pathname === "/painel/plano" && request.method === "GET") {
+    return rotaPainelPlano(request, env);
+  }
+
+  if (pathname === "/painel/anuncios" && request.method === "GET") {
+    return rotaPainelAnuncios(request, env);
+  }
+
+  if (pathname === "/painel/cotas-portal" && request.method === "GET") {
+    return rotaPainelCotasPortal(request, env);
+  }
+
+  if (pathname === "/painel/cotas-portal" && request.method === "PUT") {
+    return rotaPainelCotasPortalAtualizar(request, env);
+  }
+
+  return respostaErro("Rota não encontrada", 404);
+}
