@@ -3,6 +3,7 @@ import { ehBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
+import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
   DB: D1Database;
@@ -53,5 +54,10 @@ export default {
 
     // Domínio raiz ou outro: portal
     return rotasPortal(request, env);
+  },
+
+  // Handler da Queue (Lote 6, seção 4.4)
+  async queue(batch: MessageBatch, env: Env): Promise<void> {
+    return processarFilaAlteracoes(batch, env);
   },
 };
