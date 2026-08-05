@@ -1,0 +1,25 @@
+{
+  "name": "portal-imobiliarista",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "build:css": "tailwindcss -i ./styles/input.css -o ./public/assets/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./styles/input.css -o ./public/assets/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250801.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.9.0",
+    "postcss": "^8.4.47",
+    "prettier": "^3.3.3",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.78.0"
+  }
+}
