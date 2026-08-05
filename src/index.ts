@@ -2,6 +2,7 @@ import { redirecionarSemWww } from "./middleware/www-redirect";
 import { ehBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
 import { rotasPainelCorretor } from "./routes/painel-corretor";
+import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
 import { processarFilaAlteracoes } from "./queue";
@@ -50,6 +51,12 @@ export default {
     // Ver project.md, Lote 8
     if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/painel/")) {
       return rotasPainelCorretor(request, env);
+    }
+
+    // Roteador do painel do superadmin — domínio raiz apenas
+    // Ver project.md, Lote 9
+    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/painel-admin/")) {
+      return rotasPainelSuperadmin(request, env);
     }
 
     // Roteador principal: portal vs. minisite baseado no hostname

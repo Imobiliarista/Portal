@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Superadmin - Portal Imobiliário</title>
+  <meta name="description" content="Painel de administração da rede de portais imobiliários." />
+  <meta name="theme-color" content="#0f172a" />
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+  <link href="https://cdn.tailwindcss.com" rel="stylesheet" />
+
+  <style>
+    .nav-btn-active {
+      @apply bg-indigo-100 text-indigo-900 font-semibold;
+    }
+    .card-shadow {
+      @apply shadow-md;
+    }
+    .stat-card {
+      @apply bg-gradient-to-br p-6 rounded-lg card-shadow text-white;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div id="app" class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white card-shadow overflow-y-auto">
+      <div class="p-6 border-b">
+        <h2 class="text-xl font-bold text-slate-900">👑 Superadmin</h2>
+        <p class="text-sm text-gray-600 mt-2">Rede de Portais</p>
+      </div>
+
+      <nav class="p-4 space-y-2">
+        <button id="nav-dashboard" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium" data-section="dashboard">
+          📊 Dashboard
+        </button>
+        <button id="nav-precadastros" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium" data-section="precadastros">
+          ✅ Aprovações
+        </button>
+        <button id="nav-cidades" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium" data-section="cidades">
+          🏙️ Cidades
+        </button>
+        <button id="nav-modulos" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium" data-section="modulos">
+          🧩 Módulos
+        </button>
+        <hr class="my-4" />
+        <button id="logout-btn" class="w-full text-left px-4 py-3 rounded-lg hover:bg-red-50 text-red-600 transition font-medium">
+          🚪 Sair
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Header -->
+      <header class="bg-white border-b sticky top-0 z-30">
+        <div class="px-8 py-4">
+          <h1 id="page-title" class="text-2xl font-bold text-slate-900">Dashboard</h1>
+        </div>
+      </header>
+
+      <!-- Content Area -->
+      <div class="p-8 max-w-6xl mx-auto">
+        <!-- Dashboard Section -->
+        <section id="dashboard-view" class="space-y-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="stat-card from-blue-500 to-blue-600">
+              <p class="text-sm font-semibold opacity-90">Corretores Totais</p>
+              <p id="stat-corretores-totais" class="text-4xl font-bold mt-2">-</p>
+            </div>
+            <div class="stat-card from-green-500 to-green-600">
+              <p class="text-sm font-semibold opacity-90">Corretores Aprovados</p>
+              <p id="stat-corretores-aprovados" class="text-4xl font-bold mt-2">-</p>
+            </div>
+            <div class="stat-card from-yellow-500 to-yellow-600">
+              <p class="text-sm font-semibold opacity-90">Corretores Pendentes</p>
+              <p id="stat-corretores-pendentes" class="text-4xl font-bold mt-2">-</p>
+            </div>
+            <div class="stat-card from-red-500 to-red-600">
+              <p class="text-sm font-semibold opacity-90">Corretores Reprovados</p>
+              <p id="stat-corretores-reprovados" class="text-4xl font-bold mt-2">-</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Anúncios Totais</h3>
+              <p id="stat-anuncios-totais" class="text-3xl font-bold text-slate-900">-</p>
+              <p class="text-xs text-gray-600 mt-2">na plataforma</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Anúncios na Rede</h3>
+              <p id="stat-anuncios-rede" class="text-3xl font-bold text-green-600">-</p>
+              <p class="text-xs text-gray-600 mt-2">públicos</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Anúncios Privados</h3>
+              <p id="stat-anuncios-privados" class="text-3xl font-bold text-indigo-600">-</p>
+              <p class="text-xs text-gray-600 mt-2">minisites</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pré-Cadastros Section -->
+        <section id="precadastros-view" class="hidden space-y-6">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-slate-900">Fila de Aprovação</h2>
+            <p id="precadastros-contador" class="text-sm text-gray-600">Carregando...</p>
+          </div>
+
+          <div id="precadastros-lista" class="space-y-3">
+            <!-- Preenchido por JS -->
+          </div>
+
+          <!-- Modal de Detalhes -->
+          <div id="precadastro-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+              <h3 class="text-lg font-semibold mb-4">Detalhes do Pré-Cadastro</h3>
+              <div id="precadastro-detalhes" class="space-y-3 mb-6 text-sm">
+                <!-- Preenchido por JS -->
+              </div>
+              <div class="space-y-3">
+                <input id="precadastro-slug" type="text" placeholder="Slug do minisite (ex: marcos)" class="w-full px-3 py-2 border rounded-lg text-sm" />
+                <div class="flex gap-3">
+                  <button id="precadastro-aprovar-btn" class="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition font-semibold text-sm">
+                    ✅ Aprovar
+                  </button>
+                  <button id="precadastro-reprovar-btn" class="flex-1 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition font-semibold text-sm">
+                    ❌ Reprovar
+                  </button>
+                </div>
+                <button id="precadastro-fechar-btn" class="w-full bg-gray-300 text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-400 transition text-sm">
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Cidades Section -->
+        <section id="cidades-view" class="hidden space-y-6">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-slate-900">Gestão de Cidades</h2>
+            <p id="cidades-contador" class="text-sm text-gray-600">Carregando...</p>
+          </div>
+
+          <div id="cidades-lista" class="grid gap-3">
+            <!-- Preenchido por JS -->
+          </div>
+
+          <!-- Modal de Edição -->
+          <div id="cidade-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+              <h3 class="text-lg font-semibold mb-4">Editar Cidade</h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="text-sm font-semibold">Nome</label>
+                  <input id="cidade-nome-input" type="text" class="w-full px-3 py-2 border rounded-lg mt-1 text-sm" />
+                </div>
+                <div>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input id="cidade-ativo-input" type="checkbox" class="rounded" />
+                    <span class="text-sm">Ativa</span>
+                  </label>
+                </div>
+                <div class="flex gap-3">
+                  <button id="cidade-salvar-btn" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition font-semibold text-sm">
+                    💾 Salvar
+                  </button>
+                  <button id="cidade-fechar-btn" class="flex-1 bg-gray-300 text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-400 transition text-sm">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Módulos Section -->
+        <section id="modulos-view" class="hidden space-y-6">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-slate-900">Gestão de Módulos</h2>
+            <p class="text-sm text-gray-600">Efeito imediato</p>
+          </div>
+
+          <div id="modulos-lista" class="grid gap-4">
+            <!-- Preenchido por JS -->
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/js/painel-superadmin.js"></script>
+</body>
+</html>

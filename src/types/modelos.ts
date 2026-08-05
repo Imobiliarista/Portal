@@ -39,6 +39,7 @@ export interface Corretor {
   nome_usuario?: string; // Pode fazer login com nome_usuario OU cpf
   senha_hash: string;
   senha_salt?: string; // Salt para PBKDF2
+  papel: 'corretor' | 'superadmin'; // papel/role do usuário
 
   // Dados de contato (editáveis)
   endereco_residencial?: string;
@@ -262,4 +263,17 @@ export interface Sessao {
   user_agent?: string;
   expira_em: string; // ISO 8601 datetime
   criado_em: string;
+}
+
+// ========== 2FA - TOTP (Lote 9) ==========
+
+// Configuração de 2FA TOTP para Superadmin
+export interface DoislFaTotp {
+  id: number;
+  corretor_id: number;
+  secret_key: string; // Chave secreta em base32
+  backup_codes: string[]; // Array de 10 códigos de backup
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
 }
