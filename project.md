@@ -686,7 +686,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 2 | Banco de dados | Migrations `0001_init`, `0002_taxonomia`, `0003_cidades_ibge`, `0004_modulos` + `types/modelos.ts` | 🟢 Concluído |
 | 3 | Autenticação | `lib/senha.ts`, `lib/cpf.ts`, `routes/api-auth.ts` (pré-cadastro + Turnstile + aceite de termos + login + recuperação), sessão via cookie | 🟢 Concluído |
 | 4 | Roteamento core | `middleware/www-redirect.ts`, `middleware/bot-detect.ts`, `routes/portal.ts`, `routes/minisite.ts` | 🟢 Concluído |
-| 5 | CRUD de anúncios | `routes/api-anuncios.ts`, `db/queries-anuncios.ts`, `lib/slug.ts`, `lib/sanitize.ts` | 🔲 Não iniciado |
+| 5 | CRUD de anúncios | `routes/api-anuncios.ts`, `db/queries-anuncios.ts`, `lib/slug.ts`, `lib/sanitize.ts` | 🟢 Concluído |
 | 6 | Geração em lote | `queue.ts`, `jobs/gerar-json-cidade.ts` (com particionamento), `jobs/gerar-json-corretor.ts`, `jobs/revalidacao-cruzada.ts`, `lib/r2.ts` | 🔲 Não iniciado |
 | 7 | Frontend base | `public/index.html` (shell SPA), `assets/js/app.js`, `filtros.js`, `mapa.js` | 🔲 Não iniciado |
 | 8 | Painel do corretor | `routes/painel-corretor.ts`, `public/painel/index.html`, `painel.js` | 🔲 Não iniciado |
