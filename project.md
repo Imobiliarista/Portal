@@ -689,7 +689,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 5 | CRUD de anúncios | `routes/api-anuncios.ts`, `db/queries-anuncios.ts`, `lib/slug.ts`, `lib/sanitize.ts` | 🟢 Concluído |
 | 6 | Geração em lote | `queue.ts`, `jobs/gerar-json-cidade.ts` (com particionamento), `jobs/gerar-json-corretor.ts`, `jobs/revalidacao-cruzada.ts`, `lib/r2.ts` | 🟢 Concluído |
 | 7 | Frontend base | `public/index.html` (shell SPA), `assets/js/app.js`, `filtros.js`, `mapa.js` | 🟢 Concluído |
-| 8 | Painel do corretor | `routes/painel-corretor.ts`, `public/painel/index.html`, `painel.js` | 🔲 Não iniciado |
+| 8 | Painel do corretor | `routes/painel-corretor.ts`, `public/painel/index.html`, `painel.js` | 🟢 Concluído |
 | 9 | Painel do superadmin | `routes/painel-superadmin.ts` (aprovações, cidades, módulos on/off) | 🔲 Não iniciado |
 | 10 | PWA | `manifest.json`, `sw.js`, `cache-buster.js` | 🔲 Não iniciado |
 | 11 | SEO | `routes/sitemap.ts`, `jobs/gerar-sitemap.ts`, `jobs/gerar-html-snapshot.ts`, tratamento HTTP 410 | 🔲 Não iniciado |

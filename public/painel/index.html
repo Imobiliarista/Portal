@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Corretor - Portal Imobiliário</title>
+  <meta name="description" content="Painel de controle para corretores gerenciarem seus imóveis e anúncios." />
+  <meta name="theme-color" content="#0f172a" />
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+  <link href="https://cdn.tailwindcss.com" rel="stylesheet" />
+
+  <style>
+    .sidebar-active {
+      @apply bg-slate-900 text-white;
+    }
+    .badge-status-aprovado {
+      @apply bg-green-100 text-green-800;
+    }
+    .badge-status-pendente {
+      @apply bg-yellow-100 text-yellow-800;
+    }
+    .card-shadow {
+      @apply shadow-md;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div id="app" class="flex h-screen">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-64 bg-white card-shadow overflow-y-auto">
+      <div class="p-6 border-b">
+        <h2 class="text-xl font-bold text-slate-900">🏠 Painel</h2>
+        <p id="sidebar-user-name" class="text-sm text-gray-600 mt-2">Carregando...</p>
+      </div>
+
+      <nav class="p-4 space-y-2">
+        <button id="nav-dashboard" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          📊 Dashboard
+        </button>
+        <button id="nav-anuncios" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          📋 Meus Anúncios
+        </button>
+        <button id="nav-novo-anuncio" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          ➕ Novo Anúncio
+        </button>
+        <button id="nav-portais" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          🌐 Portais Integrados
+        </button>
+        <button id="nav-perfil" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          👤 Meu Perfil
+        </button>
+        <hr class="my-4" />
+        <button id="logout-btn" class="w-full text-left px-4 py-3 rounded-lg hover:bg-red-50 text-red-600 transition font-medium">
+          🚪 Sair
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+      <!-- Header -->
+      <header class="bg-white border-b sticky top-0 z-30">
+        <div class="px-8 py-4 flex justify-between items-center">
+          <h1 id="page-title" class="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <div id="status-offline-badge" class="hidden px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg font-semibold">
+            ⚠️ Site offline — Aguardando aprovação
+          </div>
+        </div>
+      </header>
+
+      <!-- Content Area -->
+      <div class="p-8 max-w-6xl mx-auto">
+        <!-- Dashboard View -->
+        <section id="dashboard-view" class="hidden">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Card: Status -->
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Status da Conta</h3>
+              <p id="status-text" class="text-2xl font-bold text-slate-900">Carregando...</p>
+              <p id="status-subtext" class="text-xs text-gray-600 mt-2"></p>
+            </div>
+
+            <!-- Card: Anúncios -->
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Anúncios Ativos</h3>
+              <p id="anuncios-count" class="text-2xl font-bold text-slate-900">0</p>
+              <p id="anuncios-limit" class="text-xs text-gray-600 mt-2">de 0 permitidos</p>
+            </div>
+
+            <!-- Card: Fotos -->
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-sm font-semibold text-gray-600 mb-2">Fotos por Anúncio</h3>
+              <p id="max-fotos" class="text-2xl font-bold text-slate-900">0</p>
+              <p class="text-xs text-gray-600 mt-2">máximo permitido</p>
+            </div>
+          </div>
+
+          <div class="bg-white p-6 rounded-lg card-shadow">
+            <h2 class="text-lg font-bold mb-4 text-slate-900">Últimos Anúncios</h2>
+            <div id="dashboard-anuncios-preview" class="space-y-3">
+              <p class="text-gray-600">Carregando anúncios...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Meus Anúncios View -->
+        <section id="anuncios-view" class="hidden">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-slate-900">Meus Anúncios</h2>
+            <button id="novo-anuncio-btn-header" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+              ➕ Novo Anúncio
+            </button>
+          </div>
+
+          <div id="anuncios-list" class="space-y-4">
+            <p class="text-gray-600">Carregando anúncios...</p>
+          </div>
+
+          <!-- Paginação -->
+          <div id="anuncios-pagination" class="flex justify-center gap-2 mt-8"></div>
+        </section>
+
+        <!-- Novo/Editar Anúncio View -->
+        <section id="form-anuncio-view" class="hidden">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Novo Anúncio</h2>
+
+          <div class="bg-white p-8 rounded-lg card-shadow">
+            <form id="form-anuncio" class="space-y-6">
+              <!-- Dados Básicos -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Dados Básicos</legend>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    id="anuncio-titulo"
+                    type="text"
+                    placeholder="Título do anúncio"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                  <select
+                    id="anuncio-tipo-negocio"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Tipo de Negócio</option>
+                    <option value="venda">Venda</option>
+                    <option value="locacao">Locação</option>
+                  </select>
+                </div>
+                <textarea
+                  id="anuncio-descricao"
+                  placeholder="Descrição do imóvel"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-4"
+                  rows="4"
+                ></textarea>
+              </fieldset>
+
+              <!-- Taxonomia -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Tipo de Imóvel</legend>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <select
+                    id="anuncio-categoria"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Categoria</option>
+                    <option value="residencial">Residencial</option>
+                    <option value="comercial">Comercial</option>
+                    <option value="corporativo">Corporativo</option>
+                    <option value="industrial">Industrial</option>
+                    <option value="rural">Rural</option>
+                  </select>
+                  <select
+                    id="anuncio-tipo"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Tipo de Imóvel</option>
+                  </select>
+                  <select
+                    id="anuncio-cidade"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Cidade</option>
+                  </select>
+                </div>
+              </fieldset>
+
+              <!-- Preço e Localização -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Preço e Localização</legend>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    id="anuncio-preco"
+                    type="number"
+                    placeholder="Preço (R$)"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                  <input
+                    id="anuncio-bairro"
+                    type="text"
+                    placeholder="Bairro/Região"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <textarea
+                  id="anuncio-endereco"
+                  placeholder="Endereço completo (opcional)"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-4"
+                  rows="2"
+                ></textarea>
+                <label class="flex items-center gap-2 mt-4 cursor-pointer">
+                  <input id="anuncio-exibir-endereco" type="checkbox" class="w-4 h-4" />
+                  <span>Exibir endereço completo</span>
+                </label>
+              </fieldset>
+
+              <!-- Specs -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Especificações</legend>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <input
+                    id="anuncio-quartos"
+                    type="number"
+                    placeholder="Quartos"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                  <input
+                    id="anuncio-banheiros"
+                    type="number"
+                    placeholder="Banheiros"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                  <input
+                    id="anuncio-vagas"
+                    type="number"
+                    placeholder="Vagas"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                  <input
+                    id="anuncio-area-util"
+                    type="number"
+                    placeholder="Área útil (m²)"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                </div>
+              </fieldset>
+
+              <!-- Mídia -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Mídia</legend>
+                <input
+                  id="anuncio-video-youtube"
+                  type="url"
+                  placeholder="URL do vídeo YouTube (opcional)"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  id="anuncio-tour-360"
+                  type="url"
+                  placeholder="URL do tour 360° (opcional)"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-4"
+                />
+              </fieldset>
+
+              <!-- Publicação -->
+              <fieldset>
+                <legend class="text-lg font-semibold text-slate-900 mb-4">Publicação</legend>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input id="anuncio-postar-rede" type="checkbox" class="w-4 h-4" checked />
+                  <span>Postar na Rede (visível no Portal Principal)</span>
+                </label>
+              </fieldset>
+
+              <!-- Botões -->
+              <div class="flex gap-4 pt-6 border-t">
+                <button
+                  type="submit"
+                  class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  💾 Salvar Anúncio
+                </button>
+                <button
+                  type="button"
+                  id="cancel-form-btn"
+                  class="px-6 py-2 bg-gray-300 hover:bg-gray-400 text-gray-900 rounded-lg font-medium transition"
+                >
+                  ✖️ Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Portais Integrados View -->
+        <section id="portais-view" class="hidden">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Configurações do Site → Portais Integrados</h2>
+
+          <div id="portais-list" class="space-y-4">
+            <p class="text-gray-600">Carregando portais...</p>
+          </div>
+        </section>
+
+        <!-- Perfil View -->
+        <section id="perfil-view" class="hidden">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Meu Perfil</h2>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Dados Imutáveis -->
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-lg font-semibold text-slate-900 mb-4">Dados de Identidade (Imutáveis)</h3>
+              <div class="space-y-4 text-sm">
+                <div>
+                  <label class="block text-gray-600 mb-1">Nome Completo</label>
+                  <p id="perfil-nome" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-medium">Carregando...</p>
+                </div>
+                <div>
+                  <label class="block text-gray-600 mb-1">CPF</label>
+                  <p id="perfil-cpf" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-medium">Carregando...</p>
+                </div>
+                <div>
+                  <label class="block text-gray-600 mb-1">CRECI</label>
+                  <p id="perfil-creci" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-medium">Carregando...</p>
+                </div>
+                <div>
+                  <label class="block text-gray-600 mb-1">Data de Nascimento</label>
+                  <p id="perfil-data-nasc" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-medium">Carregando...</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dados Editáveis -->
+            <div class="bg-white p-6 rounded-lg card-shadow">
+              <h3 class="text-lg font-semibold text-slate-900 mb-4">Dados de Contato (Editáveis)</h3>
+              <form id="form-perfil-editar" class="space-y-4">
+                <input
+                  id="perfil-email"
+                  type="email"
+                  placeholder="E-mail"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  id="perfil-telefone"
+                  type="tel"
+                  placeholder="Telefone"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  id="perfil-whatsapp"
+                  type="tel"
+                  placeholder="WhatsApp"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <textarea
+                  id="perfil-endereco"
+                  placeholder="Endereço Residencial"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="3"
+                ></textarea>
+                <button
+                  type="submit"
+                  class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
+                  💾 Salvar Alterações
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/assets/js/painel.js"></script>
+</body>
+</html>

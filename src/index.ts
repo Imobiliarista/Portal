@@ -1,6 +1,7 @@
 import { redirecionarSemWww } from "./middleware/www-redirect";
 import { ehBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
+import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
 import { processarFilaAlteracoes } from "./queue";
@@ -43,6 +44,12 @@ export default {
     // Roteador de autenticação — independente do hostname
     if (url.pathname.startsWith("/api/auth/")) {
       return rotasAuth(request, env);
+    }
+
+    // Roteador do painel do corretor — domínio raiz apenas
+    // Ver project.md, Lote 8
+    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/painel/")) {
+      return rotasPainelCorretor(request, env);
     }
 
     // Roteador principal: portal vs. minisite baseado no hostname
