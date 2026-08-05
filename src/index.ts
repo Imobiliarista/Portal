@@ -1,7 +1,10 @@
+import { rotasAuth } from "./routes/api-auth";
+
 export interface Env {
   DB: D1Database;
   JSON_CACHE: R2Bucket;
   FILA_ALTERACOES: Queue;
+  TURNSTILE_SECRET_KEY?: string;
 }
 
 export default {
@@ -13,6 +16,11 @@ export default {
     if (url.hostname.startsWith("www.")) {
       url.hostname = url.hostname.replace("www.", "");
       return Response.redirect(url.toString(), 301);
+    }
+
+    // Roteador de autenticação
+    if (url.pathname.startsWith("/api/auth/")) {
+      return rotasAuth(request, env);
     }
 
     return new Response("Portal Imobiliarista — em construção", {

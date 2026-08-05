@@ -38,6 +38,7 @@ export interface Corretor {
   // Autenticação
   nome_usuario?: string; // Pode fazer login com nome_usuario OU cpf
   senha_hash: string;
+  senha_salt?: string; // Salt para PBKDF2
 
   // Dados de contato (editáveis)
   endereco_residencial?: string;
@@ -238,4 +239,27 @@ export interface AnuncioDetalhe extends Anuncio {
   categoria_slug?: string;
   cidade_nome?: string;
   fotos_array?: string[]; // Parsed from fotos_json
+}
+
+// ========== Autenticação (Lote 3) ==========
+
+// Token de redefinição de senha
+export interface ResetTokenSenha {
+  id: number;
+  corretor_id: number;
+  token: string;
+  expira_em: string; // ISO 8601 datetime
+  usado: boolean;
+  criado_em: string;
+}
+
+// Sessão de autenticação
+export interface Sessao {
+  id: number;
+  corretor_id: number;
+  session_id: string;
+  ip_address?: string;
+  user_agent?: string;
+  expira_em: string; // ISO 8601 datetime
+  criado_em: string;
 }
