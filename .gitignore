@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+.env
+.dev.vars
+*.log
+.DS_Store
+
+# CSS gerado a partir de styles/input.css via Tailwind
+public/assets/css/tailwind.css

@@ -1,0 +1,39 @@
+name = "imobiliarista-portal"
+main = "src/index.ts"
+compatibility_date = "2026-08-05"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 — fonte da verdade (escrita + leitura administrativa, nunca lido
+# diretamente pelo visitante público). Ver project.md, seção 4.3.
+[[d1_databases]]
+binding = "DB"
+database_name = "imobiliarista-db"
+database_id = "<id>" # substituir após `wrangler d1 create imobiliarista-db`
+
+# R2 — JSONs por cidade/corretor + imagens dos anúncios, servidos via
+# domínio público próprio (bypass do Worker nas leituras). Ver seção 4.3.
+[[r2_buckets]]
+binding = "JSON_CACHE"
+bucket_name = "imobiliarista-jsons"
+
+# Queue — fila de alterações em lote do painel. Uma mensagem por arquivo
+# a ser gerado (JSON cidade, JSON corretor, XML por portal externo),
+# nunca uma mensagem única por corretor. Ver seções 4.4 e 4.4.1.1.
+[[queues.producers]]
+binding = "FILA_ALTERACOES"
+queue = "imobiliarista-fila"
+
+[[queues.consumers]]
+queue = "imobiliarista-fila"
+max_batch_size = 10
+max_batch_timeout = 30
+
+# Rotas — DECISÃO FECHADA (seção 4.3): duas rotas, não uma. O wildcard
+# não cobre o domínio raiz puro.
+[[routes]]
+pattern = "imobiliarista.net/*"
+zone_name = "imobiliarista.net"
+
+[[routes]]
+pattern = "*.imobiliarista.net/*"
+zone_name = "imobiliarista.net"
