@@ -683,7 +683,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | # | Lote | Conteúdo | Status |
 |---|---|---|---|
 | 1 | Fundação | `wrangler.toml` (bindings D1/R2/Queue + rotas www/wildcard), `package.json`, `tsconfig.json`, `tailwind.config.js`, `.gitignore`, `.env.example`, `README.md`, `src/index.ts` básico | 🟢 Concluído |
-| 2 | Banco de dados | Migrations `0001_init`, `0002_taxonomia`, `0003_cidades_ibge`, `0004_modulos` + `types/modelos.ts` | 🔲 Não iniciado |
+| 2 | Banco de dados | Migrations `0001_init`, `0002_taxonomia`, `0003_cidades_ibge`, `0004_modulos` + `types/modelos.ts` | 🟢 Concluído |
 | 3 | Autenticação | `lib/senha.ts`, `lib/cpf.ts`, `routes/api-auth.ts` (pré-cadastro + Turnstile + aceite de termos + login + recuperação), sessão via cookie | 🔲 Não iniciado |
 | 4 | Roteamento core | `middleware/www-redirect.ts`, `middleware/bot-detect.ts`, `routes/portal.ts`, `routes/minisite.ts` | 🔲 Não iniciado |
 | 5 | CRUD de anúncios | `routes/api-anuncios.ts`, `db/queries-anuncios.ts`, `lib/slug.ts`, `lib/sanitize.ts` | 🔲 Não iniciado |
