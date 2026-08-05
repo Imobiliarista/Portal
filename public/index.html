@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Imobiliário - Encontre seu imóvel</title>
+  <meta name="description" content="Portal de imóveis com os melhores anúncios de venda e aluguel no Brasil." />
+  <meta name="theme-color" content="#0f172a" />
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+  <link href="https://cdn.tailwindcss.com" rel="stylesheet" />
+
+  <style>
+    .hero-gradient {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    }
+    .card-shadow {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .badge-venda {
+      background-color: #dc2626;
+    }
+    .badge-locacao {
+      background-color: #0891b2;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div id="app">
+    <!-- Header/Navegação -->
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+      <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center">
+          <h1 class="text-2xl font-bold text-slate-900">🏠 Portal Imobiliário</h1>
+        </div>
+        <div id="user-menu" class="flex items-center gap-4">
+          <button id="toggle-favorites" class="text-gray-600 hover:text-gray-900 font-medium text-sm">
+            ❤️ Favoritos (<span id="favorites-count">0</span>)
+          </button>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main Content -->
+    <div id="main-content">
+      <!-- Home: Hero + Busca de Cidade -->
+      <div id="home-view" class="hero-gradient text-white py-16 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+          <h2 class="text-4xl font-bold mb-4">Encontre seu imóvel perfeito</h2>
+          <p class="text-lg mb-8 text-gray-300">Venda, aluguel em todo o Brasil</p>
+          <div class="flex gap-2 max-w-2xl mx-auto">
+            <input
+              id="city-search"
+              type="text"
+              placeholder="Digite uma cidade..."
+              class="flex-1 px-4 py-3 rounded-lg text-gray-900 border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              id="search-btn"
+              class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium text-white transition"
+            >
+              Buscar
+            </button>
+          </div>
+          <div id="city-suggestions" class="mt-4 flex gap-2 flex-wrap justify-center"></div>
+        </div>
+      </div>
+
+      <!-- Filters + Listing (hidden until city selected) -->
+      <div id="listing-view" class="hidden max-w-7xl mx-auto px-4 py-8">
+        <!-- Breadcrumbs -->
+        <div id="breadcrumbs" class="text-sm text-gray-600 mb-6">
+          <a href="#" onclick="window.location.hash=''; loadHome();" class="hover:text-gray-900">Home</a>
+          <span class="mx-2">/</span>
+          <span id="breadcrumb-city">Cidade</span>
+        </div>
+
+        <!-- Filters Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+          <div class="lg:col-span-1">
+            <button
+              id="toggle-filters"
+              class="w-full lg:hidden px-4 py-2 bg-slate-900 text-white rounded-lg font-medium mb-4"
+            >
+              ⚙️ Filtros
+            </button>
+            <div id="filters-panel" class="hidden lg:block bg-white p-6 rounded-lg card-shadow space-y-6">
+              <!-- Tipo de Negócio -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Tipo de Negócio</h3>
+                <div class="space-y-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="business-type" value="venda" class="filter-radio" />
+                    <span>Venda</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="business-type" value="locacao" class="filter-radio" />
+                    <span>Locação</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Categoria de Imóvel -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Tipo de Imóvel</h3>
+                <select id="filter-category" class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-select">
+                  <option value="">Todas as categorias</option>
+                  <option value="residencial">Residencial</option>
+                  <option value="comercial">Comercial</option>
+                  <option value="corporativo">Corporativo</option>
+                  <option value="industrial">Industrial</option>
+                  <option value="rural">Rural</option>
+                </select>
+              </div>
+
+              <!-- Faixa de Preço -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Preço Máximo</h3>
+                <input
+                  id="filter-max-price"
+                  type="number"
+                  placeholder="R$ até..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-input"
+                  min="0"
+                  step="10000"
+                />
+              </div>
+
+              <!-- Quartos -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Quartos</h3>
+                <select id="filter-bedrooms" class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-select">
+                  <option value="">Qualquer</option>
+                  <option value="1">1+</option>
+                  <option value="2">2+</option>
+                  <option value="3">3+</option>
+                  <option value="4">4+</option>
+                  <option value="5">5+</option>
+                </select>
+              </div>
+
+              <!-- Banheiros -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Banheiros</h3>
+                <select id="filter-bathrooms" class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-select">
+                  <option value="">Qualquer</option>
+                  <option value="1">1+</option>
+                  <option value="2">2+</option>
+                  <option value="3">3+</option>
+                  <option value="4">4+</option>
+                </select>
+              </div>
+
+              <!-- Vagas -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Vagas de Garagem</h3>
+                <select id="filter-parking" class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-select">
+                  <option value="">Qualquer</option>
+                  <option value="1">1+</option>
+                  <option value="2">2+</option>
+                  <option value="3">3+</option>
+                </select>
+              </div>
+
+              <!-- Área -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Área Mínima (m²)</h3>
+                <input
+                  id="filter-min-area"
+                  type="number"
+                  placeholder="m² mínimo"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-input"
+                  min="0"
+                  step="10"
+                />
+              </div>
+
+              <!-- Região/Bairro -->
+              <div>
+                <h3 class="font-semibold text-gray-900 mb-3">Região</h3>
+                <select id="filter-region" class="w-full px-3 py-2 border border-gray-300 rounded-lg filter-select">
+                  <option value="">Todas as regiões</option>
+                  <option value="central">Central</option>
+                  <option value="norte">Norte</option>
+                  <option value="sul">Sul</option>
+                  <option value="leste">Leste</option>
+                  <option value="oeste">Oeste</option>
+                  <option value="rural">Rural</option>
+                </select>
+              </div>
+
+              <button id="clear-filters" class="w-full px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 font-medium">
+                Limpar Filtros
+              </button>
+            </div>
+          </div>
+
+          <!-- Listings -->
+          <div class="lg:col-span-3">
+            <div class="flex justify-between items-center mb-6">
+              <h2 id="listing-count" class="text-xl font-semibold">Anúncios encontrados</h2>
+              <select id="sort-by" class="px-3 py-2 border border-gray-300 rounded-lg">
+                <option value="recent">Mais Recentes</option>
+                <option value="price-low">Menor Preço</option>
+                <option value="price-high">Maior Preço</option>
+              </select>
+            </div>
+
+            <div id="listings-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+
+            <div id="no-results" class="text-center py-12 hidden">
+              <p class="text-gray-600 text-lg">Nenhum imóvel encontrado com os filtros selecionados.</p>
+            </div>
+
+            <!-- Pagination -->
+            <div id="pagination" class="flex justify-center gap-2 mt-8"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detalhe do Anúncio (hidden until selected) -->
+      <div id="detail-view" class="hidden max-w-5xl mx-auto px-4 py-8">
+        <button id="back-btn" class="mb-6 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+          ← Voltar
+        </button>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Gallery + Info -->
+          <div class="lg:col-span-2">
+            <div id="detail-gallery" class="aspect-video bg-gray-300 rounded-lg mb-6 overflow-hidden">
+              <img id="detail-main-image" src="" alt="Imóvel" class="w-full h-full object-cover" />
+            </div>
+            <div id="detail-thumbs" class="flex gap-2 mb-6 overflow-x-auto"></div>
+
+            <div id="detail-info" class="bg-white p-6 rounded-lg card-shadow">
+              <h1 id="detail-title" class="text-3xl font-bold mb-2"></h1>
+              <p id="detail-location" class="text-gray-600 mb-4"></p>
+              <p id="detail-description" class="text-gray-700 mb-6 leading-relaxed"></p>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 py-6 border-y border-gray-200">
+                <div class="text-center">
+                  <div id="detail-bedrooms" class="text-2xl font-bold text-slate-900"></div>
+                  <div class="text-sm text-gray-600">Quartos</div>
+                </div>
+                <div class="text-center">
+                  <div id="detail-bathrooms" class="text-2xl font-bold text-slate-900"></div>
+                  <div class="text-sm text-gray-600">Banheiros</div>
+                </div>
+                <div class="text-center">
+                  <div id="detail-parking" class="text-2xl font-bold text-slate-900"></div>
+                  <div class="text-sm text-gray-600">Vagas</div>
+                </div>
+                <div class="text-center">
+                  <div id="detail-area" class="text-2xl font-bold text-slate-900"></div>
+                  <div class="text-sm text-gray-600">m²</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sidebar: Price + Broker + CTA -->
+          <div class="lg:col-span-1">
+            <div class="bg-white p-6 rounded-lg card-shadow sticky top-20 space-y-6">
+              <div>
+                <p class="text-gray-600 text-sm mb-2">Preço</p>
+                <p id="detail-price" class="text-4xl font-bold text-slate-900"></p>
+              </div>
+
+              <div id="detail-badge" class="px-4 py-2 rounded-lg text-white text-center font-semibold"></div>
+
+              <!-- Broker Card -->
+              <div class="border-t pt-6">
+                <h3 class="font-semibold text-gray-900 mb-3">Informações do Corretor</h3>
+                <div class="space-y-2 text-sm">
+                  <p><strong id="detail-broker-name">Corretor</strong></p>
+                  <p id="detail-broker-creci" class="text-gray-600"></p>
+                  <p id="detail-broker-phone" class="text-gray-600"></p>
+                </div>
+              </div>
+
+              <!-- CTA -->
+              <a
+                id="whatsapp-btn"
+                href="#"
+                class="block w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-center transition"
+              >
+                💬 Fale com o Corretor
+              </a>
+
+              <button
+                id="favorite-btn"
+                class="w-full px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-medium hover:border-red-500 transition"
+              >
+                ❤️ Adicionar aos Favoritos
+              </button>
+            </div>
+
+            <!-- Map -->
+            <div id="map-container" class="mt-6 bg-white p-6 rounded-lg card-shadow hidden">
+              <h3 class="font-semibold text-gray-900 mb-3">Localização</h3>
+              <div id="map" class="w-full h-64 rounded-lg bg-gray-200"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Similar Properties -->
+        <div class="mt-12 pt-8 border-t">
+          <h3 class="text-2xl font-bold mb-6">Imóveis Semelhantes</h3>
+          <div id="similar-listings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/assets/js/app.js"></script>
+  <script src="/assets/js/filtros.js"></script>
+  <script src="/assets/js/mapa.js"></script>
+</body>
+</html>
