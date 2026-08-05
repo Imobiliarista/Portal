@@ -691,7 +691,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 7 | Frontend base | `public/index.html` (shell SPA), `assets/js/app.js`, `filtros.js`, `mapa.js` | 🟢 Concluído |
 | 8 | Painel do corretor | `routes/painel-corretor.ts`, `public/painel/index.html`, `painel.js` | 🟢 Concluído |
 | 9 | Painel do superadmin | `routes/painel-superadmin.ts` (aprovações, cidades, módulos on/off) | 🟢 Concluído |
-| 10 | PWA | `manifest.json`, `sw.js`, `cache-buster.js` | 🔲 Não iniciado |
+| 10 | PWA | `manifest.json`, `sw.js`, `cache-buster.js` | 🟢 Concluído |
 | 11 | SEO | `routes/sitemap.ts`, `jobs/gerar-sitemap.ts`, `jobs/gerar-html-snapshot.ts`, tratamento HTTP 410 | 🔲 Não iniciado |
 | 12 | Módulos opcionais | Um de cada vez, isolados em `src/modulos/`: `feed-grupo-olx` → `feed-portais-independentes` → `busca-ia` → `video-youtube` → `tour-360` → `busca-salva-email` → `agendamento-visita` → `comparacao-anuncios` → `calculadora-financiamento` | 🔲 Não iniciado |
 | 13 | Backup/observabilidade | `scheduled.ts` (export D1 mensal) + configurar Rate Limiting Rule no dashboard (não é código) | 🔲 Não iniciado |
