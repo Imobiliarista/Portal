@@ -354,6 +354,13 @@ function showDetail(listingId) {
       onclick="document.getElementById('detail-main-image').src='${foto.url}'" />`
   ).join('');
 
+  // Vídeo YouTube (Lote 12.4: módulo video-youtube)
+  if (listing.video_youtube_id) {
+    renderYouTubePlayer(listing.video_youtube_id, 'detail-video-player');
+  } else {
+    document.getElementById('detail-video-player').innerHTML = '';
+  }
+
   // Favorito
   const isFav = appState.favorites.includes(listing.id);
   document.getElementById('favorite-btn').textContent = isFav ? '❤️ Remover dos Favoritos' : '❤️ Adicionar aos Favoritos';

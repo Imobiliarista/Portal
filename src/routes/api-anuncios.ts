@@ -6,6 +6,7 @@ import { Env } from "../index";
 import { Anuncio, Plano } from "../types/modelos";
 import { gerarSlug } from "../lib/slug";
 import { sanitizarBairroRegiao, sanitizarParaXML } from "../lib/sanitize";
+import { getYouTubeId } from "../modulos/video-youtube/logica";
 import {
   criarAnuncio,
   buscarAnuncioPorId,
@@ -38,14 +39,6 @@ async function obterCorretorAutenticado(request: Request, env: Env): Promise<num
   }
 }
 
-// Extrai YouTube ID a partir de várias formas de URL
-function extrairYouTubeId(url: string | undefined): string | null {
-  if (!url || !url.trim()) return null;
-
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return match && match[2] && match[2].length === 11 ? match[2] : null;
-}
 
 // Valida campos obrigatórios por tipo de imóvel quando portal externo está ativo
 async function validarCamposObrigatorios(
@@ -171,8 +164,8 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
     const descricao = dados.descricao ? sanitizarParaXML(dados.descricao) : undefined;
     const bairro = dados.bairro ? sanitizarBairroRegiao(dados.bairro) : undefined;
 
-    // Extrai YouTube ID se fornecido
-    const videoYouTubeId = dados.video_youtube_url ? extrairYouTubeId(dados.video_youtube_url) : undefined;
+    // Extrai YouTube ID se fornecido (módulo video-youtube, Lote 12.4)
+    const videoYouTubeId = dados.video_youtube_url ? getYouTubeId(dados.video_youtube_url) : undefined;
 
     // Gera slug temporário (será substituído após inserção com o ID real)
     let slug = gerarSlug(titulo, 0);

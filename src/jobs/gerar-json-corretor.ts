@@ -5,6 +5,7 @@ import { Env } from "../index";
 import { buscarCorrelorPorSlug } from "../db/queries-corretores";
 import { listarAnunciosDoCorretor } from "../db/queries-anuncios";
 import { escreverJSON } from "../lib/r2";
+import { estaModuloAtivo } from "../db/queries-modulos";
 
 interface MensagemGerarJsonCorretor {
   tipo: "gerar-json-corretor";
@@ -22,6 +23,7 @@ interface AnuncioCorretorItem {
   bairro?: string;
   slug: string;
   criado_em: string;
+  video_youtube_id?: string;
 }
 
 export async function processarGerarJsonCorretor(
@@ -31,6 +33,9 @@ export async function processarGerarJsonCorretor(
   const { corretor_slug } = mensagem;
 
   try {
+    // Verifica se o módulo de vídeo YouTube está ativo
+    const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
+
     const resultado = await buscarCorrelorPorSlug(env.DB, corretor_slug);
     if (!resultado) {
       console.error(`Corretor com slug "${corretor_slug}" não encontrado`);
@@ -46,7 +51,7 @@ export async function processarGerarJsonCorretor(
         const fotos: string[] = a.fotos_json ? JSON.parse(a.fotos_json) : [];
         const preco = a.preco_venda || a.preco_aluguel;
 
-        return {
+        const item: AnuncioCorretorItem = {
           id: a.id,
           titulo: a.titulo,
           preco,
@@ -58,6 +63,12 @@ export async function processarGerarJsonCorretor(
           slug: a.slug,
           criado_em: a.criado_em,
         };
+
+        if (moduloVideoAtivo && a.video_youtube_id) {
+          item.video_youtube_id = a.video_youtube_id;
+        }
+
+        return item;
       });
 
     const caminho = `corretores/${corretor_slug}.json`;
