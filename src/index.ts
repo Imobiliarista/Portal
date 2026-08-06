@@ -4,7 +4,7 @@ import { rotasAuth } from "./routes/api-auth";
 import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { rotasPortal } from "./routes/portal";
-import { rotasMinиsite } from "./routes/minisite";
+import { rotasMinisite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
 import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
@@ -109,7 +109,7 @@ export default {
     // Ver project.md, seção 4.1 (roteamento por hostname)
     if (ehSubdominio(url.hostname)) {
       // Subdomínio: minisite do corretor
-      return rotasMinиsite(request, env);
+      return rotasMinisite(request, env);
     }
 
     // Domínio raiz ou outro: portal
