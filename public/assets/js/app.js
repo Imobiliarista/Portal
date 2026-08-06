@@ -377,6 +377,12 @@ function showDetail(listingId) {
     }
   }
 
+  // Calculadora de Financiamento (Lote 12.9: módulo calculadora-financiamento)
+  const preco = listing.tipo_negocio === 'venda' ? listing.preco_venda : listing.preco_locacao;
+  if (typeof renderizarCalculadora === 'function' && preco) {
+    renderizarCalculadora(preco);
+  }
+
   // Favorito
   const isFav = appState.favorites.includes(listing.id);
   document.getElementById('favorite-btn').textContent = isFav ? '❤️ Remover dos Favoritos' : '❤️ Adicionar aos Favoritos';
