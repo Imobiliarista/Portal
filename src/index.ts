@@ -9,6 +9,7 @@ import { rotasSitemap } from "./routes/sitemap";
 import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
 import { rotaBuscaIA } from "./modulos/busca-ia/rota";
+import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
@@ -70,6 +71,14 @@ export default {
     // Rota de busca por IA — domínio raiz apenas (Lote 12.3)
     if (url.pathname === "/api/busca-ia") {
       return rotaBuscaIA(request, url, env);
+    }
+
+    // Rotas de busca salva — salvar e cancelar (Lote 12.6)
+    if (
+      url.pathname === "/api/busca-salva/salvar" ||
+      url.pathname.match(/^\/api\/busca-salva\/cancelar\/[a-z0-9]{32}$/)
+    ) {
+      return rotaBuscaSalva(request, url, env);
     }
 
     // Roteador de autenticação — independente do hostname
