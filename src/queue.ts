@@ -1,10 +1,14 @@
-// Consumer da Cloudflare Queue (Lote 6)
+// Consumer da Cloudflare Queue (Lote 6 + Lote 11)
 // Uma mensagem por arquivo (seção 4.4), nunca uma por corretor inteiro
 
 import { Env } from "./index";
 import { processarGerarJsonCorretor } from "./jobs/gerar-json-corretor";
 import { processarGerarJsonCidade } from "./jobs/gerar-json-cidade";
 import { processarRevalidacaoCruzada } from "./jobs/revalidacao-cruzada";
+import {
+  processarGerarSitemapPortal,
+  processarGerarSitemapCorretor,
+} from "./jobs/gerar-sitemap";
 
 type MensagemFila = {
   tipo: string;
@@ -31,6 +35,12 @@ export async function processarFilaAlteracoes(
         message.ack();
       } else if (msg.tipo === "revalidacao-cruzada") {
         await processarRevalidacaoCruzada(msg as any, env);
+        message.ack();
+      } else if (msg.tipo === "gerar-sitemap-portal") {
+        await processarGerarSitemapPortal(msg as any, env);
+        message.ack();
+      } else if (msg.tipo === "gerar-sitemap-corretor") {
+        await processarGerarSitemapCorretor(msg as any, env);
         message.ack();
       } else {
         console.warn(`Tipo de mensagem desconhecido: ${msg.tipo}`);

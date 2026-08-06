@@ -1,10 +1,11 @@
 import { redirecionarSemWww } from "./middleware/www-redirect";
-import { ehBot } from "./middleware/bot-detect";
+import { ehBot, renderizarParaBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
 import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
+import { rotasSitemap } from "./routes/sitemap";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
@@ -35,11 +36,18 @@ export default {
       return redirecionamento;
     }
 
-    // Middleware 2: Detecção de bots (registra para uso futuro no Lote 11)
+    // Middleware 2: Detecção de bots
     const ehRobo = ehBot(request);
-    if (ehRobo) {
-      // Lote 11 (SEO): aqui será feito o dynamic rendering (HTML pré-renderizado)
-      // Por enquanto, segue o fluxo normal
+
+    // Rota de sitemap.xml e robots.txt (Lote 11)
+    if (
+      url.pathname === "/robots.txt" ||
+      url.pathname === "/sitemap.xml" ||
+      url.pathname === "/sitemap-index.xml" ||
+      url.pathname === "/sitemap-cidades.xml" ||
+      url.pathname.match(/^\/sitemap-anuncios-\d+\.xml$/)
+    ) {
+      return rotasSitemap(request, env);
     }
 
     // Roteador de autenticação — independente do hostname

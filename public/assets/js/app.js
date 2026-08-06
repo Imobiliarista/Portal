@@ -303,6 +303,11 @@ function showDetail(listingId) {
   const listing = appState.allListings.find((l) => l.id === listingId);
   if (!listing) return;
 
+  // Lote 11: Verificar se anúncio está marcado como vendido/removido
+  if (listing.vendido_removido) {
+    return showUnavailableProperty(listing);
+  }
+
   document.getElementById('home-view').classList.add('hidden');
   document.getElementById('listing-view').classList.add('hidden');
   document.getElementById('detail-view').classList.remove('hidden');
@@ -362,6 +367,58 @@ function showDetail(listingId) {
   document.getElementById('similar-listings').innerHTML = similar.map((s) =>
     `<div class="cursor-pointer" onclick="showDetail(${s.id})">${createListingCard(s)}</div>`
   ).join('');
+
+  window.history.pushState({}, '', `/detail/${listing.id}`);
+}
+
+// Lote 11: Mostrar página de imóvel não disponível (vendido/removido)
+function showUnavailableProperty(listing) {
+  document.getElementById('home-view').classList.add('hidden');
+  document.getElementById('listing-view').classList.add('hidden');
+  document.getElementById('detail-view').classList.remove('hidden');
+
+  // Limpar detalhe anterior e mostrar mensagem de indisponibilidade
+  const detailView = document.getElementById('detail-view');
+
+  // Encontrar anúncios semelhantes (mesma cidade/categoria, excluindo vendidos/removidos)
+  const similar = appState.allListings
+    .filter(
+      (l) =>
+        l.id !== listing.id &&
+        l.categoria === listing.categoria &&
+        l.tipo_negocio === listing.tipo_negocio &&
+        !l.vendido_removido // Apenas anúncios ativos
+    )
+    .slice(0, 3);
+
+  const similarHTML = similar.length > 0
+    ? `<div id="similar-listings" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        ${similar.map((s) => `<div class="cursor-pointer" onclick="showDetail(${s.id})">${createListingCard(s)}</div>`).join('')}
+       </div>`
+    : '<p class="text-gray-600 text-center py-8">Nenhum anúncio semelhante disponível no momento.</p>';
+
+  detailView.innerHTML = `
+    <div class="max-w-6xl mx-auto px-4 py-8">
+      <button id="back-btn" class="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition">
+        ← Voltar
+      </button>
+
+      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 mb-8">
+        <h1 class="text-3xl font-bold text-yellow-800 mb-2">Este imóvel não está mais disponível</h1>
+        <p class="text-yellow-700">
+          O anúncio "<strong>${listing.titulo}</strong>" foi removido ou já foi vendido.
+        </p>
+      </div>
+
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Imóveis semelhantes que podem interessar</h2>
+        ${similarHTML}
+      </div>
+    </div>
+  `;
+
+  // Re-adicionar event listener do botão voltar
+  document.getElementById('back-btn').addEventListener('click', showBackFromDetail);
 
   window.history.pushState({}, '', `/detail/${listing.id}`);
 }
