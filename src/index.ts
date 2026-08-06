@@ -6,6 +6,7 @@ import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
+import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
@@ -48,6 +49,11 @@ export default {
       url.pathname.match(/^\/sitemap-anuncios-\d+\.xml$/)
     ) {
       return rotasSitemap(request, env);
+    }
+
+    // Rota de feeds externos — Grupo OLX (Lote 12.1)
+    if (url.pathname.match(/^\/feeds\/grupo-olx\/[a-z0-9-]+\.xml$/i)) {
+      return rotaFeedGrupoOLX(request, url, env);
     }
 
     // Roteador de autenticação — independente do hostname
