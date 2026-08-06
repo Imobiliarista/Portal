@@ -3,6 +3,7 @@
 
 import { Env } from "../index";
 import { escreverJSON, estimarTamanhoComprimido } from "../lib/r2";
+import { estaModuloAtivo } from "../db/queries-modulos";
 
 interface MensagemGerarJsonCidade {
   tipo: "gerar-json-cidade";
@@ -21,6 +22,7 @@ interface AnuncioCidadeItem {
   bairro?: string;
   slug: string;
   criado_em: string;
+  video_youtube_id?: string;
 }
 
 interface IndiceCidade {
@@ -41,11 +43,14 @@ export async function processarGerarJsonCidade(
   const { cidade_id, cidade_slug } = mensagem;
 
   try {
+    // Verifica se o módulo de vídeo YouTube está ativo
+    const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
+
     const anuncios = await env.DB
       .prepare(
         `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel,
                 a.quartos, a.banheiros, a.area_util, a.bairro,
-                a.fotos_json, a.slug, a.criado_em
+                a.fotos_json, a.slug, a.criado_em${moduloVideoAtivo ? ", a.video_youtube_id" : ""}
          FROM anuncios a
          WHERE a.cidade_id = ? AND a.postar_na_rede = 1 AND a.vendido_removido = 0
          ORDER BY a.criado_em DESC`,
@@ -65,7 +70,7 @@ export async function processarGerarJsonCidade(
       const fotos: string[] = a.fotos_json ? JSON.parse(a.fotos_json) : [];
       const preco = a.preco_venda || a.preco_aluguel;
 
-      return {
+      const item: AnuncioCidadeItem = {
         id: a.id,
         titulo: a.titulo,
         preco,
@@ -77,6 +82,12 @@ export async function processarGerarJsonCidade(
         slug: a.slug,
         criado_em: a.criado_em,
       };
+
+      if (moduloVideoAtivo && a.video_youtube_id) {
+        item.video_youtube_id = a.video_youtube_id;
+      }
+
+      return item;
     });
 
     const tamanhoEstimado = await estimarTamanhoComprimido(items);
