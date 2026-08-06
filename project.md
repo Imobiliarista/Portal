@@ -693,7 +693,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 9 | Painel do superadmin | `routes/painel-superadmin.ts` (aprovações, cidades, módulos on/off) | 🟢 Concluído |
 | 10 | PWA | `manifest.json`, `sw.js`, `cache-buster.js` | 🟢 Concluído |
 | 11 | SEO | `routes/sitemap.ts`, `jobs/gerar-sitemap.ts`, `jobs/gerar-html-snapshot.ts`, tratamento HTTP 410 | 🟢 Concluído |
-| 12 | Módulos opcionais | Um de cada vez, isolados em `src/modulos/`: **Lote 12.1: feed-grupo-olx** ✓ (xml VRSync, vrsync-mapper, gerador, rota, integração queue) | 🟡 Em progresso (1/9) |
+| 12 | Módulos opcionais | Um de cada vez, isolados em `src/modulos/`: **Lote 12.1: feed-grupo-olx** ✓ (xml VRSync, vrsync-mapper, gerador, rota, integração queue) · **Lote 12.2: feed-portais-independentes** ✓ (gerador extensível, rota, integração queue, tabela portais_independentes, queries superadmin) | 🟡 Em progresso (2/9) |
 | 13 | Backup/observabilidade | `scheduled.ts` (export D1 mensal) + configurar Rate Limiting Rule no dashboard (não é código) | 🔲 Não iniciado |
 
 ---

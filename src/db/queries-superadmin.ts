@@ -3,6 +3,17 @@
 
 import { PreCadastro, Cidade, ModuloAtivo } from "../types/modelos";
 
+export interface PortalIndependente {
+  id: number;
+  nome: string;
+  slug: string;
+  formato: string;
+  ativo: boolean;
+  descricao?: string;
+  criado_em: string;
+  atualizado_em: string;
+}
+
 // ========== Pré-Cadastros ==========
 
 // Lista pré-cadastros pendentes de aprovação
@@ -279,5 +290,133 @@ export async function obterVisaoGeralRede(db: D1Database): Promise<VisaoGeralRed
   } catch (erro) {
     console.error("Erro ao obter visão geral da rede:", erro);
     return null;
+  }
+}
+
+// ========== Portais Independentes (Lote 12.2) ==========
+
+// Lista portais independentes
+export async function listarPortaisIndependentes(db: D1Database): Promise<PortalIndependente[]> {
+  try {
+    const resultados = await db
+      .prepare("SELECT * FROM portais_independentes ORDER BY nome ASC")
+      .all();
+
+    return (resultados.results || []) as PortalIndependente[];
+  } catch (erro) {
+    console.error("Erro ao listar portais independentes:", erro);
+    return [];
+  }
+}
+
+// Busca um portal independente
+export async function buscarPortalIndependente(db: D1Database, id: number): Promise<PortalIndependente | null> {
+  try {
+    const resultado = await db
+      .prepare("SELECT * FROM portais_independentes WHERE id = ? LIMIT 1")
+      .bind(id)
+      .first();
+
+    return resultado as PortalIndependente | null;
+  } catch (erro) {
+    console.error("Erro ao buscar portal independente:", erro);
+    return null;
+  }
+}
+
+// Ativa/desativa um portal independente
+export async function alternarPortalIndependente(db: D1Database, portal_id: number, ativo: boolean): Promise<boolean> {
+  try {
+    const agora = new Date().toISOString();
+
+    await db
+      .prepare("UPDATE portais_independentes SET ativo = ?, atualizado_em = ? WHERE id = ?")
+      .bind(ativo ? 1 : 0, agora, portal_id)
+      .run();
+
+    return true;
+  } catch (erro) {
+    console.error("Erro ao ativar/desativar portal independente:", erro);
+    return false;
+  }
+}
+
+// Cria um novo portal independente
+export async function criarPortalIndependente(
+  db: D1Database,
+  dados: {
+    nome: string;
+    slug: string;
+    formato: string;
+    descricao?: string;
+  }
+): Promise<boolean> {
+  try {
+    const agora = new Date().toISOString();
+
+    await db
+      .prepare(
+        `INSERT INTO portais_independentes (nome, slug, formato, descricao, ativo, criado_em, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(dados.nome, dados.slug, dados.formato, dados.descricao || "", 0, agora, agora)
+      .run();
+
+    return true;
+  } catch (erro) {
+    console.error("Erro ao criar portal independente:", erro);
+    return false;
+  }
+}
+
+// Atualiza dados de um portal independente
+export async function atualizarPortalIndependente(
+  db: D1Database,
+  id: number,
+  dados: {
+    nome?: string;
+    slug?: string;
+    formato?: string;
+    descricao?: string;
+    ativo?: boolean;
+  }
+): Promise<boolean> {
+  try {
+    const agora = new Date().toISOString();
+    const atualizacoes: string[] = ["atualizado_em = ?"];
+    const valores: any[] = [agora];
+
+    if (dados.nome !== undefined) {
+      atualizacoes.push("nome = ?");
+      valores.push(dados.nome);
+    }
+    if (dados.slug !== undefined) {
+      atualizacoes.push("slug = ?");
+      valores.push(dados.slug);
+    }
+    if (dados.formato !== undefined) {
+      atualizacoes.push("formato = ?");
+      valores.push(dados.formato);
+    }
+    if (dados.descricao !== undefined) {
+      atualizacoes.push("descricao = ?");
+      valores.push(dados.descricao);
+    }
+    if (dados.ativo !== undefined) {
+      atualizacoes.push("ativo = ?");
+      valores.push(dados.ativo ? 1 : 0);
+    }
+
+    valores.push(id);
+
+    await db
+      .prepare(`UPDATE portais_independentes SET ${atualizacoes.join(", ")} WHERE id = ?`)
+      .bind(...valores)
+      .run();
+
+    return true;
+  } catch (erro) {
+    console.error("Erro ao atualizar portal independente:", erro);
+    return false;
   }
 }

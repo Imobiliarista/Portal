@@ -7,6 +7,7 @@ import { rotasPortal } from "./routes/portal";
 import { rotasMinиsite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
 import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
+import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
@@ -54,6 +55,14 @@ export default {
     // Rota de feeds externos — Grupo OLX (Lote 12.1)
     if (url.pathname.match(/^\/feeds\/grupo-olx\/[a-z0-9-]+\.xml$/i)) {
       return rotaFeedGrupoOLX(request, url, env);
+    }
+
+    // Rota de feeds externos — Portais Independentes (Lote 12.2)
+    if (url.pathname.match(/^\/feeds\/[a-z0-9-]+\/[a-z0-9-]+\.(xml|csv|json)$/i)) {
+      // Evita conflito com grupo-olx verificando se não é grupo-olx
+      if (!url.pathname.includes("grupo-olx")) {
+        return rotaFeedPortalIndependente(request, url, env);
+      }
     }
 
     // Roteador de autenticação — independente do hostname

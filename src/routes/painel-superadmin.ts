@@ -3,7 +3,23 @@
 // POST/GET /painel-admin/*
 
 import { Env } from "../index";
-import { listarPreCadastrosPendentes, buscarPreCadastro, aprovarPreCadastro, reprovarPreCadastro, listarCidades, buscarCidade, atualizarCidade, listarModulos, alternarModulo, obterVisaoGeralRede } from "../db/queries-superadmin";
+import {
+  listarPreCadastrosPendentes,
+  buscarPreCadastro,
+  aprovarPreCadastro,
+  reprovarPreCadastro,
+  listarCidades,
+  buscarCidade,
+  atualizarCidade,
+  listarModulos,
+  alternarModulo,
+  obterVisaoGeralRede,
+  listarPortaisIndependentes,
+  buscarPortalIndependente,
+  alternarPortalIndependente,
+  criarPortalIndependente,
+  atualizarPortalIndependente,
+} from "../db/queries-superadmin";
 
 // ========== Auxiliares ==========
 
@@ -217,6 +233,115 @@ async function rotaAlternarModulo(request: Request, env: Env, id: number): Promi
   }
 }
 
+// ========== Rotas: Portais Independentes (Lote 12.2) ==========
+
+// GET /painel-admin/portais-independentes — lista
+async function rotaListarPortaisIndependentes(request: Request, env: Env): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  try {
+    const portais = await listarPortaisIndependentes(env.DB);
+    return respostaSucesso({ dados: portais });
+  } catch {
+    return respostaErro("Erro ao listar portais independentes", 500);
+  }
+}
+
+// GET /painel-admin/portal-independente/:id — detalhes
+async function rotaBuscarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  try {
+    const portal = await buscarPortalIndependente(env.DB, id);
+    if (!portal) return respostaErro("Portal não encontrado", 404);
+
+    return respostaSucesso({ dados: portal });
+  } catch {
+    return respostaErro("Erro ao buscar portal independente", 500);
+  }
+}
+
+// POST /painel-admin/portais-independentes — cria
+async function rotaCriarPortalIndependente(request: Request, env: Env): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "POST") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as any;
+
+    if (!body.nome?.trim() || !body.slug?.trim() || !body.formato?.trim()) {
+      return respostaErro("nome, slug e formato são obrigatórios");
+    }
+
+    const sucesso = await criarPortalIndependente(env.DB, {
+      nome: body.nome.trim(),
+      slug: body.slug.trim(),
+      formato: body.formato.trim(),
+      descricao: body.descricao?.trim(),
+    });
+
+    if (!sucesso) return respostaErro("Erro ao criar portal", 500);
+
+    return respostaSucesso({ mensagem: "Portal criado com sucesso" });
+  } catch {
+    return respostaErro("Erro ao processar criação", 500);
+  }
+}
+
+// PATCH /painel-admin/portal-independente/:id — ativa/desativa
+async function rotaAlternarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "PATCH") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as any;
+
+    if (body.ativo === undefined) {
+      return respostaErro("ativo é obrigatório");
+    }
+
+    const sucesso = await alternarPortalIndependente(env.DB, id, body.ativo);
+    if (!sucesso) return respostaErro("Erro ao alterar portal", 500);
+
+    const portal = await buscarPortalIndependente(env.DB, id);
+    return respostaSucesso(portal);
+  } catch {
+    return respostaErro("Erro ao processar alternância", 500);
+  }
+}
+
+// PUT /painel-admin/portal-independente/:id — atualiza
+async function rotaAtualizarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as any;
+
+    const sucesso = await atualizarPortalIndependente(env.DB, id, {
+      nome: body.nome?.trim(),
+      slug: body.slug?.trim(),
+      formato: body.formato?.trim(),
+      descricao: body.descricao?.trim(),
+    });
+
+    if (!sucesso) return respostaErro("Erro ao atualizar portal", 500);
+
+    const portal = await buscarPortalIndependente(env.DB, id);
+    return respostaSucesso(portal);
+  } catch {
+    return respostaErro("Erro ao processar atualização", 500);
+  }
+}
+
 // ========== Rotas: Visão Geral ==========
 
 // GET /painel-admin/visao-geral — estatísticas da rede
@@ -289,6 +414,34 @@ export async function rotasPainelSuperadmin(request: Request, env: Env): Promise
   const matchModulo = pathname.match(/^\/modulo\/(\d+)$/);
   if (matchModulo && request.method === "PATCH") {
     return rotaAlternarModulo(request, env, parseInt(matchModulo[1]));
+  }
+
+  // GET /painel-admin/portais-independentes
+  if (pathname === "/portais-independentes" && request.method === "GET") {
+    return rotaListarPortaisIndependentes(request, env);
+  }
+
+  // POST /painel-admin/portais-independentes
+  if (pathname === "/portais-independentes" && request.method === "POST") {
+    return rotaCriarPortalIndependente(request, env);
+  }
+
+  // GET /painel-admin/portal-independente/:id
+  const matchPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
+  if (matchPortal && request.method === "GET") {
+    return rotaBuscarPortalIndependente(request, env, parseInt(matchPortal[1]));
+  }
+
+  // PATCH /painel-admin/portal-independente/:id
+  const matchAlternarPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
+  if (matchAlternarPortal && request.method === "PATCH") {
+    return rotaAlternarPortalIndependente(request, env, parseInt(matchAlternarPortal[1]));
+  }
+
+  // PUT /painel-admin/portal-independente/:id
+  const matchAtualizarPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
+  if (matchAtualizarPortal && request.method === "PUT") {
+    return rotaAtualizarPortalIndependente(request, env, parseInt(matchAtualizarPortal[1]));
   }
 
   // GET /painel-admin/visao-geral
