@@ -18,9 +18,9 @@ let appState = {
 };
 
 // ============================================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO (movida para o final após todos os módulos carregarem)
 // ============================================================
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializeApp() {
   updateFavoritesCount();
   setupEventListeners();
   await detectLocation();
@@ -35,7 +35,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const brokerSlug = path[1];
     await loadBroker(city, brokerSlug);
   }
-});
+}
+
+document.addEventListener('DOMContentLoaded', initializeApp);
 
 window.addEventListener('popstate', () => {
   location.reload();
