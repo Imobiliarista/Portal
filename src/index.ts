@@ -8,12 +8,14 @@ import { rotasMinиsite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
 import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
+import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
   DB: D1Database;
   JSON_CACHE: R2Bucket;
   FILA_ALTERACOES: Queue;
+  AI: any; // Cloudflare Workers AI binding
   TURNSTILE_SECRET_KEY?: string;
 }
 
@@ -63,6 +65,11 @@ export default {
       if (!url.pathname.includes("grupo-olx")) {
         return rotaFeedPortalIndependente(request, url, env);
       }
+    }
+
+    // Rota de busca por IA — domínio raiz apenas (Lote 12.3)
+    if (url.pathname === "/api/busca-ia") {
+      return rotaBuscaIA(request, url, env);
     }
 
     // Roteador de autenticação — independente do hostname
