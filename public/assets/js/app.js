@@ -1,5 +1,6 @@
 // App.js — Orquestrador fino da SPA (estado, inicialização, event listeners)
-// Carregue este arquivo PRIMEIRO, depois: app-roteamento.js, app-dados.js, app-ui.js, filtros.js
+// Ordem de carregamento: app.js → app-dados.js → app-ui.js → app-roteamento.js → filtros.js
+// (app-ui deve carregar antes de app-roteamento, pois app-roteamento chama renderListings())
 
 const CONFIG = {
   r2Domain: 'https://imobiliarista-jsons.cdn.imobiliarista.net',
