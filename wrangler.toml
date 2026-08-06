@@ -52,3 +52,4 @@ crons = ["0 0 1 * *"]
 # O backend Worker (src/index.ts) é deployado separadamente via wrangler deploy
 [pages]
 build_output_dir = "public"
+build_command = ""
