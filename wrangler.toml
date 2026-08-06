@@ -47,9 +47,3 @@ zone_name = "imobiliarista.net"
 # Executa todo dia 1º de cada mês às 00:00 UTC
 [triggers.crons]
 crons = ["0 0 1 * *"]
-
-# Cloudflare Pages — configuração de deploy dos assets estáticos (public/)
-# O backend Worker (src/index.ts) é deployado separadamente via wrangler deploy
-[pages]
-build_output_dir = "public"
-build_command = ""
