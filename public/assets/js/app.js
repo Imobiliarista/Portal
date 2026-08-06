@@ -361,6 +361,16 @@ function showDetail(listingId) {
     document.getElementById('detail-video-player').innerHTML = '';
   }
 
+  // Tour Virtual 360° (Lote 12.5: módulo tour-360)
+  if (listing.tour_360_url) {
+    renderTour360Player(listing.tour_360_url, 'detail-tour-360-player');
+  } else {
+    const tour360Container = document.getElementById('detail-tour-360-player');
+    if (tour360Container) {
+      tour360Container.innerHTML = '';
+    }
+  }
+
   // Favorito
   const isFav = appState.favorites.includes(listing.id);
   document.getElementById('favorite-btn').textContent = isFav ? '❤️ Remover dos Favoritos' : '❤️ Adicionar aos Favoritos';

@@ -7,6 +7,7 @@ import { Anuncio, Plano } from "../types/modelos";
 import { gerarSlug } from "../lib/slug";
 import { sanitizarBairroRegiao, sanitizarParaXML } from "../lib/sanitize";
 import { getYouTubeId } from "../modulos/video-youtube/logica";
+import { sanitizarTour360Url } from "../modulos/tour-360/rota";
 import {
   criarAnuncio,
   buscarAnuncioPorId,
@@ -167,6 +168,9 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
     // Extrai YouTube ID se fornecido (módulo video-youtube, Lote 12.4)
     const videoYouTubeId = dados.video_youtube_url ? getYouTubeId(dados.video_youtube_url) : undefined;
 
+    // Sanitiza URL do tour 360° se fornecido (módulo tour-360, Lote 12.5)
+    const tour360Url = dados.tour_360_url ? sanitizarTour360Url(dados.tour_360_url) : undefined;
+
     // Gera slug temporário (será substituído após inserção com o ID real)
     let slug = gerarSlug(titulo, 0);
 
@@ -193,7 +197,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       lavanderias: dados.lavanderias,
       fotos_json: dados.fotos_json,
       video_youtube_id: videoYouTubeId,
-      tour_360_url: dados.tour_360_url,
+      tour_360_url: tour360Url || undefined,
       slug: slug, // Slug provisório
     });
 
@@ -380,10 +384,13 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     if (dados.cozinhas !== undefined) atualizacoes.cozinhas = dados.cozinhas;
     if (dados.lavanderias !== undefined) atualizacoes.lavanderias = dados.lavanderias;
     if (dados.fotos_json !== undefined) atualizacoes.fotos_json = dados.fotos_json;
-    if (dados.tour_360_url !== undefined) atualizacoes.tour_360_url = dados.tour_360_url;
+    if (dados.tour_360_url !== undefined) {
+      const tour360Sanitizado = dados.tour_360_url ? sanitizarTour360Url(dados.tour_360_url) : "";
+      atualizacoes.tour_360_url = tour360Sanitizado || "";
+    }
 
     if (dados.video_youtube_url) {
-      atualizacoes.video_youtube_id = extrairYouTubeId(dados.video_youtube_url);
+      atualizacoes.video_youtube_id = getYouTubeId(dados.video_youtube_url) || undefined;
     }
 
     // Toggle "postar na rede" dispara revalidação cruzada

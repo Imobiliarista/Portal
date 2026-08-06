@@ -23,6 +23,7 @@ interface AnuncioCidadeItem {
   slug: string;
   criado_em: string;
   video_youtube_id?: string;
+  tour_360_url?: string;
 }
 
 interface IndiceCidade {
@@ -43,14 +44,20 @@ export async function processarGerarJsonCidade(
   const { cidade_id, cidade_slug } = mensagem;
 
   try {
-    // Verifica se o módulo de vídeo YouTube está ativo
+    // Verifica se os módulos estão ativos
     const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
+    const moduloTour360Ativo = await estaModuloAtivo(env.DB, "tour-360");
+
+    let sqlSelect = `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel,
+                a.quartos, a.banheiros, a.area_util, a.bairro,
+                a.fotos_json, a.slug, a.criado_em`;
+
+    if (moduloVideoAtivo) sqlSelect += ", a.video_youtube_id";
+    if (moduloTour360Ativo) sqlSelect += ", a.tour_360_url";
 
     const anuncios = await env.DB
       .prepare(
-        `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel,
-                a.quartos, a.banheiros, a.area_util, a.bairro,
-                a.fotos_json, a.slug, a.criado_em${moduloVideoAtivo ? ", a.video_youtube_id" : ""}
+        `${sqlSelect}
          FROM anuncios a
          WHERE a.cidade_id = ? AND a.postar_na_rede = 1 AND a.vendido_removido = 0
          ORDER BY a.criado_em DESC`,
@@ -85,6 +92,10 @@ export async function processarGerarJsonCidade(
 
       if (moduloVideoAtivo && a.video_youtube_id) {
         item.video_youtube_id = a.video_youtube_id;
+      }
+
+      if (moduloTour360Ativo && a.tour_360_url) {
+        item.tour_360_url = a.tour_360_url;
       }
 
       return item;
