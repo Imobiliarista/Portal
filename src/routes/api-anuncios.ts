@@ -31,11 +31,23 @@ async function obterCorretorAutenticado(request: Request, env: Env): Promise<num
       return null;
     }
 
-    // TODO: validar sessionId contra tabela de sessões em D1
-    // Por enquanto, retornar erro (sessão não persistida)
-    console.warn("Validação de sessão ainda não implementada");
-    return null;
-  } catch {
+    const sessionId = sessionIdMatch[1];
+
+    // Valida sessionId contra tabela de sessões em D1
+    // Conforme seção 6.2 do project.md: sessão via cookie HttpOnly/Secure/SameSite
+    const sessao = await env.DB.prepare(
+      `SELECT corretor_id FROM sessoes
+       WHERE session_id = ? AND expira_em > datetime('now')
+       LIMIT 1`
+    ).bind(sessionId).first() as { corretor_id: number } | null;
+
+    if (!sessao) {
+      return null;
+    }
+
+    return sessao.corretor_id;
+  } catch (erro) {
+    console.error("Erro ao validar sessão:", erro);
     return null;
   }
 }
@@ -90,9 +102,13 @@ async function validarCamposObrigatorios(
 // Cria novo anúncio
 async function handleCriarAnuncio(request: Request, env: Env): Promise<Response> {
   try {
-    // TODO: validar autenticação via sessão
-    // Por enquanto, aceitar sem validação para testar
-    const corretorId = 1; // Placeholder
+    const corretorId = await obterCorretorAutenticado(request, env);
+    if (!corretorId) {
+      return new Response(JSON.stringify({ erro: "Não autenticado" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     const dados = await request.json() as any;
 
@@ -257,8 +273,13 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
 // Lista anúncios do corretor logado
 async function handleListarAnuncios(request: Request, env: Env): Promise<Response> {
   try {
-    // TODO: validar autenticação
-    const corretorId = 1; // Placeholder
+    const corretorId = await obterCorretorAutenticado(request, env);
+    if (!corretorId) {
+      return new Response(JSON.stringify({ erro: "Não autenticado" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     const url = new URL(request.url);
     const pagina = Math.max(1, parseInt(url.searchParams.get("pagina") || "1"));
@@ -292,8 +313,13 @@ async function handleListarAnuncios(request: Request, env: Env): Promise<Respons
 // Obtém detalhe de um anúncio
 async function handleObterAnuncio(request: Request, env: Env): Promise<Response> {
   try {
-    // TODO: validar autenticação
-    const corretorId = 1; // Placeholder
+    const corretorId = await obterCorretorAutenticado(request, env);
+    if (!corretorId) {
+      return new Response(JSON.stringify({ erro: "Não autenticado" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     const url = new URL(request.url);
     const id = parseInt(url.pathname.split("/").pop() || "0");
@@ -342,8 +368,13 @@ async function handleObterAnuncio(request: Request, env: Env): Promise<Response>
 // Edita anúncio
 async function handleEditarAnuncio(request: Request, env: Env): Promise<Response> {
   try {
-    // TODO: validar autenticação
-    const corretorId = 1; // Placeholder
+    const corretorId = await obterCorretorAutenticado(request, env);
+    if (!corretorId) {
+      return new Response(JSON.stringify({ erro: "Não autenticado" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     const url = new URL(request.url);
     const id = parseInt(url.pathname.split("/").pop() || "0");
@@ -486,8 +517,13 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
 // Marca como vendido/removido (não deleta fisicamente)
 async function handleDeletarAnuncio(request: Request, env: Env): Promise<Response> {
   try {
-    // TODO: validar autenticação
-    const corretorId = 1; // Placeholder
+    const corretorId = await obterCorretorAutenticado(request, env);
+    if (!corretorId) {
+      return new Response(JSON.stringify({ erro: "Não autenticado" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     const url = new URL(request.url);
     const id = parseInt(url.pathname.split("/").pop() || "0");

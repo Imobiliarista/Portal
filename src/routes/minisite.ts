@@ -25,7 +25,7 @@ function extrairSlugDoSubdominio(hostname: string): string | null {
   return slug.toLowerCase();
 }
 
-export async function rotasMinиsite(
+export async function rotasMinisite(
   request: Request,
   env: Env
 ): Promise<Response> {
