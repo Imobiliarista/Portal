@@ -12,6 +12,7 @@ import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { processarFilaAlteracoes } from "./queue";
+import { handleScheduled } from "./scheduled";
 
 export interface Env {
   DB: D1Database;
@@ -118,5 +119,10 @@ export default {
   // Handler da Queue (Lote 6, seção 4.4)
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     return processarFilaAlteracoes(batch, env);
+  },
+
+  // Handler do Cron Trigger — export mensal do D1 (Lote 13, seção 4.13)
+  async scheduled(event: any, env: Env): Promise<void> {
+    return handleScheduled(event, env);
   },
 };

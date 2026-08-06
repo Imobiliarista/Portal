@@ -678,6 +678,8 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 
 ## 10. Roadmap de Implementação (Lotes)
 
+> **✅ ROADMAP VERSÃO 1.0 COMPLETO** — todos os 13 lotes implementados e integrados.
+
 > Ordem de dependência — cada lote só faz sentido depois que o anterior existir. Marcar o status conforme for avançando, para qualquer sessão (deste chat ou do Claude Code) saber exatamente onde retomar.
 
 | # | Lote | Conteúdo | Status |
@@ -694,7 +696,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 10 | PWA | `manifest.json`, `sw.js`, `cache-buster.js` | 🟢 Concluído |
 | 11 | SEO | `routes/sitemap.ts`, `jobs/gerar-sitemap.ts`, `jobs/gerar-html-snapshot.ts`, tratamento HTTP 410 | 🟢 Concluído |
 | 12 | Módulos opcionais | Um de cada vez, isolados em `src/modulos/`: **Lote 12.1: feed-grupo-olx** ✓ (xml VRSync, vrsync-mapper, gerador, rota, integração queue) · **Lote 12.2: feed-portais-independentes** ✓ (gerador extensível, rota, integração queue, tabela portais_independentes, queries superadmin) · **Lote 12.3: busca-ia** ✓ (logica.ts, rota.ts, binding AI em wrangler.toml, rota em index.ts, docs/configuracao-cloudflare.md, public/assets/js/busca-ia.js) · **Lote 12.4: video-youtube** ✓ (logica.ts com getYouTubeId, video-player.js, integração em app.js, suporte em jobs gerar-json, respeitando flag modulos_ativos) · **Lote 12.5: tour-360** ✓ (rota.ts com validação de URL, tour-360-player.js, integração em app.js, suporte em jobs gerar-json, respeitando flag modulos_ativos) · **Lote 12.6: busca-salva-email** ✓ (migration 0008, rota.ts com endpoints salvar/cancelar, logica.ts com correspondência anúncio×busca, queries-buscas-salvas.ts, integração em index.ts, botão UI em public/assets/js/busca-salva-email.js, respeitando flag modulos_ativos) · **Lote 12.7: agendamento-visita** ✓ (migration 0009, rota.ts com endpoints solicitar/listar/confirmar/recusar, logica.ts com envio de e-mails Resend, queries-agendamentos.ts, integração em index.ts e painel-corretor.ts, respeitando flag modulos_ativos) · **Lote 12.8: comparacao-anuncios** ✓ (rota.ts com validações, public/assets/js/comparacao-anuncios.js 100% client-side, estado em memória, tabela comparativa lado a lado, integração em index.html e app.js, respeitando flag modulos_ativos) · **Lote 12.9: calculadora-financiamento** ✓ (rota.ts com cálculo SAC, calculadora-financiamento.js 100% client-side, widget em detail-view, integração em app.js, respeitando flag modulos_ativos) | 🟢 Concluído |
-| 13 | Backup/observabilidade | `scheduled.ts` (export D1 mensal) + configurar Rate Limiting Rule no dashboard (não é código) | 🔲 Não iniciado |
+| 13 | Backup/observabilidade | `scheduled.ts` (Cron Trigger mensal export D1→R2) + `wrangler.toml` (cron schedule) + `docs/observabilidade.md` (guia manual para Time Travel, Rate Limiting, métricas, alertas) | 🟢 Concluído |
 
 ---
 

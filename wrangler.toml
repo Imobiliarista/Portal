@@ -42,3 +42,8 @@ zone_name = "imobiliarista.net"
 [[routes]]
 pattern = "*.imobiliarista.net/*"
 zone_name = "imobiliarista.net"
+
+# Cron Trigger — export mensal do D1 para R2 (Lote 13)
+# Executa todo dia 1º de cada mês às 00:00 UTC
+[triggers.crons]
+crons = ["0 0 1 * *"]
