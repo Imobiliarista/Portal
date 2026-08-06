@@ -194,6 +194,18 @@ export interface ModuloAtivo {
   atualizado_em: string;
 }
 
+// ========== Portais Independentes (Lote 12.2) ==========
+export interface PortalIndependente {
+  id: number;
+  nome: string; // 'ImóvelWeb', 'Chaves na Mão', etc.
+  slug: string; // 'imovelweb', 'chaves-na-mao', etc.
+  formato: string; // 'vrsync-xml', 'csv', 'json'
+  ativo: boolean; // padrão: false (desligado)
+  descricao?: string;
+  criado_em: string;
+  atualizado_em: string;
+}
+
 // ========== Tipos auxiliares/DTOs ==========
 
 // Informações públicas do corretor (sem senha_hash)
