@@ -5,6 +5,7 @@ import { Env } from "../index";
 import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoPorCorretorId, buscarMinisiteDoCorretor } from "../db/queries-perfil";
 import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
 import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
+import { rotaAgendamentoVisita } from "../modulos/agendamento-visita/rota";
 
 // ========== Auxiliares ==========
 
@@ -259,6 +260,11 @@ export async function rotasPainelCorretor(request: Request, env: Env): Promise<R
 
   if (pathname === "/painel/cotas-portal" && request.method === "PUT") {
     return rotaPainelCotasPortalAtualizar(request, env);
+  }
+
+  // Rotas de agendamento de visita (Lote 12.7)
+  if (pathname.startsWith("/api/agendamento/")) {
+    return rotaAgendamentoVisita(request, url, env, corretor_id);
   }
 
   return respostaErro("Rota não encontrada", 404);

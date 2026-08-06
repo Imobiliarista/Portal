@@ -10,6 +10,7 @@ import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
 import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
+import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { processarFilaAlteracoes } from "./queue";
 
 export interface Env {
@@ -79,6 +80,11 @@ export default {
       url.pathname.match(/^\/api\/busca-salva\/cancelar\/[a-z0-9]{32}$/)
     ) {
       return rotaBuscaSalva(request, url, env);
+    }
+
+    // Rota pública de agendamento de visita — solicitar (Lote 12.7)
+    if (url.pathname === "/api/agendamento/solicitar" && request.method === "POST") {
+      return rotaAgendamentoVisita(request, url, env);
     }
 
     // Roteador de autenticação — independente do hostname

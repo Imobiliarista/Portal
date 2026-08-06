@@ -289,3 +289,25 @@ export interface DoislFaTotp {
   criado_em: string;
   atualizado_em: string;
 }
+
+// ========== Agendamento de Visita (Lote 12.7) ==========
+
+export interface AgendamentoVisita {
+  id: number;
+  anuncio_id: number;
+  corretor_id: number;
+  nome_visitante: string;
+  telefone_visitante: string;
+  email_visitante: string;
+  data_horario_sugerido: string; // ISO 8601 datetime
+  status: 'pendente' | 'confirmado' | 'recusado' | 'cancelado';
+  motivo_recusa?: string;
+  criado_em: string;
+  respondido_em?: string;
+}
+
+export interface AgendamentoVisitaComAnuncio extends AgendamentoVisita {
+  titulo_anuncio?: string;
+  tipo_imovel?: string;
+  endereco_anuncio?: string;
+}
