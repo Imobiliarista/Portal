@@ -1,6 +1,11 @@
 // Endpoints de CRUD (criar, obter, editar, deletar) de anúncios
 // POST/GET/PUT/DELETE /api/anuncios/*
 // Conforme seção 6 e 4.11 do project.md
+//
+// ⚠️ EXCEÇÃO À REGRA DE 500 LINHAS (v1.0, seção 7)
+// Este arquivo ultrapassa o alvo de ~500 linhas (549 linhas) porque é uma unidade coesa e única:
+// CRUD de uma única entidade (Anúncio). Fragmentar em create.ts/update.ts/delete.ts separados
+// geraria mais indireção que benefício. Mantém-se aqui por coesão funcional.
 
 import { Env } from "../index";
 import { Anuncio, Plano } from "../types/modelos";
