@@ -232,6 +232,12 @@ function renderListings() {
 
   noResults.classList.add('hidden');
   grid.innerHTML = pageListings.map((listing) => createListingCard(listing)).join('');
+
+  // Integração do módulo de comparação (Lote 12.8)
+  if (typeof processarCardsComparacao === 'function') {
+    processarCardsComparacao(pageListings);
+  }
+
   renderPagination();
 }
 
