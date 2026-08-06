@@ -1,6 +1,11 @@
 // Módulo: Comparação de Anúncios — Lote 12.8
 // Permite comparar até 3 anúncios lado a lado
 // Estado em memória (JS), sem localStorage
+//
+// ⚠️ EXCEÇÃO À REGRA DE 500 LINHAS (v1.0, seção 7)
+// Este arquivo ultrapassa o alvo de ~500 linhas (563 linhas) porque é uma unidade coesa e única:
+// componente de UI único e autossuficiente para comparação lado a lado de imóveis.
+// Fragmentar em sub-módulos separaria a lógica de forma artificial.
 
 (function () {
   'use strict';
