@@ -24,6 +24,7 @@ interface AnuncioCorretorItem {
   slug: string;
   criado_em: string;
   video_youtube_id?: string;
+  tour_360_url?: string;
 }
 
 export async function processarGerarJsonCorretor(
@@ -33,8 +34,9 @@ export async function processarGerarJsonCorretor(
   const { corretor_slug } = mensagem;
 
   try {
-    // Verifica se o módulo de vídeo YouTube está ativo
+    // Verifica se os módulos estão ativos
     const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
+    const moduloTour360Ativo = await estaModuloAtivo(env.DB, "tour-360");
 
     const resultado = await buscarCorrelorPorSlug(env.DB, corretor_slug);
     if (!resultado) {
@@ -66,6 +68,10 @@ export async function processarGerarJsonCorretor(
 
         if (moduloVideoAtivo && a.video_youtube_id) {
           item.video_youtube_id = a.video_youtube_id;
+        }
+
+        if (moduloTour360Ativo && a.tour_360_url) {
+          item.tour_360_url = a.tour_360_url;
         }
 
         return item;
