@@ -1,8 +1,9 @@
 // Roteamento do domínio raiz (imobiliarista.net)
 // Lote 4: reconhece padrões de URL, retorna placeholders
-// Consumo de dados reais do D1/R2 fica para os Lotes 6-7
+// Lote 11: dynamic rendering para bots em anúncios individuais
 
 import { Env } from "../index";
+import { ehBot, renderizarParaBot } from "../middleware/bot-detect";
 
 interface ParamsMapeados {
   tipo: "home" | "cidade" | "negocio-categoria-tipo" | "anuncio";
@@ -139,9 +140,21 @@ function respostaPlaceholder(params: ParamsMapeados): Response {
 
 export async function rotasPortal(
   request: Request,
-  env: Env
+  env: Env,
 ): Promise<Response> {
   const url = new URL(request.url);
   const parametros = extrairParametrosURL(url.pathname);
+
+  // Lote 11: Dynamic rendering para bots (seção 4.6)
+  if (ehBot(request) && parametros.tipo === "anuncio" && parametros.id) {
+    const anuncioId = parseInt(parametros.id, 10);
+    if (!isNaN(anuncioId)) {
+      const respostaBotRendering = await renderizarParaBot(anuncioId, env);
+      if (respostaBotRendering) {
+        return respostaBotRendering;
+      }
+    }
+  }
+
   return respostaPlaceholder(parametros);
 }
