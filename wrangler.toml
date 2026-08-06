@@ -16,6 +16,11 @@ database_id = "<id>" # substituir após `wrangler d1 create imobiliarista-db`
 binding = "JSON_CACHE"
 bucket_name = "imobiliarista-jsons"
 
+# AI (Cloudflare Workers AI) — assistente de busca em linguagem natural
+# Free tier: 10.000 Neurons/dia, sem cartão de crédito. Ver seção 4.12.
+[ai]
+binding = "AI"
+
 # Queue — fila de alterações em lote do painel. Uma mensagem por arquivo
 # a ser gerado (JSON cidade, JSON corretor, XML por portal externo),
 # nunca uma mensagem única por corretor. Ver seções 4.4 e 4.4.1.1.
