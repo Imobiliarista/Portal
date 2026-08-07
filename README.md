@@ -29,11 +29,15 @@ npm install
    npx wrangler login
    ```
 
-2. Crie os recursos remotos (D1, R2 e a Queue) caso ainda não existam:
+2. Os recursos remotos (D1 `imob-bd`, R2 `imob-dados` + `imob-midias` e a
+   Queue `imobiliarista-fila`) já existem na conta Cloudflare e estão
+   referenciados no `wrangler.toml`. Caso precise recriá-los do zero (ex.:
+   outra conta/ambiente):
 
    ```bash
-   npx wrangler d1 create imobiliarista-db
-   npx wrangler r2 bucket create imobiliarista-jsons
+   npx wrangler d1 create imob-bd
+   npx wrangler r2 bucket create imob-dados
+   npx wrangler r2 bucket create imob-midias
    npx wrangler queues create imobiliarista-fila
    ```
 
