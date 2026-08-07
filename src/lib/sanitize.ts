@@ -5,7 +5,7 @@
 // Remove emojis e caracteres especiais não suportados por parsers XML
 function removerEmojisEspeciais(texto: string): string {
   return texto
-    .replace(/[\p{Emoji}--\w]/gu, "") // Remove emojis
+    .replace(/\p{Extended_Pictographic}/gu, "") // Remove emojis
     .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, ""); // Remove caracteres de controle (inválidos em XML)
 }
 
@@ -37,5 +37,5 @@ export function sanitizarParaXML(valor: string): string {
 // Aplica: trim() + remoção de emojis
 export function sanitizarTexto(valor: string): string {
   if (!valor) return "";
-  return valor.trim().replace(/[\p{Emoji}]/gu, "");
+  return valor.trim().replace(/\p{Extended_Pictographic}/gu, "");
 }
