@@ -353,7 +353,7 @@ export async function processarGerarXMLGrupoOLX(
 
     // Salva no R2
     const caminho = `feeds/grupo-olx/${corretor_slug}.xml`;
-    await env.JSON_CACHE.put(caminho, xml, {
+    await env.DADOS_CACHE.put(caminho, xml, {
       httpMetadata: {
         contentType: "application/xml; charset=utf-8",
       },

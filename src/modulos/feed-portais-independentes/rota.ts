@@ -28,7 +28,7 @@ export async function rotaFeedPortalIndependente(
   try {
     // Busca o arquivo no R2
     const caminho = `feeds/${portalSlug}/${arquivo}`;
-    const objeto = await env.JSON_CACHE.get(caminho);
+    const objeto = await env.DADOS_CACHE.get(caminho);
 
     if (!objeto) {
       return new Response("Feed não encontrado", { status: 404 });

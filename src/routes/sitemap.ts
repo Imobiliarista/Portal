@@ -65,7 +65,7 @@ async function gerarSitemapPortal(
   for (let i = 1; i <= 100; i++) {
     const caminhoArquivo = `sitemap-anuncios-${i}.xml`;
     try {
-      const existeArquivo = await env.JSON_CACHE.head(caminhoArquivo);
+      const existeArquivo = await env.DADOS_CACHE.head(caminhoArquivo);
       if (existeArquivo) {
         xml += `
   <sitemap>
@@ -92,7 +92,7 @@ async function gerarSitemapMinиsite(
   const caminhoArquivo = `sitemaps/minisite-${slugCorretor}.xml`;
 
   try {
-    const conteudo = await env.JSON_CACHE.get(caminhoArquivo);
+    const conteudo = await env.DADOS_CACHE.get(caminhoArquivo);
     if (conteudo) {
       return await conteudo.text();
     }
@@ -169,7 +169,7 @@ export async function rotasSitemap(
   ) {
     const nomearquivo = url.pathname.substring(1);
     try {
-      const objeto = await env.JSON_CACHE.get(nomearquivo);
+      const objeto = await env.DADOS_CACHE.get(nomearquivo);
       if (objeto) {
         const conteudo = await objeto.text();
         return new Response(conteudo, {

@@ -6,7 +6,7 @@
 // ============================================================
 async function fetchCityListings(citySlug) {
   try {
-    const indexUrl = `${CONFIG.r2Domain}/cidades/${citySlug}/_index.json`;
+    const indexUrl = `${CONFIG.r2DadosUrl}/cidades/${citySlug}/_index.json`;
     const indexResponse = await fetch(indexUrl);
 
     if (!indexResponse.ok) {
@@ -19,7 +19,7 @@ async function fetchCityListings(citySlug) {
 
     let allListings = [];
     for (const file of files) {
-      const url = `${CONFIG.r2Domain}/cidades/${citySlug}/${file}`;
+      const url = `${CONFIG.r2DadosUrl}/cidades/${citySlug}/${file}`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -37,7 +37,7 @@ async function fetchCityListings(citySlug) {
 
 async function fetchBrokerListings(brokerSlug) {
   try {
-    const url = `${CONFIG.r2Domain}/corretores/${brokerSlug}.json`;
+    const url = `${CONFIG.r2DadosUrl}/corretores/${brokerSlug}.json`;
     const response = await fetch(url);
 
     if (!response.ok) {

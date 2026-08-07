@@ -96,7 +96,7 @@ export async function processarGerarSitemapPortal(
     xmlCidades += `</urlset>`;
 
     // Escrever sitemap-cidades.xml
-    await env.JSON_CACHE.put("sitemap-cidades.xml", xmlCidades, {
+    await env.DADOS_CACHE.put("sitemap-cidades.xml", xmlCidades, {
       customMetadata: {
         "content-type": "application/xml",
         "cache-control": "public, max-age=86400",
@@ -116,7 +116,7 @@ export async function processarGerarSitemapPortal(
     // Limpar arquivos antigos
     for (let i = 1; i <= 100; i++) {
       try {
-        await deletarArquivo(env.JSON_CACHE, `sitemap-anuncios-${i}.xml`);
+        await deletarArquivo(env.DADOS_CACHE, `sitemap-anuncios-${i}.xml`);
       } catch {
         break;
       }
@@ -164,7 +164,7 @@ export async function processarGerarSitemapPortal(
 
       xmlAnuncios += `</urlset>`;
 
-      await env.JSON_CACHE.put(
+      await env.DADOS_CACHE.put(
         `sitemap-anuncios-${pagina}.xml`,
         xmlAnuncios,
         {
@@ -224,7 +224,7 @@ export async function processarGerarSitemapCorretor(
   </url>
 </urlset>`;
 
-      await env.JSON_CACHE.put(
+      await env.DADOS_CACHE.put(
         `sitemaps/minisite-${corretor_slug}.xml`,
         xmlVazio,
         {
@@ -266,7 +266,7 @@ export async function processarGerarSitemapCorretor(
 
     xml += `</urlset>`;
 
-    await env.JSON_CACHE.put(`sitemaps/minisite-${corretor_slug}.xml`, xml, {
+    await env.DADOS_CACHE.put(`sitemaps/minisite-${corretor_slug}.xml`, xml, {
       customMetadata: {
         "content-type": "application/xml",
         "cache-control": "public, max-age=86400",

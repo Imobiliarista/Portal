@@ -1,4 +1,5 @@
-// Helpers de leitura/escrita no R2 via binding
+// Helpers de leitura/escrita no R2 via binding. Genéricos por bucket: o
+// chamador passa env.DADOS_CACHE (JSON/XML/backups) ou env.MIDIAS (fotos).
 // Seções 4.3 (acesso via binding, não API REST/S3 externa), e 4.8 (sem compressão manual)
 
 export async function escreverJSON(

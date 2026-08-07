@@ -66,7 +66,7 @@ export async function processarGerarJsonCidade(
       .all();
 
     if (!anuncios.results || anuncios.results.length === 0) {
-      await escreverJSON(env.JSON_CACHE, `cidades/${cidade_slug}/_index.json`, {
+      await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}/_index.json`, {
         last_updated: new Date().toISOString(),
         total_anuncios: 0,
       } as IndiceCidade);
@@ -104,8 +104,8 @@ export async function processarGerarJsonCidade(
     const tamanhoEstimado = await estimarTamanhoComprimido(items);
 
     if (tamanhoEstimado <= LIMITE_TAMANHO_COMPRIMIDO) {
-      await escreverJSON(env.JSON_CACHE, `cidades/${cidade_slug}.json`, items);
-      await escreverJSON(env.JSON_CACHE, `cidades/${cidade_slug}/_index.json`, {
+      await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}.json`, items);
+      await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}/_index.json`, {
         last_updated: new Date().toISOString(),
         total_anuncios: items.length,
       } as IndiceCidade);
@@ -138,7 +138,7 @@ export async function processarGerarJsonCidade(
 
       if (tamanho <= LIMITE_TAMANHO_COMPRIMIDO) {
         const caminho = `cidades/${cidade_slug}/${bairroSlug}.json`;
-        await escreverJSON(env.JSON_CACHE, caminho, itensBairro);
+        await escreverJSON(env.DADOS_CACHE, caminho, itensBairro);
         arquivos.push(caminho);
       } else {
         // Paginação como última estratégia
@@ -147,13 +147,13 @@ export async function processarGerarJsonCidade(
           const pagina = Math.floor(i / tamanhoPagina) + 1;
           const paginaItens = itensBairro.slice(i, i + tamanhoPagina);
           const caminho = `cidades/${cidade_slug}/${bairroSlug}-p${pagina}.json`;
-          await escreverJSON(env.JSON_CACHE, caminho, paginaItens);
+          await escreverJSON(env.DADOS_CACHE, caminho, paginaItens);
           arquivos.push(caminho);
         }
       }
     }
 
-    await escreverJSON(env.JSON_CACHE, `cidades/${cidade_slug}/_index.json`, {
+    await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}/_index.json`, {
       last_updated: new Date().toISOString(),
       total_anuncios: items.length,
       particoes: {

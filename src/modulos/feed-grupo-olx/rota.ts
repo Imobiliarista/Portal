@@ -18,7 +18,7 @@ export async function rotaFeedGrupoOLX(
   try {
     // Busca o arquivo XML do R2
     const caminho = `feeds/grupo-olx/${slug}.xml`;
-    const arquivo = await env.JSON_CACHE.get(caminho);
+    const arquivo = await env.DADOS_CACHE.get(caminho);
 
     if (!arquivo) {
       return new Response("Feed não encontrado", { status: 404 });

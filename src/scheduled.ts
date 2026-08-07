@@ -126,7 +126,7 @@ export async function handleScheduled(
     const blob = new Blob([sqlDump], { type: "text/plain;charset=utf-8" });
 
     // Enviar para R2
-    await env.JSON_CACHE.put(caminhoR2, blob, {
+    await env.DADOS_CACHE.put(caminhoR2, blob, {
       contentType: "text/plain;charset=utf-8",
       customMetadata: {
         exportedAt: new Date().toISOString(),

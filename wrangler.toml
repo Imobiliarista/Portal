@@ -7,14 +7,19 @@ compatibility_flags = ["nodejs_compat"]
 # diretamente pelo visitante público). Ver project.md, seção 4.3.
 [[d1_databases]]
 binding = "DB"
-database_name = "imobiliarista-db"
-database_id = "<id>" # substituir após `wrangler d1 create imobiliarista-db`
+database_name = "imob-bd"
+database_id = "8c673425-e415-4002-802a-968895df935a"
 
-# R2 — JSONs por cidade/corretor + imagens dos anúncios, servidos via
-# domínio público próprio (bypass do Worker nas leituras). Ver seção 4.3.
+# R2 — JSONs por cidade/corretor (dados) e imagens dos anúncios (mídias),
+# em buckets separados, servidos via domínio público próprio (bypass do
+# Worker nas leituras). Ver seção 4.3.
 [[r2_buckets]]
-binding = "JSON_CACHE"
-bucket_name = "imobiliarista-jsons"
+binding = "DADOS_CACHE"
+bucket_name = "imob-dados"
+
+[[r2_buckets]]
+binding = "MIDIAS"
+bucket_name = "imob-midias"
 
 # AI (Cloudflare Workers AI) — assistente de busca em linguagem natural
 # Free tier: 10.000 Neurons/dia, sem cartão de crédito. Ver seção 4.12.
@@ -45,11 +50,5 @@ zone_name = "imobiliarista.net"
 
 # Cron Trigger — export mensal do D1 para R2 (Lote 13)
 # Executa todo dia 1º de cada mês às 00:00 UTC
-[triggers.crons]
+[triggers]
 crons = ["0 0 1 * *"]
-
-# Cloudflare Pages — configuração de deploy dos assets estáticos (public/)
-# O backend Worker (src/index.ts) é deployado separadamente via wrangler deploy
-[pages]
-build_output_dir = "public"
-build_command = ""

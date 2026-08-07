@@ -400,7 +400,7 @@ export async function processarGerarFeedPortalIndependente(
 
     // Salva no R2
     const caminho = `feeds/${portal_slug}/${corretor_slug}.${extensao}`;
-    await env.JSON_CACHE.put(caminho, conteudo, {
+    await env.DADOS_CACHE.put(caminho, conteudo, {
       httpMetadata: {
         contentType,
       },

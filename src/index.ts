@@ -16,7 +16,8 @@ import { handleScheduled } from "./scheduled";
 
 export interface Env {
   DB: D1Database;
-  JSON_CACHE: R2Bucket;
+  DADOS_CACHE: R2Bucket;
+  MIDIAS: R2Bucket;
   FILA_ALTERACOES: Queue;
   AI: any; // Cloudflare Workers AI binding
   TURNSTILE_SECRET_KEY?: string;
