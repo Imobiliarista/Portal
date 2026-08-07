@@ -78,7 +78,7 @@ export async function processarGerarJsonCorretor(
       });
 
     const caminho = `corretores/${corretor_slug}.json`;
-    await escreverJSON(env.JSON_CACHE, caminho, itens);
+    await escreverJSON(env.DADOS_CACHE, caminho, itens);
 
     console.log(
       `✓ JSON do corretor "${corretor_slug}" gerado com ${itens.length} anúncios`,
