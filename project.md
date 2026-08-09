@@ -227,7 +227,7 @@ Inspirado no modelo de plugins do WordPress, mas adaptado à realidade técnica 
 [[d1_databases]]
 binding = "DB"
 database_name = "imob-bd"
-database_id = "8c673425-e415-4002-802a-968895df935a"
+database_id = "46c7f8d4-ef47-47f4-8c62-ebe63516f6a6"
 
 [[r2_buckets]]
 binding = "DADOS_CACHE"
