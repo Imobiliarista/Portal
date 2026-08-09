@@ -4,8 +4,8 @@
 
 // URLs públicas dos buckets R2 (domínio padrão *.r2.dev por enquanto — trocar
 // aqui quando migrarmos para domínio customizado).
-const R2_DADOS_URL = 'https://pub-4401a1e6c8dc485f8849299b18f41c8f.r2.dev';
-const R2_MIDIAS_URL = 'https://pub-51397fcb9c6f45028fae452160a2ba9a.r2.dev';
+const R2_DADOS_URL = 'https://pub-1df8aa8ebdcc4a14ab44733880ba7197.r2.dev';
+const R2_MIDIAS_URL = 'https://pub-bb3b2e1aa0894c65932b283e855b781b.r2.dev';
 
 const CONFIG = {
   r2DadosUrl: R2_DADOS_URL,

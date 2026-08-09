@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "imob-bd"
-database_id = "8c673425-e415-4002-802a-968895df935a"
+database_id = "46c7f8d4-ef47-47f4-8c62-ebe63516f6a6"
 
 # R2 — JSONs por cidade/corretor (dados) e imagens dos anúncios (mídias),
 # em buckets separados, servidos via domínio público próprio (bypass do
@@ -31,10 +31,10 @@ binding = "AI"
 # nunca uma mensagem única por corretor. Ver seções 4.4 e 4.4.1.1.
 [[queues.producers]]
 binding = "FILA_ALTERACOES"
-queue = "imobiliarista-fila"
+queue = "imob-queue"
 
 [[queues.consumers]]
-queue = "imobiliarista-fila"
+queue = "imob-queue"
 max_batch_size = 10
 max_batch_timeout = 30
 

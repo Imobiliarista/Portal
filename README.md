@@ -30,7 +30,7 @@ npm install
    ```
 
 2. Os recursos remotos (D1 `imob-bd`, R2 `imob-dados` + `imob-midias` e a
-   Queue `imobiliarista-fila`) já existem na conta Cloudflare e estão
+   Queue `imob-queue`) já existem na conta Cloudflare e estão
    referenciados no `wrangler.toml`. Caso precise recriá-los do zero (ex.:
    outra conta/ambiente):
 
@@ -38,7 +38,7 @@ npm install
    npx wrangler d1 create imob-bd
    npx wrangler r2 bucket create imob-dados
    npx wrangler r2 bucket create imob-midias
-   npx wrangler queues create imobiliarista-fila
+   npx wrangler queues create imob-queue
    ```
 
 3. Copie o `database_id` retornado pelo `wrangler d1 create` para o campo
