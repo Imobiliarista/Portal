@@ -51,6 +51,18 @@ export interface Corretor {
   status: 'pre-cadastro' | 'aprovado' | 'reprovado';
   motivo_reprovacao?: string;
 
+  // Plano contratado (Lote 14, seção 6.3)
+  plano_id?: number;
+
+  // Promoção de Lançamento (Lote 14, seção 6.5)
+  promocao_lancamento: boolean;
+  data_inicio_cobranca?: string; // YYYY-MM-DD
+
+  // Controle de Isenção genérico (Lote 14, seção 6.6)
+  isento: boolean;
+  isento_ate?: string; // YYYY-MM-DD, null = isenção indefinida
+  motivo_isencao?: string;
+
   // Timestamps
   criado_em: string;
   atualizado_em: string;
@@ -66,16 +78,46 @@ export interface Minisite {
   atualizado_em: string;
 }
 
-// ========== Planos ==========
+// ========== Planos (catálogo compartilhado — Lote 14) ==========
+// Ver project.md, seções 5.1.3, 6.3, 6.4
 export interface Plano {
   id: number;
-  corretor_id: number;
+  nome: string;
   max_anuncios: number;
   max_fotos_por_anuncio: number;
+  taxa_adesao: number; // Cobrada uma única vez, na primeira contratação
+  preco_mensalidade: number;
+  permite_pwa: boolean;
+  permite_publicacoes: boolean;
+  permite_api_google_maps: boolean;
+  ativo: boolean; // Desativar não afeta corretores já no plano
+  criado_em: string;
+  atualizado_em: string;
+}
+
+// ========== Configuração de Upload por Corretor ==========
+// Antiga tabela `planos` (0001_init.sql) — renomeada em 0010_planos.sql.
+// Guarda ajustes específicos do corretor que não pertencem ao catálogo
+// de planos (resolução máxima de upload, chave própria do Google Maps).
+export interface ConfigUploadCorretor {
+  id: number;
+  corretor_id: number;
   max_resolucao_upload_bytes: number; // Em bytes
   google_maps_api_key?: string; // Chave de API do Google Maps do corretor (opcional, premium)
   criado_em: string;
   atualizado_em: string;
+}
+
+// ========== Log de Auditoria de Isenção (Lote 14, seção 6.6) ==========
+export interface LogIsencao {
+  id: number;
+  corretor_id: number;
+  alterado_por: number; // ID do superadmin que fez a alteração
+  campo: string;
+  valor_anterior?: string;
+  valor_novo?: string;
+  motivo?: string;
+  criado_em: string;
 }
 
 // ========== Tipos de Negócio ==========

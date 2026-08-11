@@ -100,8 +100,12 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       });
     }
 
-    // Busca plano do corretor para validar limites
-    const plano = await env.DB.prepare("SELECT * FROM planos WHERE corretor_id = ?")
+    // Busca plano contratado do corretor (catálogo) para validar limites
+    const plano = await env.DB.prepare(
+      `SELECT p.* FROM planos p
+       JOIN corretores c ON c.plano_id = p.id
+       WHERE c.id = ?`
+    )
       .bind(corretorId)
       .first() as Plano | undefined;
 

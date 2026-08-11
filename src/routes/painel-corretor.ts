@@ -2,7 +2,7 @@
 // Conforme seção 6.1 e Lote 8 do project.md
 
 import { Env } from "../index";
-import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoPorCorretorId, buscarMinisiteDoCorretor } from "../db/queries-perfil";
+import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoDoCorretor, buscarConfigUploadDoCorretor, buscarMinisiteDoCorretor } from "../db/queries-perfil";
 import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
 import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
 import { rotaAgendamentoVisita } from "../modulos/agendamento-visita/rota";
@@ -58,7 +58,8 @@ async function rotaPainelPerfil(request: Request, env: Env): Promise<Response> {
     if (!corretor) return respostaErro("Corretor não encontrado", 404);
 
     const minisite = await buscarMinisiteDoCorretor(env.DB, corretor_id);
-    const plano = await buscarPlanoPorCorretorId(env.DB, corretor_id);
+    const plano = await buscarPlanoDoCorretor(env.DB, corretor_id);
+    const configUpload = await buscarConfigUploadDoCorretor(env.DB, corretor_id);
 
     // Monta resposta sem dados sensíveis
     return respostaSucesso({
@@ -77,9 +78,12 @@ async function rotaPainelPerfil(request: Request, env: Env): Promise<Response> {
       minisite_slug: minisite?.slug,
       minisite_offline: minisite?.offline,
       plano: plano ? {
+        nome: plano.nome,
         max_anuncios: plano.max_anuncios,
         max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
-        google_maps_api_key: plano.google_maps_api_key ? "***" : null,
+        permite_pwa: plano.permite_pwa,
+        permite_publicacoes: plano.permite_publicacoes,
+        google_maps_api_key: configUpload?.google_maps_api_key ? "***" : null,
       } : null,
     });
   } catch (erro) {
@@ -125,17 +129,22 @@ async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
   if (!corretor_id) return respostaErro("Não autenticado", 401);
 
   try {
-    const plano = await buscarPlanoPorCorretorId(env.DB, corretor_id);
+    const plano = await buscarPlanoDoCorretor(env.DB, corretor_id);
     if (!plano) return respostaErro("Plano não encontrado", 404);
+
+    const configUpload = await buscarConfigUploadDoCorretor(env.DB, corretor_id);
 
     // Conta uso atual
     const anuncios_ativos = await contarAnunciosAtivosDoCorretor(env.DB, corretor_id);
 
     return respostaSucesso({
+      nome: plano.nome,
       max_anuncios: plano.max_anuncios,
       anuncios_usados: anuncios_ativos,
       max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
-      google_maps_key_configurada: !!plano.google_maps_api_key,
+      permite_pwa: plano.permite_pwa,
+      permite_publicacoes: plano.permite_publicacoes,
+      google_maps_key_configurada: !!configUpload?.google_maps_api_key,
     });
   } catch (erro) {
     console.error("Erro ao buscar plano:", erro);
