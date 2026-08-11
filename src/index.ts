@@ -11,6 +11,7 @@ import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes
 import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
+import { rotaPwa } from "./modulos/pwa/rota";
 import { processarFilaAlteracoes } from "./queue";
 import { handleScheduled } from "./scheduled";
 
@@ -56,6 +57,17 @@ export default {
       url.pathname.match(/^\/sitemap-anuncios-\d+\.xml$/)
     ) {
       return rotasSitemap(request, env);
+    }
+
+    // Rota do módulo PWA — /apps/*, /manifest.json, /sw.js (Lote 15, seção 4.18)
+    if (
+      url.pathname === "/manifest.json" ||
+      url.pathname === "/sw.js" ||
+      url.pathname === "/apps" ||
+      url.pathname === "/apps/android" ||
+      url.pathname === "/apps/iphone"
+    ) {
+      return rotaPwa(request, url, env);
     }
 
     // Rota de feeds externos — Grupo OLX (Lote 12.1)

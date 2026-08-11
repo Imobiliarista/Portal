@@ -1,5 +1,11 @@
 // Job: Gera sitemap.xml em índice + arquivos paginados de anúncios (Lote 11)
 // Seção 4.16: respeitando o limite do Google de 50.000 URLs/50 MB por arquivo
+//
+// Exclusão do módulo PWA (Lote 15, seção 4.18): este job só itera
+// anúncios/cidades — as rotas utilitárias /apps, /apps/android,
+// /apps/iphone nunca entram aqui e nunca devem ser adicionadas a um
+// arquivo de sitemap; elas são marcadas noindex,follow diretamente no
+// HTML (src/modulos/pwa/rota.ts), não pertencem ao conteúdo indexável.
 
 import { Env } from "../index";
 import { escreverJSON, deletarArquivo } from "../lib/r2";

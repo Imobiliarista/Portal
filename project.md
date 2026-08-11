@@ -6,9 +6,9 @@
 > contradizer o que está definido neste arquivo. Se algo mudar, este arquivo
 > muda primeiro — o código muda depois.
 
-**Status:** 🟢 Lotes 1-13 em produção — 🟡 Lotes 14-17 (Planos, PWA por plano, Publicações, Backup) em planejamento
-**Última atualização:** sessão de planejamento — Planos, PWA, Publicações, backup/exportação, gatilho de custo R2, promoção de lançamento, controle de isenção + correção de status do roadmap (confirmado com o repositório real)
-**Versão:** 1.5
+**Status:** 🟢 Lotes 1-15 em produção — 🟡 Lotes 16-17 (Publicações, Backup/Exportação) em planejamento
+**Última atualização:** implementação do Lote 15 (PWA por Plano) — controle duplo (rede + `permitePwa` do Plano), rotas `/apps/*`, Service Worker "suicida" na desativação/downgrade, fallback de ícone genérico
+**Versão:** 1.6
 
 ---
 
@@ -169,7 +169,7 @@ zone_name = "imobiliarista.net"
 │   │   ├── agendamento-visita/
 │   │   ├── comparacao-anuncios/
 │   │   ├── calculadora-financiamento/
-│   │   ├── pwa/                      # rota.ts + gerador-manifest.ts + gerador-service-worker.ts (4.18)
+│   │   ├── pwa/                      # rota.ts + logica.ts + gerador-manifest.ts + gerador-service-worker.ts (4.18)
 │   │   └── publicacoes/              # rota.ts + logica.ts (4.19)
 │   │
 │   ├── db/
@@ -204,8 +204,6 @@ zone_name = "imobiliarista.net"
 ├── public/                       # Static Assets (4.6)
 │   ├── index.html
 │   ├── painel/index.html
-│   ├── manifest.json
-│   ├── sw.js
 │   ├── icons/
 │   └── assets/
 │       ├── css/tailwind.css
@@ -214,7 +212,12 @@ zone_name = "imobiliarista.net"
 │           ├── painel.js
 │           ├── filtros.js            # busca avançada (9.2.1)
 │           ├── mapa.js               # Leaflet/OSM + Google Maps opcional
-│           └── cache-buster.js       # invalidação via timestamp (4.6.1)
+│           ├── cache-buster.js       # invalidação via timestamp (4.6.1)
+│           └── pwa-instalador.js     # suprime beforeinstallprompt global (4.18)
+│
+│   # manifest.json e sw.js NÃO são mais arquivos estáticos aqui (Lote 15):
+│   # são gerados dinamicamente por src/modulos/pwa/rota.ts, por hostname,
+│   # respeitando o controle duplo de elegibilidade (rede + plano) — ver 4.18.
 │
 ├── styles/
 │   └── input.css
@@ -599,7 +602,7 @@ self.addEventListener('activate', async () => {
 
 **Push Notifications:** fora de escopo deste módulo — candidato a módulo futuro separado (exige armazenamento de inscrição por visitante no D1, servidor de envio próprio com chaves VAPID, consentimento LGPD explícito).
 
-**Estrutura de arquivos:** módulo isolado em `src/modulos/pwa/` (`rota.ts`, `gerador-manifest.ts`, `gerador-service-worker.ts`), seguindo o padrão de 4.2.1. Gerado no mesmo processo em lote que já gera os demais artefatos por corretor (4.4), respeitando a dupla checagem de flag (rede + plano).
+**Estrutura de arquivos:** módulo isolado em `src/modulos/pwa/` (`rota.ts`, `logica.ts`, `gerador-manifest.ts`, `gerador-service-worker.ts`), seguindo o padrão de 4.2.1. Gerado no mesmo processo em lote que já gera os demais artefatos por corretor (4.4), respeitando a dupla checagem de flag (rede + plano).
 
 ### 4.19 Módulo Publicações — DECISÃO FECHADA
 
@@ -990,7 +993,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 
 ## 10. Roadmap de Implementação (Lotes)
 
-> **Status real confirmado (verificado direto no GitHub, 30 branches / 67 commits): os Lotes 1-13 estão implementados e em produção.** A revisão anterior deste documento (v1.4) havia revertido esse status por engano — uma falha de leitura (cache desatualizado) fez parecer que o repositório só tinha `README.md` + `project.md`. Corrigido nesta revisão após checagem visual direta do repositório pelo usuário. Os Lotes 14 em diante são as adições desta sessão de planejamento (Planos expandido, PWA por plano, Publicações, backup/exportação de anúncios, promoção de lançamento, controle de isenção) — construídos **em cima** do código já existente, não uma reconstrução.
+> **Status real confirmado (verificado direto no GitHub, 30 branches / 67 commits): os Lotes 1-13 estão implementados e em produção.** A revisão anterior deste documento (v1.4) havia revertido esse status por engano — uma falha de leitura (cache desatualizado) fez parecer que o repositório só tinha `README.md` + `project.md`. Corrigido nesta revisão após checagem visual direta do repositório pelo usuário. Os Lotes 14 em diante são as adições desta sessão de planejamento (Planos expandido, PWA por plano, Publicações, backup/exportação de anúncios, promoção de lançamento, controle de isenção) — construídos **em cima** do código já existente, não uma reconstrução. Lotes 14 e 15 já foram implementados (v1.6); Lotes 16-17 seguem em planejamento.
 
 | #  | Lote                   | Conteúdo                                                                                                                                                                                                 | Status      |
 | --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
@@ -1008,7 +1011,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 12 | Módulos opcionais      | `src/modulos/`: 12.1 feed-grupo-olx · 12.2 feed-portais-independentes · 12.3 busca-ia · 12.4 video-youtube · 12.5 tour-360 · 12.6 busca-salva-email · 12.7 agendamento-visita · 12.8 comparacao-anuncios · 12.9 calculadora-financiamento | 🟢 Concluído |
 | 13 | Backup/observabilidade | `scheduled.ts` (Cron Trigger mensal export D1→R2), `docs/observabilidade.md` (guia manual Time Travel/Rate Limiting/alertas)                                                                             | 🟢 Concluído |
 | 14 | Sistema de Planos expandido | Migration `0010_planos.sql` — tabela `planos` com os 5 níveis de referência (5.1.3), renomeando a antiga `planos` (por corretor) para `config_upload_corretor`; `db/queries-planos.ts` e `db/queries-isencao.ts`; CRUD no `painel-superadmin.ts` + `painel-superadmin-planos.ts` (6.3); regras de troca de plano (6.4); Promoção de Lançamento com contador de vagas (6.5); Controle de Isenção genérico com log de auditoria em `painel-superadmin-isencao.ts` (6.6) — campos `isento`/`isentoAte`/`motivoIsencao` no Corretor. Cron de reversão automática fica para a fase 3 (ativação do Asaas) | 🟢 Concluído |
-| 15 | PWA por Plano          | Evolução do Lote 10: controle duplo (flag de rede + `permitePwa` do Plano, 4.18), rotas `/apps`, `/apps/android`, `/apps/iphone`, Service Worker "suicida" na desativação/downgrade, fallback de ícone — módulo isolado em `src/modulos/pwa/` | 🔲 Não iniciado |
+| 15 | PWA por Plano          | Evolução do Lote 10: controle duplo (flag de rede + `permitePwa` do Plano, 4.18), rotas `/apps`, `/apps/android`, `/apps/iphone`, Service Worker "suicida" na desativação/downgrade, fallback de ícone — módulo isolado em `src/modulos/pwa/` | 🟢 Concluído |
 | 16 | Publicações            | `src/modulos/publicacoes/` (`rota.ts`, `logica.ts`) — feed próprio ou Feed Padrão da Rede, path routing `/publicacoes/{id}`, controle duplo igual ao PWA, menu principal do minisite (4.19)              | 🔲 Não iniciado |
 | 17 | Backup/Exportação de Anúncios pelo Corretor | Endpoints em `api-anuncios.ts`: backup interno (schema próprio, só links de fotos) + restauração em modo seguro + exportação em formato de mercado (OLX JSON, Chaves na Mão XML) reaproveitando os mapeadores de 4.11 (4.20) | 🔲 Não iniciado |
 
@@ -1082,6 +1085,8 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | **Sessão de revisão** | Identificado gargalo real de escala: **não é técnico, é operacional** — verificação manual de CRECI (6.1) por uma pessoa só estoura a capacidade já no Ano 2 (crescimento de 500→3.000 corretores), bem antes de qualquer limite de R2/D1 | Aprovação manual de CRECI não escala automaticamente como a infraestrutura; precisa virar processo com equipe dedicada, não só um checkbox no roadmap |
 | **Sessão de revisão** | Promoção de Lançamento formalizada (6.5): primeiros 1.000 corretores aprovados entram no "Plano Degustação" (= limites do Plano 1) isentos de qualquer cobrança até data de corte fixa (01/01/2027, não uma janela rolante de 6 meses por corretor); cobrança automática a partir dessa data; upgrade durante a promoção encerra o benefício imediatamente | Reduzir atrito de adoção nos primeiros corretores da rede, antes de haver prova social; data fixa (em vez de contagem individual) simplifica a implementação (um campo global, não um contador por corretor) |
 | **Sessão de revisão** | Controle de Isenção de Cobrança formalizado (6.6): campos genéricos `isento`/`isentoAte`/`motivoIsencao` no Corretor, gerenciáveis pelo Superadmin pra qualquer corretor a qualquer momento (não só a promoção de lançamento), com auditoria de alterações e reversão automática via Cron quando a data vence | Evitar hardcodar a promoção de lançamento como caso especial; mecanismo reutilizável pra futuras campanhas/parcerias/cortesias sem precisar de campo novo cada vez |
+| **Lote 15** | PWA por Plano implementado: módulo `pwa` registrado em `modulos_ativos` pela primeira vez (migration `0011_modulo_pwa.sql`, ligado por padrão pra preservar o comportamento universal já em produção desde o Lote 10); `manifest.json`/`sw.js` deixam de ser arquivos estáticos em `public/` e passam a ser gerados dinamicamente por `src/modulos/pwa/rota.ts`, por hostname, respeitando a dupla checagem (rede + `permite_pwa` do plano); artefatos do minisite (`pwa/{slug}/manifest.json` e `.../service-worker.js`) gravados no R2 na mesma geração em lote de `gerar-json-corretor.ts`, só quando o corretor tem (ou já teve) o módulo elegível — evita registrar Service Worker à toa em corretores que nunca tiveram PWA disponível | Reaproveitar a infraestrutura de geração em lote já existente em vez de checar o plano em toda requisição; escrita condicional no R2 (e não sob demanda) mantém a filosofia de minimização de requisições ao Worker (4.6) |
+| **Lote 15** | Fallback de ícone do corretor implementado como sempre-genérico por enquanto: não existe nenhum campo de logo do corretor no schema (nenhum lote anterior expôs upload de logo), então a ramificação "logo processável" do fallback descrito em 4.18 nunca é alcançada hoje — `gerarManifestCorretor` já documenta onde plugar essa checagem quando um lote futuro adicionar o campo. Ícones genéricos reaproveitam os assets estáticos já existentes desde o Lote 10 (`public/icons/*.png`), sem depender de um asset novo no R2 | Não inventar schema/upload de logo fora do escopo do Lote 15 (só o módulo PWA); reaproveitar assets estáticos já testados em produção é mais simples e não tem risco de asset ausente |
 
 ## Footer
 
