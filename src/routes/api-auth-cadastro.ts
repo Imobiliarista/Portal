@@ -161,15 +161,16 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       agora
     ).run();
 
+    // Limites de anúncios/fotos vêm do Plano, atribuído no momento da
+    // aprovação (ver queries-superadmin.ts::aprovarPreCadastro, Lote 14).
+    // Aqui só é criada a configuração de upload padrão do corretor.
     await env.DB.prepare(
-      `INSERT INTO planos (
-        corretor_id, max_anuncios, max_fotos_por_anuncio, max_resolucao_upload_bytes,
+      `INSERT INTO config_upload_corretor (
+        corretor_id, max_resolucao_upload_bytes,
         criado_em, atualizado_em
-      ) VALUES (?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?)`
     ).bind(
       corretorId,
-      10,
-      20,
       5_000_000,
       agora,
       agora

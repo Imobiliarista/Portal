@@ -2,6 +2,7 @@
 // Aprovação de pré-cadastros, gestão de cidades, módulos e visão geral da rede
 
 import { PreCadastro, Cidade, ModuloAtivo } from "../types/modelos";
+import { atribuirPlanoNaAprovacao } from "./queries-planos";
 
 export interface PortalIndependente {
   id: number;
@@ -99,16 +100,19 @@ export async function aprovarPreCadastro(db: D1Database, precadastro_id: number,
       .bind(corretor_id, slug_minisite, 0, agora, agora)
       .run();
 
-    // Cria plano padrão
+    // Cria configuração de upload padrão
     await db
       .prepare(
-        `INSERT INTO planos (
-          corretor_id, max_anuncios, max_fotos_por_anuncio,
-          max_resolucao_upload_bytes, criado_em, atualizado_em
-        ) VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO config_upload_corretor (
+          corretor_id, max_resolucao_upload_bytes, criado_em, atualizado_em
+        ) VALUES (?, ?, ?, ?)`
       )
-      .bind(corretor_id, 100, 20, 5242880, agora, agora)
+      .bind(corretor_id, 5242880, agora, agora)
       .run();
+
+    // Atribui o Plano (Promoção de Lançamento se houver vaga, senão o
+    // plano padrão do sistema) — ver project.md, seções 6.3 e 6.5
+    await atribuirPlanoNaAprovacao(db, corretor_id);
 
     return true;
   } catch (erro) {

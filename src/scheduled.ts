@@ -16,6 +16,8 @@ type TabelasD1 =
   | "corretores"
   | "minisites"
   | "planos"
+  | "config_upload_corretor"
+  | "log_isencao"
   | "tipos_negocio"
   | "categorias_imovel"
   | "tipos_imovel"
@@ -35,6 +37,8 @@ async function exportarTabelasD1(db: D1Database): Promise<string> {
     "corretores",
     "minisites",
     "planos",
+    "config_upload_corretor",
+    "log_isencao",
     "tipos_negocio",
     "categorias_imovel",
     "tipos_imovel",

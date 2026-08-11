@@ -1,7 +1,7 @@
 // Queries para perfil do corretor e dados de plano
 // Conforme seção 6.1 do project.md
 
-import { Corretor, Plano } from "../types/modelos";
+import { Corretor, ConfigUploadCorretor, Plano } from "../types/modelos";
 
 // Busca dados completos do corretor (sem hash de senha)
 export async function buscarCorretorPorId(db: D1Database, id: number): Promise<Corretor | null> {
@@ -70,17 +70,36 @@ export async function atualizarPerfilEditavelDoCorretor(
   }
 }
 
-// Busca plano do corretor
-export async function buscarPlanoPorCorretorId(db: D1Database, corretor_id: number): Promise<Plano | null> {
+// Busca o plano contratado (catálogo) do corretor, via corretores.plano_id
+export async function buscarPlanoDoCorretor(db: D1Database, corretor_id: number): Promise<Plano | null> {
   try {
     const resultado = await db
-      .prepare("SELECT * FROM planos WHERE corretor_id = ? LIMIT 1")
+      .prepare(
+        `SELECT p.* FROM planos p
+         JOIN corretores c ON c.plano_id = p.id
+         WHERE c.id = ? LIMIT 1`
+      )
       .bind(corretor_id)
       .first();
 
-    return resultado || null;
+    return resultado as Plano | null;
   } catch (erro) {
-    console.error("Erro ao buscar plano:", erro);
+    console.error("Erro ao buscar plano do corretor:", erro);
+    return null;
+  }
+}
+
+// Busca a configuração de upload do corretor (resolução máxima, chave própria do Google Maps)
+export async function buscarConfigUploadDoCorretor(db: D1Database, corretor_id: number): Promise<ConfigUploadCorretor | null> {
+  try {
+    const resultado = await db
+      .prepare("SELECT * FROM config_upload_corretor WHERE corretor_id = ? LIMIT 1")
+      .bind(corretor_id)
+      .first();
+
+    return resultado as ConfigUploadCorretor | null;
+  } catch (erro) {
+    console.error("Erro ao buscar configuração de upload:", erro);
     return null;
   }
 }

@@ -20,44 +20,9 @@ import {
   criarPortalIndependente,
   atualizarPortalIndependente,
 } from "../db/queries-superadmin";
-
-// ========== Auxiliares ==========
-
-// Extrai ID do Superadmin da sessão (cookie)
-async function obterSuperadminIdDaSessao(request: Request, env: Env): Promise<number | null> {
-  const cookie = request.headers.get("cookie") || "";
-  const sessionIdMatch = cookie.match(/session_id=([^;]+)/);
-
-  if (!sessionIdMatch) return null;
-
-  const sessionId = sessionIdMatch[1];
-
-  try {
-    const sessao = await env.DB.prepare(
-      "SELECT c.id FROM sessoes s JOIN corretores c ON s.corretor_id = c.id WHERE s.session_id = ? AND s.expira_em > datetime('now') AND c.papel = 'superadmin' LIMIT 1"
-    ).bind(sessionId).first() as { id: number } | null;
-
-    return sessao?.id || null;
-  } catch {
-    return null;
-  }
-}
-
-// Resposta de erro padrão
-function respostaErro(msg: string, status = 400): Response {
-  return new Response(JSON.stringify({ erro: msg }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-// Resposta de sucesso
-function respostaSucesso(dados: any): Response {
-  return new Response(JSON.stringify(dados), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
+import { obterSuperadminIdDaSessao, respostaErro, respostaSucesso } from "../lib/painel-admin-auth";
+import { rotasPainelSuperadminPlanos } from "./painel-superadmin-planos";
+import { rotasPainelSuperadminIsencao } from "./painel-superadmin-isencao";
 
 // ========== Rotas: Pré-Cadastros ==========
 
@@ -447,6 +412,21 @@ export async function rotasPainelSuperadmin(request: Request, env: Env): Promise
   // GET /painel-admin/visao-geral
   if (pathname === "/visao-geral" && request.method === "GET") {
     return rotaVisaoGeral(request, env);
+  }
+
+  // ========== Rotas: Planos (Lote 14 — ver painel-superadmin-planos.ts) ==========
+  if (
+    pathname === "/planos" ||
+    pathname.match(/^\/plano\/\d+(\/desativar)?$/) ||
+    pathname.match(/^\/corretor\/\d+\/trocar-plano$/) ||
+    pathname === "/promocao-lancamento/contador"
+  ) {
+    return rotasPainelSuperadminPlanos(request, env, pathname);
+  }
+
+  // ========== Rotas: Isenção (Lote 14 — ver painel-superadmin-isencao.ts) ==========
+  if (pathname === "/isencoes" || pathname.match(/^\/corretor\/\d+\/isencao(\/log)?$/)) {
+    return rotasPainelSuperadminIsencao(request, env, pathname);
   }
 
   return new Response("Rota não encontrada", { status: 404 });
