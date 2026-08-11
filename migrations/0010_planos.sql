@@ -41,12 +41,12 @@ INSERT INTO planos (nome, max_anuncios, max_fotos_por_anuncio, taxa_adesao, prec
   ('Plano 5', 500, 30, 199.00, 99.00, 1, 1, 0, 1);
 
 -- Plano contratado + Promoção de Lançamento (6.5) + Isenção genérica (6.6)
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS plano_id INTEGER;
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS promocao_lancamento BOOLEAN NOT NULL DEFAULT 0;
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS data_inicio_cobranca DATE;
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS isento BOOLEAN NOT NULL DEFAULT 0;
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS isento_ate DATE;
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS motivo_isencao TEXT;
+ALTER TABLE corretores ADD COLUMN plano_id INTEGER;
+ALTER TABLE corretores ADD COLUMN promocao_lancamento BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE corretores ADD COLUMN data_inicio_cobranca DATE;
+ALTER TABLE corretores ADD COLUMN isento BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE corretores ADD COLUMN isento_ate DATE;
+ALTER TABLE corretores ADD COLUMN motivo_isencao TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_corretores_plano ON corretores(plano_id);
 CREATE INDEX IF NOT EXISTS idx_corretores_isento ON corretores(isento);
