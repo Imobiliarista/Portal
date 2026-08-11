@@ -40,8 +40,20 @@ const CASCA_INSTITUCIONAL = ${listaAssets};
 function ehJsonDeAnuncio(url) {
   return (
     url.pathname.includes('/cidades/') ||
-    url.pathname.includes('/corretores/') ||
-    url.pathname.includes('/publicacoes/')
+    url.pathname.includes('/corretores/')
+  );
+}
+
+// Módulo Publicações (Lote 16, seção 4.19): as páginas /publicacoes e
+// /publicacoes/{id} do nosso próprio domínio E o fetch() que o navegador
+// faz direto no feed do Blogspot (próprio ou Feed Padrão da Rede, sempre
+// em outro domínio) — nunca cacheados, mesmo tratamento dos JSONs de
+// anúncio (4.18).
+function ehConteudoDePublicacoes(url) {
+  return (
+    url.pathname === '/publicacoes' ||
+    url.pathname.startsWith('/publicacoes/') ||
+    url.hostname.endsWith('.blogspot.com')
   );
 }
 
@@ -69,9 +81,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // JSONs de anúncio e feed de Publicações: network-only, sem fallback de
-  // cache — nunca servir dado desatualizado como se fosse atual.
-  if (ehJsonDeAnuncio(url)) {
+  // JSONs de anúncio e conteúdo de Publicações (páginas + feed no
+  // Blogspot): network-only, sem fallback de cache — nunca servir dado
+  // desatualizado como se fosse atual.
+  if (ehJsonDeAnuncio(url) || ehConteudoDePublicacoes(url)) {
     event.respondWith(fetch(request));
     return;
   }

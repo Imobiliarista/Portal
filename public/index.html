@@ -35,6 +35,11 @@
           <h1 class="text-2xl font-bold text-slate-900">🏠 Portal Imobiliário</h1>
         </div>
         <div id="user-menu" class="flex items-center gap-4">
+          <!-- Publicações (Lote 16, seção 4.19): só aparece em minisites com o
+               módulo ativo — menu principal, diferente do PWA (rodapé). -->
+          <a id="link-publicacoes" href="/publicacoes" class="hidden text-gray-600 hover:text-gray-900 font-medium text-sm">
+            📰 Publicações
+          </a>
           <button id="toggle-favorites" class="text-gray-600 hover:text-gray-900 font-medium text-sm">
             ❤️ Favoritos (<span id="favorites-count">0</span>)
           </button>
@@ -331,6 +336,7 @@
 
   <!-- Scripts -->
   <script src="/assets/js/pwa-instalador.js"></script>
+  <script src="/assets/js/publicacoes-menu.js"></script>
   <script src="/assets/js/cache-buster.js"></script>
   <script src="/assets/js/video-player.js"></script>
   <script src="/assets/js/tour-360-player.js"></script>

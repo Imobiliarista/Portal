@@ -63,6 +63,11 @@ export interface Corretor {
   isento_ate?: string; // YYYY-MM-DD, null = isenção indefinida
   motivo_isencao?: string;
 
+  // Configuração por módulo, genérica (Lote 16, seção 4.19) — JSON serializado.
+  // Hoje só usada por Publicações (config_modulos.publicacoes), ver
+  // src/modulos/publicacoes/logica.ts para o parse tipado.
+  config_modulos: string;
+
   // Timestamps
   criado_em: string;
   atualizado_em: string;

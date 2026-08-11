@@ -6,9 +6,9 @@
 > contradizer o que está definido neste arquivo. Se algo mudar, este arquivo
 > muda primeiro — o código muda depois.
 
-**Status:** 🟢 Lotes 1-15 em produção — 🟡 Lotes 16-17 (Publicações, Backup/Exportação) em planejamento
-**Última atualização:** implementação do Lote 15 (PWA por Plano) — controle duplo (rede + `permitePwa` do Plano), rotas `/apps/*`, Service Worker "suicida" na desativação/downgrade, fallback de ícone genérico
-**Versão:** 1.6
+**Status:** 🟢 Lotes 1-16 em produção — 🟡 Lote 17 (Backup/Exportação) em planejamento
+**Última atualização:** implementação do Lote 16 (Publicações) — controle duplo igual ao PWA (rede + `permitePublicacoes` do Plano + opt-in do corretor em `config_modulos.publicacoes`), path routing `/publicacoes/{id}`, feed próprio ou Feed Padrão da Rede, menu principal do minisite, posts individuais no sitemap.xml, Service Worker network-only reaproveitado do PWA
+**Versão:** 1.7
 
 ---
 
@@ -1012,7 +1012,7 @@ Usuário trouxe um componente HTML (busca avançada com gaveta "mais filtros") c
 | 13 | Backup/observabilidade | `scheduled.ts` (Cron Trigger mensal export D1→R2), `docs/observabilidade.md` (guia manual Time Travel/Rate Limiting/alertas)                                                                             | 🟢 Concluído |
 | 14 | Sistema de Planos expandido | Migration `0010_planos.sql` — tabela `planos` com os 5 níveis de referência (5.1.3), renomeando a antiga `planos` (por corretor) para `config_upload_corretor`; `db/queries-planos.ts` e `db/queries-isencao.ts`; CRUD no `painel-superadmin.ts` + `painel-superadmin-planos.ts` (6.3); regras de troca de plano (6.4); Promoção de Lançamento com contador de vagas (6.5); Controle de Isenção genérico com log de auditoria em `painel-superadmin-isencao.ts` (6.6) — campos `isento`/`isentoAte`/`motivoIsencao` no Corretor. Cron de reversão automática fica para a fase 3 (ativação do Asaas) | 🟢 Concluído |
 | 15 | PWA por Plano          | Evolução do Lote 10: controle duplo (flag de rede + `permitePwa` do Plano, 4.18), rotas `/apps`, `/apps/android`, `/apps/iphone`, Service Worker "suicida" na desativação/downgrade, fallback de ícone — módulo isolado em `src/modulos/pwa/` | 🟢 Concluído |
-| 16 | Publicações            | `src/modulos/publicacoes/` (`rota.ts`, `logica.ts`) — feed próprio ou Feed Padrão da Rede, path routing `/publicacoes/{id}`, controle duplo igual ao PWA, menu principal do minisite (4.19)              | 🔲 Não iniciado |
+| 16 | Publicações            | `src/modulos/publicacoes/` (`rota.ts`, `logica.ts`) — feed próprio ou Feed Padrão da Rede (`FEED_PADRAO_REDE_URL`), path routing `/publicacoes/{id}`, controle duplo igual ao PWA (`config_modulos.publicacoes` no Corretor, migration `0012_modulo_publicacoes.sql`), menu principal do minisite (4.19), posts individuais no sitemap.xml (4.16), Service Worker network-only reaproveitado do PWA | 🟢 Concluído |
 | 17 | Backup/Exportação de Anúncios pelo Corretor | Endpoints em `api-anuncios.ts`: backup interno (schema próprio, só links de fotos) + restauração em modo seguro + exportação em formato de mercado (OLX JSON, Chaves na Mão XML) reaproveitando os mapeadores de 4.11 (4.20) | 🔲 Não iniciado |
 
 ---

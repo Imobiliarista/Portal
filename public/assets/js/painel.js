@@ -9,6 +9,7 @@ class PainelCorretor {
     this.cotasData = null;
     this.anunciosData = [];
     this.paginaAnuncios = 1;
+    this.publicacoesData = null;
 
     this.inicializar();
   }
@@ -27,8 +28,14 @@ class PainelCorretor {
     document.getElementById("nav-anuncios").addEventListener("click", () => this.mostrarAnuncios());
     document.getElementById("nav-novo-anuncio").addEventListener("click", () => this.mostrarFormAnuncio());
     document.getElementById("nav-portais").addEventListener("click", () => this.mostrarPortais());
+    document.getElementById("nav-publicacoes").addEventListener("click", () => this.mostrarPublicacoes());
     document.getElementById("nav-perfil").addEventListener("click", () => this.mostrarPerfil());
     document.getElementById("logout-btn").addEventListener("click", () => this.logout());
+
+    // Publicações — alterna disponibilidade do campo de URL conforme a fonte escolhida
+    document.getElementById("publicacoes-fonte-padrao").addEventListener("change", () => this.atualizarCampoFeedUrl());
+    document.getElementById("publicacoes-fonte-proprio").addEventListener("change", () => this.atualizarCampoFeedUrl());
+    document.getElementById("form-publicacoes").addEventListener("submit", (e) => this.enviarFormPublicacoes(e));
 
     // Formulário de anúncio
     document.getElementById("form-anuncio").addEventListener("submit", (e) => this.enviarFormAnuncio(e));
@@ -95,6 +102,7 @@ class PainelCorretor {
       "anuncios-view": "nav-anuncios",
       "form-anuncio-view": "nav-novo-anuncio",
       "portais-view": "nav-portais",
+      "publicacoes-view": "nav-publicacoes",
       "perfil-view": "nav-perfil",
     };
     const navId = navMapping[viewId];
@@ -129,6 +137,13 @@ class PainelCorretor {
     this.mostrarView("perfil-view");
     document.getElementById("page-title").textContent = "Meu Perfil";
     this.renderizarPerfil();
+  }
+
+  async mostrarPublicacoes() {
+    this.mostrarView("publicacoes-view");
+    document.getElementById("page-title").textContent = "Publicações";
+    await this.carregarPublicacoes();
+    this.renderizarPublicacoes();
   }
 
   // ========== Dashboard ==========
@@ -379,6 +394,76 @@ class PainelCorretor {
     } catch (erro) {
       console.error("Erro:", erro);
       alert("Erro ao atualizar perfil.");
+    }
+  }
+
+  // ========== Publicações (Lote 16) ==========
+
+  async carregarPublicacoes() {
+    try {
+      const res = await fetch("/painel/publicacoes");
+      if (!res.ok) throw new Error("Erro ao buscar configuração de Publicações");
+      this.publicacoesData = await res.json();
+    } catch (erro) {
+      console.error("Erro ao carregar Publicações:", erro);
+      this.publicacoesData = null;
+    }
+  }
+
+  renderizarPublicacoes() {
+    const bloqueado = document.getElementById("publicacoes-bloqueado");
+    const conteudo = document.getElementById("publicacoes-conteudo");
+
+    if (!this.publicacoesData || !this.publicacoesData.permitido_pelo_plano) {
+      bloqueado.classList.remove("hidden");
+      conteudo.classList.add("hidden");
+      return;
+    }
+
+    bloqueado.classList.add("hidden");
+    conteudo.classList.remove("hidden");
+
+    const { config } = this.publicacoesData;
+    document.getElementById("publicacoes-ativo").checked = !!config.ativo;
+    document.getElementById("publicacoes-fonte-padrao").checked = config.usarFeedPadrao;
+    document.getElementById("publicacoes-fonte-proprio").checked = !config.usarFeedPadrao;
+    document.getElementById("publicacoes-feed-url").value = config.feedUrl || "";
+
+    this.atualizarCampoFeedUrl();
+  }
+
+  atualizarCampoFeedUrl() {
+    const usaFeedProprio = document.getElementById("publicacoes-fonte-proprio").checked;
+    const campoUrl = document.getElementById("publicacoes-feed-url");
+    campoUrl.disabled = !usaFeedProprio;
+    if (!usaFeedProprio) campoUrl.value = "";
+  }
+
+  async enviarFormPublicacoes(e) {
+    e.preventDefault();
+
+    const usarFeedPadrao = document.getElementById("publicacoes-fonte-padrao").checked;
+
+    try {
+      const res = await fetch("/painel/publicacoes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ativo: document.getElementById("publicacoes-ativo").checked,
+          usarFeedPadrao,
+          feedUrl: usarFeedPadrao ? null : document.getElementById("publicacoes-feed-url").value,
+        }),
+      });
+
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao salvar configuração");
+
+      alert("Configuração de Publicações salva com sucesso!");
+      await this.carregarPublicacoes();
+      this.renderizarPublicacoes();
+    } catch (erro) {
+      console.error("Erro:", erro);
+      alert(erro.message || "Erro ao salvar configuração de Publicações.");
     }
   }
 

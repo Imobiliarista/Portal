@@ -22,6 +22,9 @@ export interface Env {
   FILA_ALTERACOES: Queue;
   AI: any; // Cloudflare Workers AI binding
   TURNSTILE_SECRET_KEY?: string;
+  // URL do Feed Padrão da Rede (Blogspot institucional, módulo Publicações
+  // — seção 4.19). Nunca hardcoded no código; ver src/modulos/publicacoes/logica.ts.
+  FEED_PADRAO_REDE_URL?: string;
 }
 
 function ehDominioRaiz(hostname: string): boolean {
