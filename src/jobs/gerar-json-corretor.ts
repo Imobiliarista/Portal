@@ -6,6 +6,7 @@ import { buscarCorrelorPorSlug } from "../db/queries-corretores";
 import { listarAnunciosDoCorretor } from "../db/queries-anuncios";
 import { escreverJSON } from "../lib/r2";
 import { estaModuloAtivo } from "../db/queries-modulos";
+import { sincronizarArtefatosPwaDoCorretor } from "../modulos/pwa/logica";
 
 interface MensagemGerarJsonCorretor {
   tipo: "gerar-json-corretor";
@@ -79,6 +80,10 @@ export async function processarGerarJsonCorretor(
 
     const caminho = `corretores/${corretor_slug}.json`;
     await escreverJSON(env.DADOS_CACHE, caminho, itens);
+
+    // Sincroniza manifest.json/service-worker.js do PWA com a elegibilidade
+    // atual (flag de rede + permite_pwa do plano — seção 4.18)
+    await sincronizarArtefatosPwaDoCorretor(env, corretor_slug);
 
     console.log(
       `✓ JSON do corretor "${corretor_slug}" gerado com ${itens.length} anúncios`,
