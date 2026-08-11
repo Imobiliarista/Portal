@@ -4,6 +4,7 @@
 
 import { Env } from "../index";
 import { buscarCorrelorPorSlug, estaMinisiteLiberado } from "../db/queries-corretores";
+import { ehRotaPublicacoes, rotaPublicacoes } from "../modulos/publicacoes/rota";
 
 function extrairSlugDoSubdominio(hostname: string): string | null {
   // Formato esperado: {slug}.imobiliarista.net
@@ -58,6 +59,12 @@ export async function rotasMinisite(
       status: 503, // Service Unavailable
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
+  }
+
+  // Módulo Publicações (Lote 16, seção 4.19) — path routing, /publicacoes
+  // e /publicacoes/{id-do-post}, tratado aqui conforme decisão fechada.
+  if (ehRotaPublicacoes(url.pathname)) {
+    return rotaPublicacoes(request, url, env);
   }
 
   // Minisite existe e está liberado

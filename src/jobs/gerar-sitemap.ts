@@ -9,6 +9,12 @@
 
 import { Env } from "../index";
 import { escreverJSON, deletarArquivo } from "../lib/r2";
+import {
+  buscarPostsDoFeed,
+  obterFeedPadraoRedeUrl,
+  resolverUrlFeed,
+  verificarElegibilidadePublicacoes,
+} from "../modulos/publicacoes/logica";
 
 interface MensagemGerarSitemap {
   tipo: "gerar-sitemap-portal";
@@ -218,8 +224,14 @@ export async function processarGerarSitemapCorretor(
 
     const anuncios_json = anuncios.results as any[];
 
+    // Posts individuais do módulo Publicações (Lote 16, seção 4.19) — têm
+    // URL própria indexável, entram no sitemap.xml do minisite (4.16).
+    // Único ponto em que o Worker lê o feed do Blogspot: geração em lote,
+    // nunca no fluxo de leitura do visitante (100% client-side).
+    const urlsPublicacoes = await gerarUrlsSitemapPublicacoes(env, corretor_slug);
+
     if (!anuncios_json || anuncios_json.length === 0) {
-      // Gerar sitemap vazio
+      // Gerar sitemap vazio (com posts de Publicações, se houver)
       const xmlVazio = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -228,7 +240,7 @@ export async function processarGerarSitemapCorretor(
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-</urlset>`;
+${urlsPublicacoes}</urlset>`;
 
       await env.DADOS_CACHE.put(
         `sitemaps/minisite-${corretor_slug}.xml`,
@@ -270,7 +282,7 @@ export async function processarGerarSitemapCorretor(
 `;
     }
 
-    xml += `</urlset>`;
+    xml += `${urlsPublicacoes}</urlset>`;
 
     await env.DADOS_CACHE.put(`sitemaps/minisite-${corretor_slug}.xml`, xml, {
       customMetadata: {
@@ -288,6 +300,43 @@ export async function processarGerarSitemapCorretor(
       erro,
     );
     throw erro;
+  }
+}
+
+// Busca os posts do feed de Publicações do corretor (próprio ou Feed
+// Padrão da Rede) e monta as entradas <url> de /publicacoes/{id} para o
+// sitemap do minisite. Retorna string vazia se o módulo não estiver
+// elegível ou se o feed estiver indisponível — nunca derruba a geração do
+// sitemap por causa de uma falha externa no Blogspot.
+async function gerarUrlsSitemapPublicacoes(env: Env, corretor_slug: string): Promise<string> {
+  try {
+    const elegibilidade = await verificarElegibilidadePublicacoes(
+      env.DB,
+      `${corretor_slug}.imobiliarista.net`,
+    );
+    if (!elegibilidade.elegivel) return "";
+
+    const feedUrl = resolverUrlFeed(elegibilidade.config, obterFeedPadraoRedeUrl(env));
+    const posts = await buscarPostsDoFeed(feedUrl);
+
+    return posts
+      .map((post) => {
+        const dataPublicacao = post.dataPublicacao
+          ? new Date(post.dataPublicacao).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0];
+
+        return `  <url>
+    <loc>https://${corretor_slug}.imobiliarista.net/publicacoes/${post.id}</loc>
+    <lastmod>${dataPublicacao}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+`;
+      })
+      .join("");
+  } catch (erro) {
+    console.error(`Erro ao gerar URLs de Publicações do corretor "${corretor_slug}" para o sitemap:`, erro);
+    return "";
   }
 }
 

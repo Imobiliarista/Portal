@@ -7,6 +7,11 @@ import { listarAnunciosDoCorretor } from "../db/queries-anuncios";
 import { escreverJSON } from "../lib/r2";
 import { estaModuloAtivo } from "../db/queries-modulos";
 import { sincronizarArtefatosPwaDoCorretor } from "../modulos/pwa/logica";
+import {
+  obterFeedPadraoRedeUrl,
+  resolverUrlFeed,
+  verificarElegibilidadePublicacoes,
+} from "../modulos/publicacoes/logica";
 
 interface MensagemGerarJsonCorretor {
   tipo: "gerar-json-corretor";
@@ -78,8 +83,28 @@ export async function processarGerarJsonCorretor(
         return item;
       });
 
+    // Elegibilidade do módulo Publicações (Lote 16, seção 4.19) — o JSON do
+    // corretor é a única fonte que o navegador consulta pra saber qual feed
+    // usar (fluxo 100% client-side, nunca via D1/R2/Worker na leitura do
+    // feed em si). Só inclui a chave quando elegível: ausência = módulo
+    // desativado/downgrade, item de menu some no client (4.19).
+    const elegibilidadePublicacoes = await verificarElegibilidadePublicacoes(
+      env.DB,
+      `${corretor_slug}.imobiliarista.net`,
+    );
+
+    const corpoJson: { listings: AnuncioCorretorItem[]; publicacoes?: { feedUrl: string } } = {
+      listings: itens,
+    };
+
+    if (elegibilidadePublicacoes.elegivel) {
+      corpoJson.publicacoes = {
+        feedUrl: resolverUrlFeed(elegibilidadePublicacoes.config, obterFeedPadraoRedeUrl(env)),
+      };
+    }
+
     const caminho = `corretores/${corretor_slug}.json`;
-    await escreverJSON(env.DADOS_CACHE, caminho, itens);
+    await escreverJSON(env.DADOS_CACHE, caminho, corpoJson);
 
     // Sincroniza manifest.json/service-worker.js do PWA com a elegibilidade
     // atual (flag de rede + permite_pwa do plano — seção 4.18)

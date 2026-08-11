@@ -52,3 +52,9 @@ zone_name = "imobiliarista.net"
 # Executa todo dia 1º de cada mês às 00:00 UTC
 [triggers]
 crons = ["0 0 1 * *"]
+
+# Variáveis públicas (não sensíveis — para segredos, usar `wrangler secret put`)
+# Feed Padrão da Rede — módulo Publicações (Lote 16, seção 4.19). Substituir
+# pela URL real do blog institucional do Blogspot quando ele for criado.
+[vars]
+FEED_PADRAO_REDE_URL = "https://exemplo-substituir.blogspot.com/feeds/posts/default"

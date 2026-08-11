@@ -6,6 +6,12 @@ import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoDoCo
 import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
 import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
 import { rotaAgendamentoVisita } from "../modulos/agendamento-visita/rota";
+import { estaModuloAtivo } from "../db/queries-modulos";
+import {
+  buscarConfigPublicacoesDoCorretor,
+  salvarConfigPublicacoesDoCorretor,
+  validarConfigPublicacoes,
+} from "../modulos/publicacoes/logica";
 
 // ========== Auxiliares ==========
 
@@ -234,6 +240,64 @@ async function rotaPainelCotasPortalAtualizar(request: Request, env: Env): Promi
   }
 }
 
+// ========== Rota: GET /painel/publicacoes ==========
+// Controle duplo do módulo Publicações (Lote 16, seção 4.19)
+
+async function rotaPainelPublicacoes(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const plano = await buscarPlanoDoCorretor(env.DB, corretor_id);
+    const moduloAtivoNaRede = await estaModuloAtivo(env.DB, "publicacoes");
+    const config = await buscarConfigPublicacoesDoCorretor(env.DB, corretor_id);
+
+    return respostaSucesso({
+      permitido_pelo_plano: !!plano?.permite_publicacoes,
+      modulo_ativo_na_rede: moduloAtivoNaRede,
+      config,
+    });
+  } catch (erro) {
+    console.error("Erro ao buscar configuração de Publicações:", erro);
+    return respostaErro("Erro ao buscar configuração de Publicações", 500);
+  }
+}
+
+// ========== Rota: PUT /painel/publicacoes ==========
+
+async function rotaPainelPublicacoesAtualizar(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const plano = await buscarPlanoDoCorretor(env.DB, corretor_id);
+    if (!plano?.permite_publicacoes) {
+      return respostaErro("Seu plano atual não inclui o módulo Publicações", 403);
+    }
+
+    const corpo = (await request.json()) as any;
+    const dados = {
+      ativo: corpo.ativo === true,
+      usarFeedPadrao: corpo.usarFeedPadrao !== false,
+      feedUrl: typeof corpo.feedUrl === "string" ? corpo.feedUrl : null,
+    };
+
+    const validacao = validarConfigPublicacoes(dados);
+    if (!validacao.valido) return respostaErro(validacao.mensagem);
+
+    await salvarConfigPublicacoesDoCorretor(env.DB, corretor_id, dados);
+
+    return respostaSucesso({ mensagem: "Configuração de Publicações atualizada com sucesso" });
+  } catch (erro) {
+    console.error("Erro ao atualizar configuração de Publicações:", erro);
+    return respostaErro("Erro ao atualizar configuração de Publicações", 500);
+  }
+}
+
 // ========== Roteador principal ==========
 
 export async function rotasPainelCorretor(request: Request, env: Env): Promise<Response> {
@@ -269,6 +333,15 @@ export async function rotasPainelCorretor(request: Request, env: Env): Promise<R
 
   if (pathname === "/painel/cotas-portal" && request.method === "PUT") {
     return rotaPainelCotasPortalAtualizar(request, env);
+  }
+
+  // Módulo Publicações (Lote 16, seção 4.19)
+  if (pathname === "/painel/publicacoes" && request.method === "GET") {
+    return rotaPainelPublicacoes(request, env);
+  }
+
+  if (pathname === "/painel/publicacoes" && request.method === "PUT") {
+    return rotaPainelPublicacoesAtualizar(request, env);
   }
 
   // Rotas de agendamento de visita (Lote 12.7)
