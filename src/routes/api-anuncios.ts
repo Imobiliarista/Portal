@@ -1,10 +1,11 @@
 // Roteador principal de endpoints de anúncios
-// Delega para submódulos: api-anuncios-crud.ts e api-anuncios-listagem.ts
-// Conforme seção 6 e 4.11 do project.md
+// Delega para submódulos: api-anuncios-crud.ts, api-anuncios-listagem.ts e api-anuncios-backup.ts
+// Conforme seção 6, 4.11 e 4.20 do project.md
 
 import { Env } from "../index";
 import { rotasAnunciosCrud } from "./api-anuncios-crud";
 import { rotasAnunciosListagem } from "./api-anuncios-listagem";
+import { rotasAnunciosBackup } from "./api-anuncios-backup";
 
 // ========== Roteador principal ==========
 
@@ -15,6 +16,15 @@ export async function rotasAnuncios(request: Request, env: Env): Promise<Respons
   // Delega rotas de listagem
   if (caminho === "/api/anuncios") {
     return rotasAnunciosListagem(request, env);
+  }
+
+  // Delega rotas de backup/restauração/exportação (Lote 17, seção 4.20)
+  if (
+    caminho === "/api/anuncios/backup" ||
+    caminho === "/api/anuncios/restaurar" ||
+    caminho.match(/^\/api\/anuncios\/exportar\/[a-z0-9-]+$/)
+  ) {
+    return rotasAnunciosBackup(request, env);
   }
 
   // Delega rotas de CRUD (criar, obter, editar, deletar)
