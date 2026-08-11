@@ -12,6 +12,7 @@ import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { rotaPwa } from "./modulos/pwa/rota";
+import { rotasAnuncios } from "./routes/api-anuncios";
 import { processarFilaAlteracoes } from "./queue";
 import { handleScheduled } from "./scheduled";
 
@@ -107,6 +108,13 @@ export default {
     // Roteador de autenticação — independente do hostname
     if (url.pathname.startsWith("/api/auth/")) {
       return rotasAuth(request, env);
+    }
+
+    // Roteador de anúncios (CRUD, listagem, backup/restauração/exportação) —
+    // independente do hostname, painel do corretor. Corrige lacuna
+    // pré-existente: esta rota nunca havia sido montada aqui (Lote 5).
+    if (url.pathname.startsWith("/api/anuncios")) {
+      return rotasAnuncios(request, env);
     }
 
     // Roteador do painel do corretor — domínio raiz apenas

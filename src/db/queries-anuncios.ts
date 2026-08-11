@@ -245,6 +245,60 @@ export async function marcarVendidoRemovido(db: D1Database, id: number): Promise
   }
 }
 
+// ========== Restauração de Backup (Lote 17, seção 4.20) ==========
+
+// Recria um anúncio a partir do JSON de backup, preservando o ID original
+// (identificador imutável — seção 4.11). Só deve ser chamada para IDs que
+// o chamador já confirmou não existirem (modo seguro, checagem por ID feita
+// em routes/api-anuncios-backup.ts antes de gravar).
+export async function restaurarAnuncioComId(db: D1Database, anuncio: Anuncio): Promise<void> {
+  const agora = new Date().toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO anuncios (
+        id, corretor_id, titulo, descricao, preco_venda, preco_aluguel,
+        tipo_negocio_id, categoria_imovel_id, tipo_imovel_id,
+        cidade_id, bairro, endereco_completo, exibir_endereco_completo,
+        area_total, area_util, quartos, banheiros, vagas_garagem, cozinhas, lavanderias,
+        fotos_json, video_youtube_id, tour_360_url,
+        postar_na_rede, vendido_removido, slug,
+        criado_em, atualizado_em
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      anuncio.id,
+      anuncio.corretor_id,
+      anuncio.titulo,
+      anuncio.descricao || null,
+      anuncio.preco_venda || null,
+      anuncio.preco_aluguel || null,
+      anuncio.tipo_negocio_id,
+      anuncio.categoria_imovel_id,
+      anuncio.tipo_imovel_id,
+      anuncio.cidade_id,
+      anuncio.bairro || null,
+      anuncio.endereco_completo || null,
+      anuncio.exibir_endereco_completo ? 1 : 0,
+      anuncio.area_total || null,
+      anuncio.area_util || null,
+      anuncio.quartos || null,
+      anuncio.banheiros || null,
+      anuncio.vagas_garagem || null,
+      anuncio.cozinhas || null,
+      anuncio.lavanderias || null,
+      anuncio.fotos_json || null,
+      anuncio.video_youtube_id || null,
+      anuncio.tour_360_url || null,
+      anuncio.postar_na_rede ? 1 : 0,
+      anuncio.vendido_removido ? 1 : 0,
+      anuncio.slug,
+      anuncio.criado_em || agora,
+      agora
+    )
+    .run();
+}
+
 // ========== DELETE ==========
 
 // Deleta anúncio (raro — normalmente usa vendido_removido)
