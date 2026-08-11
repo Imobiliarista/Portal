@@ -47,6 +47,7 @@ async function fetchBrokerListings(brokerSlug) {
 
     const data = await response.json();
     appState.allListings = data.listings || data;
+    appState.modulosAtivos = data.modulosAtivos || {};
     CONFIG.brokerCache[brokerSlug] = appState.allListings;
   } catch (error) {
     console.error('Erro ao buscar anúncios do corretor:', error);

@@ -44,6 +44,18 @@ export async function processarGerarJsonCorretor(
     const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
     const moduloTour360Ativo = await estaModuloAtivo(env.DB, "tour-360");
 
+    // Módulos client-side puros (sem rota HTTP própria, sem controle por
+    // plano — só flag de rede, seção 4.2.1): calculadora de financiamento
+    // e comparação de anúncios. Diferente de vídeo/tour 360 (que ligam/
+    // desligam um campo por anúncio), aqui o widget inteiro liga/desliga,
+    // então o flag vai num campo à parte (`modulosAtivos`) em vez de por
+    // item. Checado na geração em lote, mesmo padrão de PWA/Publicações
+    // (ver src/modulos/pwa/logica.ts) — não em tempo de requisição, pois
+    // portal.ts/minisite.ts servem o shell da SPA via Workers Static
+    // Assets e não devem processar nada por visita humana (seção 4.6).
+    const moduloCalculadoraAtivo = await estaModuloAtivo(env.DB, "calculadora-financiamento");
+    const moduloComparacaoAtivo = await estaModuloAtivo(env.DB, "comparacao-anuncios");
+
     const resultado = await buscarCorrelorPorSlug(env.DB, corretor_slug);
     if (!resultado) {
       console.error(`Corretor com slug "${corretor_slug}" não encontrado`);
@@ -93,8 +105,16 @@ export async function processarGerarJsonCorretor(
       `${corretor_slug}.imobiliarista.net`,
     );
 
-    const corpoJson: { listings: AnuncioCorretorItem[]; publicacoes?: { feedUrl: string } } = {
+    const corpoJson: {
+      listings: AnuncioCorretorItem[];
+      publicacoes?: { feedUrl: string };
+      modulosAtivos: { calculadoraFinanceira: boolean; comparacaoAnuncios: boolean };
+    } = {
       listings: itens,
+      modulosAtivos: {
+        calculadoraFinanceira: moduloCalculadoraAtivo,
+        comparacaoAnuncios: moduloComparacaoAtivo,
+      },
     };
 
     if (elegibilidadePublicacoes.elegivel) {
