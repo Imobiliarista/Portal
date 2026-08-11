@@ -3,7 +3,7 @@
 
 -- Adiciona coluna de salt (se não existir)
 -- SQLite não suporta ALTER COLUMN, então usamos uma abordagem de coluna nova
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS senha_salt TEXT;
+ALTER TABLE corretores ADD COLUMN senha_salt TEXT;
 
 -- Tabela para tokens de redefinição de senha
 CREATE TABLE IF NOT EXISTS reset_tokens_senha (

@@ -17,16 +17,23 @@
   let selecionadosParaComparacao = [];
 
   /**
-   * Verifica se o módulo está ativo consultando o data attribute
-   * Fallback para desenvolvimento: verifica query parameter ou sessionStorage
+   * Verifica se o módulo está ativo (flag de rede, seção 4.2.1).
+   * Fonte de verdade: appState.modulosAtivos.comparacaoAnuncios,
+   * preenchido por fetchBrokerListings() (app-dados.js) a partir do campo
+   * `modulosAtivos` de corretores/{slug}.json — checado na geração em
+   * lote (jobs/gerar-json-corretor.ts), mesmo padrão de PWA/Publicações.
+   * Fallback de desenvolvimento (query param / sessionStorage) só entra
+   * em jogo se corretor.json ainda não foi buscado nesta página — o que
+   * inclui páginas de listagem por CIDADE (fetchCityListings), que ainda
+   * não carregam esse campo (ver nota no Histórico de Decisões).
    */
   function estaModuloAtivo() {
-    // Primeiro: verificar data attribute no HTML (via Worker)
-    const html = document.documentElement;
-    const modulosAtivos = html.getAttribute('data-modulos-ativos');
-    if (modulosAtivos) {
-      const modulos = modulosAtivos.split(',').map(m => m.trim());
-      return modulos.includes(MODULO_NOME);
+    if (
+      typeof appState !== 'undefined' &&
+      appState.modulosAtivos &&
+      typeof appState.modulosAtivos.comparacaoAnuncios !== 'undefined'
+    ) {
+      return !!appState.modulosAtivos.comparacaoAnuncios;
     }
 
     // Fallback para desenvolvimento: query parameter ?modulos=comparacao-anuncios

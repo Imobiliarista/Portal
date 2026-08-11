@@ -22,6 +22,12 @@ let appState = {
   filteredListings: [],
   currentPage: 1,
   favorites: JSON.parse(localStorage.getItem('favorites') || '[]'),
+  // Preenchido por fetchBrokerListings() (app-dados.js) a partir do campo
+  // `modulosAtivos` de corretores/{slug}.json — módulos client-side puros
+  // sem rota HTTP própria (calculadora de financiamento, comparação de
+  // anúncios) checam a flag de rede aqui em vez de assumir que estão
+  // sempre ativos. Ver Histórico de Decisões, project.md seção 11.
+  modulosAtivos: {},
 };
 
 // ============================================================

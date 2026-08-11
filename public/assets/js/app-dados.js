@@ -11,10 +11,12 @@ async function fetchCityListings(citySlug) {
 
     if (!indexResponse.ok) {
       appState.allListings = [];
+      appState.modulosAtivos = {};
       return;
     }
 
     const index = await indexResponse.json();
+    appState.modulosAtivos = index.modulosAtivos || {};
     const files = index.files || [`${citySlug}.json`];
 
     let allListings = [];
@@ -47,6 +49,7 @@ async function fetchBrokerListings(brokerSlug) {
 
     const data = await response.json();
     appState.allListings = data.listings || data;
+    appState.modulosAtivos = data.modulosAtivos || {};
     CONFIG.brokerCache[brokerSlug] = appState.allListings;
   } catch (error) {
     console.error('Erro ao buscar anúncios do corretor:', error);

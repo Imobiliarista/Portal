@@ -9,14 +9,21 @@
   const TAXA_PADRAO_ANUAL = 10.5; // Taxa média de mercado em %
 
   /**
-   * Verifica se o módulo está ativo consultando o data attribute
+   * Verifica se o módulo está ativo (flag de rede, seção 4.2.1).
+   * Fonte de verdade: appState.modulosAtivos.calculadoraFinanceira,
+   * preenchido por fetchBrokerListings() (app-dados.js) a partir do campo
+   * `modulosAtivos` de corretores/{slug}.json — checado na geração em
+   * lote (jobs/gerar-json-corretor.ts), mesmo padrão de PWA/Publicações.
+   * Fallback de desenvolvimento (query param / sessionStorage) só entra
+   * em jogo se corretor.json ainda não foi buscado nesta página.
    */
   function estaModuloAtivo() {
-    const html = document.documentElement;
-    const modulosAtivos = html.getAttribute('data-modulos-ativos');
-    if (modulosAtivos) {
-      const modulos = modulosAtivos.split(',').map((m) => m.trim());
-      return modulos.includes(MODULO_NOME);
+    if (
+      typeof appState !== 'undefined' &&
+      appState.modulosAtivos &&
+      typeof appState.modulosAtivos.calculadoraFinanceira !== 'undefined'
+    ) {
+      return !!appState.modulosAtivos.calculadoraFinanceira;
     }
 
     const params = new URLSearchParams(window.location.search);

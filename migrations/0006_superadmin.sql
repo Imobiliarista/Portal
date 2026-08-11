@@ -2,7 +2,7 @@
 -- Adiciona papel/role aos corretores e tabelas de 2FA
 
 -- Adiciona coluna de papel (padrão: 'corretor', alguns podem ser 'superadmin')
-ALTER TABLE corretores ADD COLUMN IF NOT EXISTS papel TEXT DEFAULT 'corretor';
+ALTER TABLE corretores ADD COLUMN papel TEXT DEFAULT 'corretor';
 
 -- Tabela para 2FA (TOTP via authenticator app)
 CREATE TABLE IF NOT EXISTS dois_fa_totp (
