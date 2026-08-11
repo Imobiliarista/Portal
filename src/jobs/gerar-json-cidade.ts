@@ -33,6 +33,7 @@ interface IndiceCidade {
     nivel: string;
     arquivos: string[];
   };
+  modulosAtivos: { calculadoraFinanceira: boolean; comparacaoAnuncios: boolean };
 }
 
 const LIMITE_TAMANHO_COMPRIMIDO = 1024 * 1024;
@@ -47,6 +48,19 @@ export async function processarGerarJsonCidade(
     // Verifica se os módulos estão ativos
     const moduloVideoAtivo = await estaModuloAtivo(env.DB, "video-youtube");
     const moduloTour360Ativo = await estaModuloAtivo(env.DB, "tour-360");
+
+    // Módulos client-side puros (calculadora de financiamento, comparação
+    // de anúncios — seção 2.1): só flag de rede, nunca por plano do
+    // corretor. Igual ao mesmo campo em jobs/gerar-json-corretor.ts, mas
+    // aqui só pode ser a flag de REDE — o JSON de cidade é agregado entre
+    // vários corretores (4.4.1), então não existe "plano do corretor"
+    // único pra aplicar dentro dele.
+    const moduloCalculadoraAtivo = await estaModuloAtivo(env.DB, "calculadora-financiamento");
+    const moduloComparacaoAtivo = await estaModuloAtivo(env.DB, "comparacao-anuncios");
+    const modulosAtivos = {
+      calculadoraFinanceira: moduloCalculadoraAtivo,
+      comparacaoAnuncios: moduloComparacaoAtivo,
+    };
 
     let sqlSelect = `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel,
                 a.quartos, a.banheiros, a.area_util, a.bairro,
@@ -69,6 +83,7 @@ export async function processarGerarJsonCidade(
       await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}/_index.json`, {
         last_updated: new Date().toISOString(),
         total_anuncios: 0,
+        modulosAtivos,
       } as IndiceCidade);
       return;
     }
@@ -108,6 +123,7 @@ export async function processarGerarJsonCidade(
       await escreverJSON(env.DADOS_CACHE, `cidades/${cidade_slug}/_index.json`, {
         last_updated: new Date().toISOString(),
         total_anuncios: items.length,
+        modulosAtivos,
       } as IndiceCidade);
 
       console.log(
@@ -160,6 +176,7 @@ export async function processarGerarJsonCidade(
         nivel: "bairro",
         arquivos,
       },
+      modulosAtivos,
     } as IndiceCidade);
 
     console.log(

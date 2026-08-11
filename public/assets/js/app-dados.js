@@ -11,10 +11,12 @@ async function fetchCityListings(citySlug) {
 
     if (!indexResponse.ok) {
       appState.allListings = [];
+      appState.modulosAtivos = {};
       return;
     }
 
     const index = await indexResponse.json();
+    appState.modulosAtivos = index.modulosAtivos || {};
     const files = index.files || [`${citySlug}.json`];
 
     let allListings = [];
