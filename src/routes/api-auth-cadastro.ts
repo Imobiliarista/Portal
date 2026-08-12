@@ -8,7 +8,8 @@ import { validarCPF, normalizarCPF } from "../lib/cpf";
 const VERSAO_TERMOS_ATUAL = "1.0.0";
 
 // Valida token do Cloudflare Turnstile
-async function validarTurnstile(token: string, env: Env): Promise<boolean> {
+// Endpoint oficial (siteverify): https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+async function validarTurnstile(token: string, env: Env, remoteip?: string): Promise<boolean> {
   try {
     const secretKey = (env as any).TURNSTILE_SECRET_KEY;
     if (!secretKey) {
@@ -16,20 +17,25 @@ async function validarTurnstile(token: string, env: Env): Promise<boolean> {
       return false;
     }
 
-    const response = await fetch("https://challenges.cloudflare.com/turnstile/validate", {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         secret: secretKey,
         response: token,
+        remoteip,
       }),
     });
 
     if (!response.ok) return false;
 
-    const resultado = await response.json() as { success: boolean };
+    const resultado = await response.json() as { success: boolean; "error-codes"?: string[] };
+    if (!resultado.success) {
+      console.warn("Validação Turnstile recusada:", resultado["error-codes"]);
+    }
     return resultado.success === true;
-  } catch {
+  } catch (erro) {
+    console.error("Erro ao validar Turnstile:", erro);
     return false;
   }
 }
@@ -141,7 +147,8 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       });
     }
 
-    if (!await validarTurnstile(dados.turnstile_token, env)) {
+    const ipCliente = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || undefined;
+    if (!await validarTurnstile(dados.turnstile_token, env, ipCliente)) {
       return new Response(JSON.stringify({ erro: "Validação Turnstile falhou" }), {
         status: 400,
         headers: { "content-type": "application/json" },
