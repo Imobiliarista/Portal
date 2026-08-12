@@ -233,9 +233,17 @@ export async function trocarPlanoDoCorretor(
       return { permitido: false, mensagem: "Plano inválido ou inativo" };
     }
 
-    // Upgrade (ou primeira atribuição de plano) é sempre permitido
+    // Upgrade (ou primeira atribuição de plano) é sempre permitido. "É
+    // downgrade?" é decidido pelos limites reais que a verificação abaixo
+    // protege (max_anuncios/max_fotos_por_anuncio) — não pelo preço: como
+    // todos os campos do Plano são editáveis independentemente pelo
+    // Superadmin (seção 6.3), um plano mais barato poderia ter limites
+    // maiores, e nesse caso não há risco de estourar limite algum.
     const planoAtual = corretor.plano_id ? await buscarPlano(db, corretor.plano_id) : null;
-    const ehDowngrade = planoAtual ? planoNovo.preco_mensalidade < planoAtual.preco_mensalidade : false;
+    const ehDowngrade = planoAtual
+      ? planoNovo.max_anuncios < planoAtual.max_anuncios ||
+        planoNovo.max_fotos_por_anuncio < planoAtual.max_fotos_por_anuncio
+      : false;
 
     if (ehDowngrade) {
       const verificacao = await verificarLimitesParaTrocaPlano(db, corretor_id, planoNovo);
