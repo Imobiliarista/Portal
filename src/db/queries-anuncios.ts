@@ -162,6 +162,11 @@ export async function atualizarAnuncio(
     const valores: any[] = [];
 
     // Mapeia apenas campos que foram passados
+    // "slug" fica na whitelist pra permitir a correção pós-criação (troca
+    // do slug provisório "-0" pelo definitivo "-{id}", ver
+    // routes/api-anuncios-crud.ts::handleCriarAnuncio) — handleEditarAnuncio
+    // nunca repassa `dados.slug` do corpo da requisição do cliente, então
+    // isso não abre edição de slug via PUT direto do corretor.
     const campos_editaveis = [
       "titulo",
       "descricao",
@@ -182,6 +187,7 @@ export async function atualizarAnuncio(
       "tour_360_url",
       "postar_na_rede",
       "vendido_removido",
+      "slug",
     ];
 
     for (const campo of campos_editaveis) {

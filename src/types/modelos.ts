@@ -201,6 +201,7 @@ export interface Anuncio {
 // ========== Pré-Cadastros ==========
 export interface PreCadastro {
   id: number;
+  corretor_id?: number; // Vínculo com o corretor já criado no pré-cadastro (migration 0014)
   nome: string;
   email: string;
   telefone: string;

@@ -12,9 +12,11 @@ import { rotasAnunciosBackup } from "./api-anuncios-backup";
 export async function rotasAnuncios(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const caminho = url.pathname;
+  const metodo = request.method;
 
-  // Delega rotas de listagem
-  if (caminho === "/api/anuncios") {
+  // Delega rotas de listagem — só GET; sem a checagem de método, um POST
+  // (criar anúncio) caía aqui primeiro e nunca chegava no roteador de CRUD.
+  if (caminho === "/api/anuncios" && metodo === "GET") {
     return rotasAnunciosListagem(request, env);
   }
 

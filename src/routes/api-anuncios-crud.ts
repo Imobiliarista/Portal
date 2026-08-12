@@ -220,6 +220,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
           env.FILA_ALTERACOES,
           anuncioId,
           minisite.slug,
+          dados.cidade_id,
           cidadeSlug,
         );
       }
@@ -386,6 +387,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
             env.FILA_ALTERACOES,
             id,
             minisite.slug,
+            anuncio.cidade_id,
             cidadeSlug,
           );
         }
@@ -421,6 +423,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
             env.FILA_ALTERACOES,
             id,
             minisite.slug,
+            anuncio.cidade_id,
             cidadeSlug,
           );
         }
@@ -505,6 +508,7 @@ async function handleDeletarAnuncio(request: Request, env: Env): Promise<Respons
           env.FILA_ALTERACOES,
           id,
           minisite.slug,
+          anuncio.cidade_id,
           cidadeSlug,
         );
       }

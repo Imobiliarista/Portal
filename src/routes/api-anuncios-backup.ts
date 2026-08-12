@@ -63,7 +63,7 @@ async function enfileirarRevalidacao(env: Env, anuncioId: number, corretorId: nu
         .replace(/[̀-ͯ]/g, "")
         .replace(/[^\w\s-]/g, "")
         .replace(/\s+/g, "-");
-      await dispararRevalidacaoCruzada(env.FILA_ALTERACOES, anuncioId, minisite.slug, cidadeSlug);
+      await dispararRevalidacaoCruzada(env.FILA_ALTERACOES, anuncioId, minisite.slug, cidadeId, cidadeSlug);
     }
   } catch (erroFila) {
     console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);

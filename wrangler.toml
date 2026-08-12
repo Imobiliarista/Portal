@@ -37,6 +37,14 @@ queue = "imob-queue"
 queue = "imob-queue"
 max_batch_size = 10
 max_batch_timeout = 30
+# Limita retentativas por mensagem — sem isso, uma mensagem que nunca
+# consegue processar (payload inconsistente, bug no handler) fica
+# retentando pra sempre, consumindo cota sem necessidade (seção 4.9/4.10).
+# Esgotado o limite, a mensagem vai pra `dead_letter_queue` em vez de
+# sumir ou loopar. A fila "imob-queue-dlq" precisa existir antes do
+# deploy: `wrangler queues create imob-queue-dlq`.
+max_retries = 5
+dead_letter_queue = "imob-queue-dlq"
 
 # Rotas — DECISÃO FECHADA (seção 4.3): duas rotas, não uma. O wildcard
 # não cobre o domínio raiz puro.

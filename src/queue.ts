@@ -59,6 +59,11 @@ export async function processarFilaAlteracoes(
         `❌ Erro ao processar mensagem do tipo "${msg.tipo}":`,
         erro,
       );
+      // Retry explícito até `max_retries` (wrangler.toml); esgotado o
+      // limite, a Queue move a mensagem pra `dead_letter_queue` em vez de
+      // retentar pra sempre (seção 4.9/4.10 — não consumir cota à toa com
+      // uma mensagem que nunca vai processar).
+      message.retry();
     }
   }
 

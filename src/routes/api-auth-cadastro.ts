@@ -3,11 +3,13 @@
 
 import { Env } from "../index";
 import { hashSenha } from "../lib/senha";
+import { validarCPF, normalizarCPF } from "../lib/cpf";
 
 const VERSAO_TERMOS_ATUAL = "1.0.0";
 
 // Valida token do Cloudflare Turnstile
-async function validarTurnstile(token: string, env: Env): Promise<boolean> {
+// Endpoint oficial (siteverify): https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+async function validarTurnstile(token: string, env: Env, remoteip?: string): Promise<boolean> {
   try {
     const secretKey = (env as any).TURNSTILE_SECRET_KEY;
     if (!secretKey) {
@@ -15,20 +17,25 @@ async function validarTurnstile(token: string, env: Env): Promise<boolean> {
       return false;
     }
 
-    const response = await fetch("https://challenges.cloudflare.com/turnstile/validate", {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         secret: secretKey,
         response: token,
+        remoteip,
       }),
     });
 
     if (!response.ok) return false;
 
-    const resultado = await response.json() as { success: boolean };
+    const resultado = await response.json() as { success: boolean; "error-codes"?: string[] };
+    if (!resultado.success) {
+      console.warn("Validação Turnstile recusada:", resultado["error-codes"]);
+    }
     return resultado.success === true;
-  } catch {
+  } catch (erro) {
+    console.error("Erro ao validar Turnstile:", erro);
     return false;
   }
 }
@@ -45,6 +52,12 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       senha: string;
       turnstile_token: string;
       aceita_termos: boolean;
+      cpf: string;
+      nome_usuario: string;
+      sexo: string;
+      data_nascimento: string;
+      nacionalidade: string;
+      endereco_residencial: string;
     };
 
     if (!dados.nome?.trim()) {
@@ -89,7 +102,53 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       });
     }
 
-    if (!await validarTurnstile(dados.turnstile_token, env)) {
+    // Campos de identidade civil/profissional — imutáveis após o cadastro
+    // (seção 6.1.1 do project.md): preenchidos aqui, travados dali em diante.
+    const cpfNormalizado = normalizarCPF(dados.cpf || "");
+    if (!validarCPF(cpfNormalizado)) {
+      return new Response(JSON.stringify({ erro: "CPF inválido" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (!dados.nome_usuario?.trim() || dados.nome_usuario.trim().length < 3) {
+      return new Response(JSON.stringify({ erro: "Nome de usuário deve ter no mínimo 3 caracteres" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (!dados.sexo?.trim()) {
+      return new Response(JSON.stringify({ erro: "Sexo é obrigatório" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (!dados.data_nascimento?.trim() || isNaN(Date.parse(dados.data_nascimento))) {
+      return new Response(JSON.stringify({ erro: "Data de nascimento inválida" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (!dados.nacionalidade?.trim()) {
+      return new Response(JSON.stringify({ erro: "Nacionalidade é obrigatória" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (!dados.endereco_residencial?.trim()) {
+      return new Response(JSON.stringify({ erro: "Endereço residencial é obrigatório" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const ipCliente = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || undefined;
+    if (!await validarTurnstile(dados.turnstile_token, env, ipCliente)) {
       return new Response(JSON.stringify({ erro: "Validação Turnstile falhou" }), {
         status: 400,
         headers: { "content-type": "application/json" },
@@ -107,22 +166,62 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       });
     }
 
+    const verificaCpf = await env.DB.prepare(
+      "SELECT id FROM corretores WHERE cpf = ?"
+    ).bind(cpfNormalizado).first();
+
+    if (verificaCpf) {
+      return new Response(JSON.stringify({ erro: "CPF já cadastrado" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const verificaUsuario = await env.DB.prepare(
+      "SELECT id FROM corretores WHERE nome_usuario = ?"
+    ).bind(dados.nome_usuario.trim()).first();
+
+    if (verificaUsuario) {
+      return new Response(JSON.stringify({ erro: "Nome de usuário já cadastrado" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const verificaCreci = await env.DB.prepare(
+      "SELECT id FROM corretores WHERE creci = ?"
+    ).bind(dados.creci.trim()).first();
+
+    if (verificaCreci) {
+      return new Response(JSON.stringify({ erro: "CRECI já cadastrado" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const { hash: senhaHash, salt: senhaSalt } = await hashSenha(dados.senha);
     const agora = new Date().toISOString();
 
     const insertCorretor = await env.DB.prepare(
       `INSERT INTO corretores (
-        nome_completo, email, telefone, creci,
-        senha_hash, senha_salt,
+        nome_completo, sexo, data_nascimento, nacionalidade, cpf, creci,
+        nome_usuario, senha_hash, senha_salt,
+        endereco_residencial, telefone, email,
         status, criado_em, atualizado_em
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       dados.nome.trim(),
-      dados.email.toLowerCase(),
-      dados.telefone.trim(),
+      dados.sexo.trim(),
+      dados.data_nascimento.trim(),
+      dados.nacionalidade.trim(),
+      cpfNormalizado,
       dados.creci.trim(),
+      dados.nome_usuario.trim(),
       senhaHash,
       senhaSalt,
+      dados.endereco_residencial.trim(),
+      dados.telefone.trim(),
+      dados.email.toLowerCase(),
       "pre-cadastro",
       agora,
       agora
@@ -130,13 +229,17 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
 
     const corretorId = (insertCorretor.meta.last_row_id);
 
+    // `corretor_id` vincula este pré-cadastro à conta já criada acima —
+    // usado por queries-superadmin.ts::aprovarPreCadastro pra PROMOVER o
+    // mesmo registro (nunca criar um corretor duplicado na aprovação).
     await env.DB.prepare(
       `INSERT INTO pre_cadastros (
-        nome, email, telefone, creci,
+        corretor_id, nome, email, telefone, creci,
         aceite_termos_em, versao_termos_aceita,
         status, criado_em, atualizado_em
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
+      corretorId,
       dados.nome.trim(),
       dados.email.toLowerCase(),
       dados.telefone.trim(),
