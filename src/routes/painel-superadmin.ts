@@ -68,12 +68,18 @@ async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): P
   if (request.method !== "POST") return respostaErro("Método não permitido", 405);
 
   try {
-    const body = await request.json() as { slug_minisite: string };
-    if (!body.slug_minisite?.trim()) {
-      return respostaErro("slug_minisite é obrigatório");
+    // O minisite já existe (criado offline no pré-cadastro, com slug
+    // auto-gerado a partir do nome) — slug_minisite aqui é opcional,
+    // só usado se o Superadmin quiser sobrescrever o slug na aprovação.
+    let slugMinisite: string | undefined;
+    try {
+      const body = await request.json() as { slug_minisite?: string };
+      slugMinisite = body?.slug_minisite?.trim() || undefined;
+    } catch {
+      slugMinisite = undefined;
     }
 
-    const sucesso = await aprovarPreCadastro(env.DB, id, body.slug_minisite.trim());
+    const sucesso = await aprovarPreCadastro(env.DB, id, slugMinisite);
     if (!sucesso) return respostaErro("Erro ao aprovar pré-cadastro", 500);
 
     return respostaSucesso({ mensagem: "Pré-cadastro aprovado com sucesso" });

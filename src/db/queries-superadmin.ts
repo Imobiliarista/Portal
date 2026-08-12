@@ -52,13 +52,19 @@ export async function buscarPreCadastro(db: D1Database, id: number): Promise<Pre
   }
 }
 
-// Aprova um pré-cadastro (cria conta e minisite)
-export async function aprovarPreCadastro(db: D1Database, precadastro_id: number, slug_minisite: string): Promise<boolean> {
+// Aprova um pré-cadastro — PROMOVE o corretor já criado no pré-cadastro
+// (nunca cria uma conta nova: senha_hash/senha_salt/cpf/nome_usuario
+// definidos pelo próprio corretor no formulário público precisam
+// continuar valendo pro login dele depois de aprovado). O vínculo vem de
+// `pre_cadastros.corretor_id` (migration 0014) — sem isso, não há como
+// saber qual corretor promover.
+export async function aprovarPreCadastro(db: D1Database, precadastro_id: number, slug_minisite?: string): Promise<boolean> {
   try {
     const precadastro = await buscarPreCadastro(db, precadastro_id);
-    if (!precadastro) return false;
+    if (!precadastro || !precadastro.corretor_id) return false;
 
     const agora = new Date().toISOString();
+    const corretor_id = precadastro.corretor_id;
 
     // Atualiza status do pré-cadastro
     await db
@@ -66,49 +72,26 @@ export async function aprovarPreCadastro(db: D1Database, precadastro_id: number,
       .bind(agora, precadastro_id)
       .run();
 
-    // Cria corretor (status = 'aprovado')
-    const corretorInsert = await db
-      .prepare(
-        `INSERT INTO corretores (
-          nome_completo, email, telefone, creci,
-          senha_hash, senha_salt,
-          status, papel, criado_em, atualizado_em
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        precadastro.nome,
-        precadastro.email.toLowerCase(),
-        precadastro.telefone,
-        precadastro.creci,
-        "", // senha_hash vazio - será definido pelo pré-cadastro
-        "", // salt vazio
-        "aprovado",
-        "corretor",
-        agora,
-        agora
-      )
-      .run();
-
-    const corretor_id = corretorInsert.meta.last_row_id;
-
-    // Cria minisite (inicialmente offline = false, já que foi aprovado)
+    // Promove o corretor existente pra 'aprovado' — credenciais
+    // (senha_hash/senha_salt/cpf/nome_usuario) permanecem intocadas.
     await db
-      .prepare(
-        `INSERT INTO minisites (corretor_id, slug, offline, criado_em, atualizado_em)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .bind(corretor_id, slug_minisite, 0, agora, agora)
+      .prepare("UPDATE corretores SET status = 'aprovado', atualizado_em = ? WHERE id = ?")
+      .bind(agora, corretor_id)
       .run();
 
-    // Cria configuração de upload padrão
-    await db
-      .prepare(
-        `INSERT INTO config_upload_corretor (
-          corretor_id, max_resolucao_upload_bytes, criado_em, atualizado_em
-        ) VALUES (?, ?, ?, ?)`
-      )
-      .bind(corretor_id, 5242880, agora, agora)
-      .run();
+    // Libera o minisite (já existe, criado offline no pré-cadastro) —
+    // opcionalmente troca o slug se o Superadmin informou um novo.
+    if (slug_minisite?.trim()) {
+      await db
+        .prepare("UPDATE minisites SET offline = 0, slug = ?, atualizado_em = ? WHERE corretor_id = ?")
+        .bind(slug_minisite.trim(), agora, corretor_id)
+        .run();
+    } else {
+      await db
+        .prepare("UPDATE minisites SET offline = 0, atualizado_em = ? WHERE corretor_id = ?")
+        .bind(agora, corretor_id)
+        .run();
+    }
 
     // Atribui o Plano (Promoção de Lançamento se houver vaga, senão o
     // plano padrão do sistema) — ver project.md, seções 6.3 e 6.5
@@ -121,10 +104,13 @@ export async function aprovarPreCadastro(db: D1Database, precadastro_id: number,
   }
 }
 
-// Reprova um pré-cadastro
+// Reprova um pré-cadastro — reflete o mesmo status/motivo no corretor
+// vinculado (seção 6.1, passo 8: "site permanece offline e anúncios não
+// são liberados").
 export async function reprovarPreCadastro(db: D1Database, precadastro_id: number, motivo?: string): Promise<boolean> {
   try {
     const agora = new Date().toISOString();
+    const precadastro = await buscarPreCadastro(db, precadastro_id);
 
     await db
       .prepare(
@@ -132,6 +118,13 @@ export async function reprovarPreCadastro(db: D1Database, precadastro_id: number
       )
       .bind(motivo || "", agora, precadastro_id)
       .run();
+
+    if (precadastro?.corretor_id) {
+      await db
+        .prepare("UPDATE corretores SET status = 'reprovado', motivo_reprovacao = ?, atualizado_em = ? WHERE id = ?")
+        .bind(motivo || "", agora, precadastro.corretor_id)
+        .run();
+    }
 
     return true;
   } catch (erro) {
