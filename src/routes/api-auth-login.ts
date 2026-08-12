@@ -4,6 +4,11 @@
 import { Env } from "../index";
 import { verificarSenha } from "../lib/senha";
 import { validarCPF, normalizarCPF } from "../lib/cpf";
+import { obterCorretorAutenticado } from "../lib/sessao";
+
+// Duração da sessão — mantida em segundos pra ficar em sincronia com o
+// Max-Age do cookie (seção 6.2 do project.md).
+const DURACAO_SESSAO_SEGUNDOS = 2592000; // 30 dias
 
 // Extrai e valida o IP do cliente
 function obterIPCliente(request: Request): string {
@@ -122,6 +127,16 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     limparFalhasLogin(ip);
 
     const sessionId = `sess_${Math.random().toString(36).substring(2)}_${Date.now()}`;
+    const expiraEm = new Date(Date.now() + DURACAO_SESSAO_SEGUNDOS * 1000).toISOString();
+    const userAgent = request.headers.get("user-agent") || undefined;
+
+    // Persiste a sessão no D1 — sem isso, o cookie devolvido ao corretor
+    // não corresponde a nenhuma sessão válida (seção 6.2: sessão via
+    // cookie validada contra registro no D1).
+    await env.DB.prepare(
+      `INSERT INTO sessoes (corretor_id, session_id, ip_address, user_agent, expira_em, criado_em)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(corretor.id, sessionId, ip, userAgent || null, expiraEm).run();
 
     return new Response(JSON.stringify({
       sucesso: true,
@@ -134,7 +149,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
       status: 200,
       headers: {
         "content-type": "application/json",
-        "set-cookie": `session_id=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`,
+        "set-cookie": `session_id=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${DURACAO_SESSAO_SEGUNDOS}`,
       },
     });
   } catch (erro) {
@@ -147,8 +162,19 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 }
 
 // POST /api/auth/logout
-// Remove sessão (limpa cookie)
-async function handleLogout(_request: Request, _env: Env): Promise<Response> {
+// Revoga a sessão no D1 (seção 6.2: mais fácil de revogar que JWT) e limpa o cookie
+async function handleLogout(request: Request, env: Env): Promise<Response> {
+  try {
+    const cookies = request.headers.get("cookie") || "";
+    const sessionIdMatch = cookies.match(/session_id=([^;]*)/);
+
+    if (sessionIdMatch && sessionIdMatch[1]) {
+      await env.DB.prepare("DELETE FROM sessoes WHERE session_id = ?").bind(sessionIdMatch[1]).run();
+    }
+  } catch (erro) {
+    console.error("Erro ao revogar sessão:", erro);
+  }
+
   return new Response(JSON.stringify({ sucesso: true, mensagem: "Logout realizado" }), {
     status: 200,
     headers: {
@@ -159,21 +185,37 @@ async function handleLogout(_request: Request, _env: Env): Promise<Response> {
 }
 
 // GET /api/auth/sessao
-// Valida sessão e retorna dados do corretor
+// Valida sessão contra o D1 e retorna dados do corretor
 async function handleVerificacaoSessao(request: Request, env: Env): Promise<Response> {
   try {
-    const cookies = request.headers.get("cookie") || "";
-    const sessionIdMatch = cookies.match(/session_id=([^;]*)/);
+    const corretorId = await obterCorretorAutenticado(request, env);
 
-    if (!sessionIdMatch || !sessionIdMatch[1]) {
+    if (!corretorId) {
       return new Response(JSON.stringify({ autenticado: false }), {
         status: 401,
         headers: { "content-type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ autenticado: false }), {
-      status: 401,
+    const corretor = await env.DB.prepare(
+      "SELECT id, nome_completo, email, status FROM corretores WHERE id = ? LIMIT 1"
+    ).bind(corretorId).first() as { id: number; nome_completo: string; email: string; status: string } | null;
+
+    if (!corretor) {
+      return new Response(JSON.stringify({ autenticado: false }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      autenticado: true,
+      corretor_id: corretor.id,
+      nome_completo: corretor.nome_completo,
+      email: corretor.email,
+      status: corretor.status,
+    }), {
+      status: 200,
       headers: { "content-type": "application/json" },
     });
   } catch (erro) {
