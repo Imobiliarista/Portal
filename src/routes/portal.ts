@@ -1,6 +1,7 @@
 // Roteamento do domínio raiz (imobiliarista.net)
-// Lote 4: reconhece padrões de URL, retorna placeholders
-// Lote 11: dynamic rendering para bots em anúncios individuais
+// Reconhece padrões de URL pra identificar anúncio individual (necessário
+// pro dynamic rendering de bots, Lote 11). Visitante humano e demais bots
+// recebem o shell real da SPA via Static Assets (seção 4.6 do project.md).
 
 import { Env } from "../index";
 import { ehBot, renderizarParaBot } from "../middleware/bot-detect";
@@ -112,32 +113,6 @@ function extrairParametrosURL(caminho: string): ParamsMapeados {
   return { tipo: "home" };
 }
 
-function respostaPlaceholder(params: ParamsMapeados): Response {
-  const conteudo = (() => {
-    switch (params.tipo) {
-      case "home":
-        return "Portal Imobiliarista — Home";
-
-      case "cidade":
-        return `Portal — Cidade: ${params.cidade}\n\nFiltros disponíveis (JSON do R2 a ser carregado no Lote 6-7)`;
-
-      case "negocio-categoria-tipo":
-        return `Portal — Filtro de Negócio/Categoria/Tipo\nCidade: ${params.cidade}\nTipo de Negócio: ${params.tipoNegocio}\nCategoria: ${params.categoria || "(geral)"}\nTipo de Imóvel: ${params.tipoImovel || "(geral)"}`;
-
-      case "anuncio":
-        return `Anúncio Individual\nCidade: ${params.cidade}\nTipo de Negócio: ${params.tipoNegocio}\nSlug: ${params.slug}\nID: ${params.id}\n\nDados do anúncio (JSON detalhado do R2 a ser carregado no Lote 6-7)`;
-
-      default:
-        return "Portal Imobiliarista";
-    }
-  })();
-
-  return new Response(`Portal Imobiliarista\n\n${conteudo}\n\n[Lote 4 — Roteamento reconhecido]`, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
-}
-
 export async function rotasPortal(
   request: Request,
   env: Env,
@@ -156,5 +131,8 @@ export async function rotasPortal(
     }
   }
 
-  return respostaPlaceholder(parametros);
+  // Visitante humano (e bots fora do caso de anúncio acima): shell real da
+  // SPA via Static Assets (seção 4.6). Filtros/dados de listagem são
+  // resolvidos no client-side, direto do JSON no R2 — não aqui.
+  return env.ASSETS.fetch(request);
 }

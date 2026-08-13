@@ -3,6 +3,17 @@ main = "src/index.ts"
 compatibility_date = "2026-08-05"
 compatibility_flags = ["nodejs_compat"]
 
+# Static Assets — shell da SPA (público e painel), modo SPA fallback.
+# Ver project.md, seção 4.6. `run_worker_first = true` porque o Worker
+# ainda precisa rodar em toda requisição pra decidir bot-detect (dynamic
+# rendering de anúncio) e roteamento de API/painel; visitante humano
+# comum recebe o shell via `env.ASSETS.fetch()` dentro do Worker.
+[assets]
+directory = "public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
 # D1 — fonte da verdade (escrita + leitura administrativa, nunca lido
 # diretamente pelo visitante público). Ver project.md, seção 4.3.
 [[d1_databases]]
