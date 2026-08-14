@@ -121,13 +121,22 @@ export default {
 
     // Roteador do painel do corretor — domínio raiz apenas
     // Ver project.md, Lote 8
-    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/painel/")) {
+    //
+    // Prefixo de API separado do shell estático (/painel/*, servido por
+    // env.ASSETS.fetch via rotasPortal mais abaixo — mesmo padrão de
+    // portal.ts/minisite.ts, seção 4.6/4.9): antes o próprio /painel/*
+    // interceptava tudo, inclusive o HTML do shell (public/painel/index.html),
+    // que nunca chegava a ser servido. Ver auditoria de fluxo completo.
+    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/api/painel-corretor/")) {
       return rotasPainelCorretor(request, env);
     }
 
     // Roteador do painel do superadmin — domínio raiz apenas
     // Ver project.md, Lote 9
-    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/painel-admin/")) {
+    //
+    // Mesmo motivo acima: prefixo de API (/api/painel-admin/*) separado do
+    // shell estático (/painel-admin/*, público/painel-admin/index.html).
+    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/api/painel-admin/")) {
       return rotasPainelSuperadmin(request, env);
     }
 

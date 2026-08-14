@@ -1,5 +1,11 @@
 // Rotas do painel do corretor — APIs de suporte para dashboard, perfil, anúncios, cotas
 // Conforme seção 6.1 e Lote 8 do project.md
+//
+// Prefixo /api/painel-corretor/* — deliberadamente separado de /painel/*
+// (o shell estático em public/painel/index.html, servido via
+// env.ASSETS.fetch por routes/portal.ts). Antes as duas coisas dividiam o
+// mesmo prefixo /painel/* e o roteador de API interceptava tudo, então o
+// HTML do shell nunca era servido. Ver auditoria de fluxo completo.
 
 import { Env } from "../index";
 import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoDoCorretor, buscarConfigUploadDoCorretor, buscarMinisiteDoCorretor } from "../db/queries-perfil";
@@ -51,7 +57,7 @@ function respostaSucesso(dados: any): Response {
   });
 }
 
-// ========== Rota: GET /painel/perfil ==========
+// ========== Rota: GET /api/painel-corretor/perfil ==========
 
 async function rotaPainelPerfil(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return respostaErro("Método não permitido", 405);
@@ -98,7 +104,7 @@ async function rotaPainelPerfil(request: Request, env: Env): Promise<Response> {
   }
 }
 
-// ========== Rota: PUT /painel/perfil/editar ==========
+// ========== Rota: PUT /api/painel-corretor/perfil/editar ==========
 
 async function rotaPainelPerfilEditar(request: Request, env: Env): Promise<Response> {
   if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
@@ -126,7 +132,7 @@ async function rotaPainelPerfilEditar(request: Request, env: Env): Promise<Respo
   }
 }
 
-// ========== Rota: GET /painel/plano ==========
+// ========== Rota: GET /api/painel-corretor/plano ==========
 
 async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return respostaErro("Método não permitido", 405);
@@ -158,7 +164,7 @@ async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
   }
 }
 
-// ========== Rota: GET /painel/anuncios ==========
+// ========== Rota: GET /api/painel-corretor/anuncios ==========
 
 async function rotaPainelAnuncios(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return respostaErro("Método não permitido", 405);
@@ -184,7 +190,7 @@ async function rotaPainelAnuncios(request: Request, env: Env): Promise<Response>
   }
 }
 
-// ========== Rota: GET /painel/cotas-portal ==========
+// ========== Rota: GET /api/painel-corretor/cotas-portal ==========
 
 async function rotaPainelCotasPortal(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return respostaErro("Método não permitido", 405);
@@ -213,7 +219,7 @@ async function rotaPainelCotasPortal(request: Request, env: Env): Promise<Respon
   }
 }
 
-// ========== Rota: PUT /painel/cotas-portal ==========
+// ========== Rota: PUT /api/painel-corretor/cotas-portal ==========
 
 async function rotaPainelCotasPortalAtualizar(request: Request, env: Env): Promise<Response> {
   if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
@@ -240,7 +246,7 @@ async function rotaPainelCotasPortalAtualizar(request: Request, env: Env): Promi
   }
 }
 
-// ========== Rota: GET /painel/publicacoes ==========
+// ========== Rota: GET /api/painel-corretor/publicacoes ==========
 // Controle duplo do módulo Publicações (Lote 16, seção 4.19)
 
 async function rotaPainelPublicacoes(request: Request, env: Env): Promise<Response> {
@@ -265,7 +271,7 @@ async function rotaPainelPublicacoes(request: Request, env: Env): Promise<Respon
   }
 }
 
-// ========== Rota: PUT /painel/publicacoes ==========
+// ========== Rota: PUT /api/painel-corretor/publicacoes ==========
 
 async function rotaPainelPublicacoesAtualizar(request: Request, env: Env): Promise<Response> {
   if (request.method !== "PUT") return respostaErro("Método não permitido", 405);
@@ -311,36 +317,36 @@ export async function rotasPainelCorretor(request: Request, env: Env): Promise<R
   }
 
   // Roteamento por pathname
-  if (pathname === "/painel/perfil" && request.method === "GET") {
+  if (pathname === "/api/painel-corretor/perfil" && request.method === "GET") {
     return rotaPainelPerfil(request, env);
   }
 
-  if (pathname === "/painel/perfil/editar" && request.method === "PUT") {
+  if (pathname === "/api/painel-corretor/perfil/editar" && request.method === "PUT") {
     return rotaPainelPerfilEditar(request, env);
   }
 
-  if (pathname === "/painel/plano" && request.method === "GET") {
+  if (pathname === "/api/painel-corretor/plano" && request.method === "GET") {
     return rotaPainelPlano(request, env);
   }
 
-  if (pathname === "/painel/anuncios" && request.method === "GET") {
+  if (pathname === "/api/painel-corretor/anuncios" && request.method === "GET") {
     return rotaPainelAnuncios(request, env);
   }
 
-  if (pathname === "/painel/cotas-portal" && request.method === "GET") {
+  if (pathname === "/api/painel-corretor/cotas-portal" && request.method === "GET") {
     return rotaPainelCotasPortal(request, env);
   }
 
-  if (pathname === "/painel/cotas-portal" && request.method === "PUT") {
+  if (pathname === "/api/painel-corretor/cotas-portal" && request.method === "PUT") {
     return rotaPainelCotasPortalAtualizar(request, env);
   }
 
   // Módulo Publicações (Lote 16, seção 4.19)
-  if (pathname === "/painel/publicacoes" && request.method === "GET") {
+  if (pathname === "/api/painel-corretor/publicacoes" && request.method === "GET") {
     return rotaPainelPublicacoes(request, env);
   }
 
-  if (pathname === "/painel/publicacoes" && request.method === "PUT") {
+  if (pathname === "/api/painel-corretor/publicacoes" && request.method === "PUT") {
     return rotaPainelPublicacoesAtualizar(request, env);
   }
 

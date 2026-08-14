@@ -65,4 +65,48 @@ export async function dispararRevalidacaoCruzada(
   console.log(`→ Revalidação cruzada enfileirada para anúncio ${anuncio_id}`);
 }
 
+function slugificarCidade(nome: string): string {
+  return nome
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-");
+}
+
+// Resolve slug do minisite + slug da cidade e dispara a revalidação cruzada.
+// Ponto único usado por toda mutação de anúncio que afeta o JSON público
+// (criar, editar qualquer campo, excluir, alternar "postar na rede") —
+// consolida o que antes era ~20 linhas duplicadas em cada handler de
+// api-anuncios-crud.ts e api-anuncios-backup.ts.
+export async function enfileirarRevalidacaoDoAnuncio(
+  env: Env,
+  anuncio_id: number,
+  corretor_id: number,
+  cidade_id: number,
+): Promise<void> {
+  try {
+    const minisite = await env.DB
+      .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
+      .bind(corretor_id)
+      .first() as { slug: string } | undefined;
+    const cidade = await env.DB
+      .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
+      .bind(cidade_id)
+      .first() as { nome: string } | undefined;
+
+    if (minisite && cidade) {
+      await dispararRevalidacaoCruzada(
+        env.FILA_ALTERACOES,
+        anuncio_id,
+        minisite.slug,
+        cidade_id,
+        slugificarCidade(cidade.nome),
+      );
+    }
+  } catch (erroFila) {
+    console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
+  }
+}
+
 export type { MensagemRevalidacaoCruzada };

@@ -15,7 +15,7 @@ import {
   contarAnunciosAtivosDoCorretor,
   restaurarAnuncioComId,
 } from "../db/queries-anuncios";
-import { dispararRevalidacaoCruzada } from "../jobs/revalidacao-cruzada";
+import { enfileirarRevalidacaoDoAnuncio } from "../jobs/revalidacao-cruzada";
 import {
   mapearTipoNegocioParaVRSync,
   mapearCategoriaParaVRSync,
@@ -42,32 +42,6 @@ async function buscarPlanoDoCorretor(db: D1Database, corretorId: number): Promis
     .bind(corretorId)
     .first();
   return (plano as Plano) || undefined;
-}
-
-// Enfileira revalidação cruzada (corretor.json + cidade.json) — mesmo padrão de api-anuncios-crud.ts
-async function enfileirarRevalidacao(env: Env, anuncioId: number, corretorId: number, cidadeId: number): Promise<void> {
-  try {
-    const minisite = await env.DB
-      .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
-      .bind(corretorId)
-      .first() as { slug: string } | undefined;
-    const cidade = await env.DB
-      .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
-      .bind(cidadeId)
-      .first() as { nome: string } | undefined;
-
-    if (minisite && cidade) {
-      const cidadeSlug = cidade.nome
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
-        .replace(/[^\w\s-]/g, "")
-        .replace(/\s+/g, "-");
-      await dispararRevalidacaoCruzada(env.FILA_ALTERACOES, anuncioId, minisite.slug, cidadeId, cidadeSlug);
-    }
-  } catch (erroFila) {
-    console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
-  }
 }
 
 // Valida os campos mínimos exigidos pelo schema da tabela `anuncios` (NOT NULL)
@@ -215,7 +189,7 @@ async function handleRestaurar(request: Request, env: Env): Promise<Response> {
     for (const a of novos) {
       await restaurarAnuncioComId(env.DB, a);
       criados.push(a.id);
-      await enfileirarRevalidacao(env, a.id, corretorId, a.cidade_id);
+      await enfileirarRevalidacaoDoAnuncio(env, a.id, corretorId, a.cidade_id);
     }
 
     return new Response(JSON.stringify({
