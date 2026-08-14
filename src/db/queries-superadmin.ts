@@ -58,10 +58,10 @@ export async function buscarPreCadastro(db: D1Database, id: number): Promise<Pre
 // continuar valendo pro login dele depois de aprovado). O vínculo vem de
 // `pre_cadastros.corretor_id` (migration 0014) — sem isso, não há como
 // saber qual corretor promover.
-export async function aprovarPreCadastro(db: D1Database, precadastro_id: number, slug_minisite?: string): Promise<boolean> {
+export async function aprovarPreCadastro(db: D1Database, precadastro_id: number, slug_minisite?: string): Promise<{ sucesso: boolean; slug?: string }> {
   try {
     const precadastro = await buscarPreCadastro(db, precadastro_id);
-    if (!precadastro || !precadastro.corretor_id) return false;
+    if (!precadastro || !precadastro.corretor_id) return { sucesso: false };
 
     const agora = new Date().toISOString();
     const corretor_id = precadastro.corretor_id;
@@ -97,10 +97,13 @@ export async function aprovarPreCadastro(db: D1Database, precadastro_id: number,
     // plano padrão do sistema) — ver project.md, seções 6.3 e 6.5
     await atribuirPlanoNaAprovacao(db, corretor_id);
 
-    return true;
+    const slugFinal = slug_minisite?.trim() ||
+      ((await db.prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1").bind(corretor_id).first()) as { slug: string } | undefined)?.slug;
+
+    return { sucesso: true, slug: slugFinal };
   } catch (erro) {
     console.error("Erro ao aprovar pré-cadastro:", erro);
-    return false;
+    return { sucesso: false };
   }
 }
 

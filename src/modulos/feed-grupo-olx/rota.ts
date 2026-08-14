@@ -12,8 +12,9 @@
 
 import { Env } from "../../index";
 import { estaModuloAtivo } from "../../db/queries-modulos";
-import { buscarCorrelorPorSlug } from "../../db/queries-corretores";
 import { buscarCotaPortal } from "../../db/queries-cotas-portal";
+import { lerJSON } from "../../lib/r2";
+import type { StatusMinisiteJSON } from "../../jobs/gerar-status-minisite";
 
 // Rota: GET /feeds/grupo-olx/{slug}.xml
 export async function rotaFeedGrupoOLX(
@@ -33,12 +34,19 @@ export async function rotaFeedGrupoOLX(
       return new Response("Feed não encontrado", { status: 404 });
     }
 
-    const resultado = await buscarCorrelorPorSlug(env.DB, slug);
-    if (!resultado) {
+    // Lê o artefato materializado em R2 (jobs/gerar-status-minisite.ts) em
+    // vez de consultar D1 diretamente — mesmo princípio de routes/minisite.ts
+    // (Documento Técnico Edge-First, seções 2/14), aplicado aqui à rota de
+    // feed pública.
+    const status = await lerJSON<StatusMinisiteJSON>(
+      env.DADOS_CACHE,
+      `tenants/${slug}/status.json`,
+    );
+    if (!status) {
       return new Response("Feed não encontrado", { status: 404 });
     }
 
-    const cota = await buscarCotaPortal(env.DB, resultado.corretor.id, "grupo-olx");
+    const cota = await buscarCotaPortal(env.DB, status.corretor_id, "grupo-olx");
     if (!cota || !cota.ativo) {
       return new Response("Feed não encontrado", { status: 404 });
     }

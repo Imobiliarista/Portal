@@ -4,6 +4,7 @@
 import { Env } from "../index";
 import { hashSenha } from "../lib/senha";
 import { validarCPF, normalizarCPF } from "../lib/cpf";
+import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
 
 const VERSAO_TERMOS_ATUAL = "1.0.0";
 
@@ -263,6 +264,11 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       agora,
       agora
     ).run();
+
+    // Materializa tenants/{slug}/status.json em R2 (liberado=false, já
+    // que offline=true acima) — routes/minisite.ts lê daqui, nunca de D1,
+    // no caminho público. Ver jobs/gerar-status-minisite.ts.
+    await enfileirarStatusMinisite(env, slugMinisite);
 
     // Limites de anúncios/fotos vêm do Plano, atribuído no momento da
     // aprovação (ver queries-superadmin.ts::aprovarPreCadastro, Lote 14).

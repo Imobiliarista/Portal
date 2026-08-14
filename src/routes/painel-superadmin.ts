@@ -9,6 +9,7 @@
 // prefixo e o HTML do shell nunca era servido. Ver auditoria de fluxo completo.
 
 import { Env } from "../index";
+import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
 import {
   listarPreCadastrosPendentes,
   buscarPreCadastro,
@@ -85,8 +86,15 @@ async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): P
       slugMinisite = undefined;
     }
 
-    const sucesso = await aprovarPreCadastro(env.DB, id, slugMinisite);
+    const { sucesso, slug: slugAprovado } = await aprovarPreCadastro(env.DB, id, slugMinisite);
     if (!sucesso) return respostaErro("Erro ao aprovar pré-cadastro", 500);
+
+    // Materializa tenants/{slug}/status.json (liberado=true) — ver
+    // jobs/gerar-status-minisite.ts. routes/minisite.ts lê daqui, nunca
+    // consulta D1 no caminho público.
+    if (slugAprovado) {
+      await enfileirarStatusMinisite(env, slugAprovado);
+    }
 
     return respostaSucesso({ mensagem: "Pré-cadastro aprovado com sucesso" });
   } catch {
