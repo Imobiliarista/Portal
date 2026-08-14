@@ -10,6 +10,7 @@ class PainelCorretor {
     this.anunciosData = [];
     this.paginaAnuncios = 1;
     this.publicacoesData = null;
+    this.anuncioEditandoId = null;
 
     this.inicializar();
   }
@@ -39,7 +40,10 @@ class PainelCorretor {
 
     // Formulário de anúncio
     document.getElementById("form-anuncio").addEventListener("submit", (e) => this.enviarFormAnuncio(e));
-    document.getElementById("cancel-form-btn").addEventListener("click", () => this.mostrarAnuncios());
+    document.getElementById("cancel-form-btn").addEventListener("click", () => {
+      this.anuncioEditandoId = null;
+      this.mostrarAnuncios();
+    });
 
     // Formulário de perfil
     document.getElementById("form-perfil-editar").addEventListener("submit", (e) => this.enviarFormPerfil(e));
@@ -121,10 +125,13 @@ class PainelCorretor {
     this.renderizarAnuncios();
   }
 
-  mostrarFormAnuncio() {
+  mostrarFormAnuncio(anuncio = null) {
+    this.anuncioEditandoId = anuncio ? anuncio.id : null;
     this.mostrarView("form-anuncio-view");
-    document.getElementById("page-title").textContent = "Novo Anúncio";
-    this.renderizarFormAnuncio();
+    const titulo = anuncio ? "Editar Anúncio" : "Novo Anúncio";
+    document.getElementById("page-title").textContent = titulo;
+    document.getElementById("form-anuncio-titulo").textContent = titulo;
+    this.renderizarFormAnuncio(anuncio);
   }
 
   mostrarPortais() {
@@ -228,41 +235,151 @@ class PainelCorretor {
     }
   }
 
-  editarAnuncio(id) {
-    alert(`Editar anúncio ${id} (Lote 9)`);
+  async editarAnuncio(id) {
+    try {
+      const res = await fetch(`/api/anuncios/${id}`);
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao buscar anúncio");
+      this.mostrarFormAnuncio(dados.anuncio);
+    } catch (erro) {
+      console.error("Erro ao carregar anúncio para edição:", erro);
+      alert(erro.message || "Erro ao carregar anúncio para edição.");
+    }
   }
 
   async deletarAnuncio(id) {
     if (!confirm("Tem certeza que deseja deletar este anúncio?")) return;
-    alert(`Deletar anúncio ${id} (Lote 5)`);
+
+    try {
+      const res = await fetch(`/api/anuncios/${id}`, { method: "DELETE" });
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao deletar anúncio");
+
+      alert("Anúncio deletado com sucesso!");
+      await this.carregarDados();
+      this.renderizarAnuncios();
+    } catch (erro) {
+      console.error("Erro ao deletar anúncio:", erro);
+      alert(erro.message || "Erro ao deletar anúncio.");
+    }
   }
 
   // ========== Formulário de Anúncio ==========
 
-  renderizarFormAnuncio() {
+  renderizarFormAnuncio(anuncio = null) {
     // Carrega selects de taxonomia (Lote 5)
-    // Por enquanto, placeholder de valores estáticos
+    // Lista de opções ainda estática (carregamento dinâmico via API fica
+    // para o comando dedicado de taxonomia) — os values abaixo são os IDs
+    // reais de tipos_imovel/cidades no seed do banco, não mais slugs de
+    // texto, para que o submit envie o dado que a API espera.
     const tipoImove = document.getElementById("anuncio-tipo");
     tipoImove.innerHTML = `
       <option value="">Tipo de Imóvel</option>
-      <option value="apartamento">Apartamento</option>
-      <option value="casa">Casa</option>
-      <option value="terreno">Terreno</option>
-      <option value="comercial">Comercial</option>
+      <option value="1">Apartamento</option>
+      <option value="3">Casa</option>
+      <option value="6">Terreno</option>
+      <option value="11">Comercial</option>
     `;
 
     const cidade = document.getElementById("anuncio-cidade");
     cidade.innerHTML = `
       <option value="">Cidade</option>
-      <option value="londrina">Londrina</option>
-      <option value="cambé">Cambé</option>
-      <option value="maringá">Maringá</option>
+      <option value="1">Londrina</option>
+      <option value="2">Cambé</option>
+      <option value="4">Maringá</option>
     `;
+
+    const tipoNegocio = document.getElementById("anuncio-tipo-negocio");
+    const categoria = document.getElementById("anuncio-categoria");
+    const camposTaxonomia = [tipoNegocio, categoria, tipoImove, cidade];
+
+    if (anuncio) {
+      // Taxonomia e cidade são imutáveis após a criação (PUT /api/anuncios/:id
+      // não aceita esses campos) — mostrados preenchidos, mas desabilitados.
+      document.getElementById("anuncio-titulo").value = anuncio.titulo || "";
+      tipoNegocio.value = anuncio.tipo_negocio_id || "";
+      categoria.value = anuncio.categoria_imovel_id || "";
+      tipoImove.value = anuncio.tipo_imovel_id || "";
+      cidade.value = anuncio.cidade_id || "";
+      camposTaxonomia.forEach((campo) => (campo.disabled = true));
+
+      document.getElementById("anuncio-descricao").value = anuncio.descricao || "";
+      document.getElementById("anuncio-preco").value = anuncio.preco_venda || anuncio.preco_aluguel || "";
+      document.getElementById("anuncio-bairro").value = anuncio.bairro || "";
+      document.getElementById("anuncio-endereco").value = anuncio.endereco_completo || "";
+      document.getElementById("anuncio-exibir-endereco").checked = !!anuncio.exibir_endereco_completo;
+      document.getElementById("anuncio-quartos").value = anuncio.quartos ?? "";
+      document.getElementById("anuncio-banheiros").value = anuncio.banheiros ?? "";
+      document.getElementById("anuncio-vagas").value = anuncio.vagas_garagem ?? "";
+      document.getElementById("anuncio-area-util").value = anuncio.area_util ?? "";
+      document.getElementById("anuncio-video-youtube").value = anuncio.video_youtube_id
+        ? `https://www.youtube.com/watch?v=${anuncio.video_youtube_id}`
+        : "";
+      document.getElementById("anuncio-tour-360").value = anuncio.tour_360_url || "";
+      document.getElementById("anuncio-postar-rede").checked = !!anuncio.postar_na_rede;
+    } else {
+      camposTaxonomia.forEach((campo) => (campo.disabled = false));
+      document.getElementById("form-anuncio").reset();
+    }
   }
 
   async enviarFormAnuncio(e) {
     e.preventDefault();
-    alert("Salvar anúncio (integração com /painel/anuncios POST do Lote 5)");
+
+    const tipoNegocioId = document.getElementById("anuncio-tipo-negocio").value;
+    const preco = document.getElementById("anuncio-preco").value;
+
+    const payloadComum = {
+      titulo: document.getElementById("anuncio-titulo").value,
+      descricao: document.getElementById("anuncio-descricao").value || undefined,
+      preco_venda: tipoNegocioId === "1" && preco ? Number(preco) : undefined,
+      preco_aluguel: tipoNegocioId === "2" && preco ? Number(preco) : undefined,
+      bairro: document.getElementById("anuncio-bairro").value || undefined,
+      endereco_completo: document.getElementById("anuncio-endereco").value || undefined,
+      exibir_endereco_completo: document.getElementById("anuncio-exibir-endereco").checked,
+      quartos: document.getElementById("anuncio-quartos").value ? Number(document.getElementById("anuncio-quartos").value) : undefined,
+      banheiros: document.getElementById("anuncio-banheiros").value ? Number(document.getElementById("anuncio-banheiros").value) : undefined,
+      vagas_garagem: document.getElementById("anuncio-vagas").value ? Number(document.getElementById("anuncio-vagas").value) : undefined,
+      area_util: document.getElementById("anuncio-area-util").value ? Number(document.getElementById("anuncio-area-util").value) : undefined,
+      video_youtube_url: document.getElementById("anuncio-video-youtube").value || undefined,
+      tour_360_url: document.getElementById("anuncio-tour-360").value || undefined,
+      postar_na_rede: document.getElementById("anuncio-postar-rede").checked,
+    };
+
+    try {
+      let res;
+      if (this.anuncioEditandoId) {
+        res = await fetch(`/api/anuncios/${this.anuncioEditandoId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadComum),
+        });
+      } else {
+        const payloadCriacao = {
+          ...payloadComum,
+          tipo_negocio_id: Number(tipoNegocioId),
+          categoria_imovel_id: Number(document.getElementById("anuncio-categoria").value),
+          tipo_imovel_id: Number(document.getElementById("anuncio-tipo").value),
+          cidade_id: Number(document.getElementById("anuncio-cidade").value),
+        };
+        res = await fetch("/api/anuncios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadCriacao),
+        });
+      }
+
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao salvar anúncio");
+
+      alert(this.anuncioEditandoId ? "Anúncio atualizado com sucesso!" : "Anúncio criado com sucesso!");
+      this.anuncioEditandoId = null;
+      await this.carregarDados();
+      this.mostrarAnuncios();
+    } catch (erro) {
+      console.error("Erro ao salvar anúncio:", erro);
+      alert(erro.message || "Erro ao salvar anúncio.");
+    }
   }
 
   // ========== Portais Integrados ==========

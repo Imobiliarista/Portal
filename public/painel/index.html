@@ -127,7 +127,7 @@
 
         <!-- Novo/Editar Anúncio View -->
         <section id="form-anuncio-view" class="hidden">
-          <h2 class="text-2xl font-bold text-slate-900 mb-6">Novo Anúncio</h2>
+          <h2 id="form-anuncio-titulo" class="text-2xl font-bold text-slate-900 mb-6">Novo Anúncio</h2>
 
           <div class="bg-white p-8 rounded-lg card-shadow">
             <form id="form-anuncio" class="space-y-6">
@@ -148,8 +148,8 @@
                     required
                   >
                     <option value="">Tipo de Negócio</option>
-                    <option value="venda">Venda</option>
-                    <option value="locacao">Locação</option>
+                    <option value="1">Venda</option>
+                    <option value="2">Locação</option>
                   </select>
                 </div>
                 <textarea
@@ -170,11 +170,11 @@
                     required
                   >
                     <option value="">Categoria</option>
-                    <option value="residencial">Residencial</option>
-                    <option value="comercial">Comercial</option>
-                    <option value="corporativo">Corporativo</option>
-                    <option value="industrial">Industrial</option>
-                    <option value="rural">Rural</option>
+                    <option value="1">Residencial</option>
+                    <option value="2">Comercial</option>
+                    <option value="3">Corporativo</option>
+                    <option value="4">Industrial</option>
+                    <option value="5">Rural</option>
                   </select>
                   <select
                     id="anuncio-tipo"

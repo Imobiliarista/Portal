@@ -109,15 +109,18 @@ export async function listarAnunciosDoCorretor(
   try {
     const offset = (pagina - 1) * limite;
 
-    // Conta total
+    // Conta total — exclui vendido/removido (mesmo critério de
+    // contarAnunciosAtivosDoCorretor), senão um anúncio "deletado" pelo
+    // painel (soft delete, ver marcarVendidoRemovido) continua aparecendo
+    // na lista "Meus Anúncios" do corretor indefinidamente
     const contagem = await db
-      .prepare("SELECT COUNT(*) as total FROM anuncios WHERE corretor_id = ?")
+      .prepare("SELECT COUNT(*) as total FROM anuncios WHERE corretor_id = ? AND vendido_removido = 0")
       .bind(corretor_id)
       .first() as { total: number };
 
     // Lista com paginação
     const resultado = await db
-      .prepare("SELECT * FROM anuncios WHERE corretor_id = ? ORDER BY criado_em DESC LIMIT ? OFFSET ?")
+      .prepare("SELECT * FROM anuncios WHERE corretor_id = ? AND vendido_removido = 0 ORDER BY criado_em DESC LIMIT ? OFFSET ?")
       .bind(corretor_id, limite, offset)
       .all();
 
