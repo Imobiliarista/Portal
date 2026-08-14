@@ -21,7 +21,7 @@ import {
   togglePostarNaRede,
   marcarVendidoRemovido,
 } from "../db/queries-anuncios";
-import { dispararRevalidacaoCruzada } from "../jobs/revalidacao-cruzada";
+import { enfileirarRevalidacaoDoAnuncio } from "../jobs/revalidacao-cruzada";
 import { obterCorretorAutenticado } from "../lib/sessao";
 
 // ========== Auxiliares ==========
@@ -199,34 +199,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
     await atualizarAnuncio(env.DB, anuncioId, { slug } as any);
 
     // Enfileirar regeneração de JSON (Lote 6)
-    try {
-      const minisite = await env.DB
-        .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
-        .bind(corretorId)
-        .first() as { slug: string } | undefined;
-      const cidade = await env.DB
-        .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
-        .bind(dados.cidade_id)
-        .first() as { nome: string } | undefined;
-
-      if (minisite && cidade) {
-        const cidadeSlug = cidade.nome
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "")
-          .replace(/[^\w\s-]/g, "")
-          .replace(/\s+/g, "-");
-        await dispararRevalidacaoCruzada(
-          env.FILA_ALTERACOES,
-          anuncioId,
-          minisite.slug,
-          dados.cidade_id,
-          cidadeSlug,
-        );
-      }
-    } catch (erroFila) {
-      console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
-    }
+    await enfileirarRevalidacaoDoAnuncio(env, anuncioId, corretorId, dados.cidade_id);
 
     const anuncio = await buscarAnuncioPorId(env.DB, anuncioId);
 
@@ -365,35 +338,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     // Toggle "postar na rede" dispara revalidação cruzada
     if (dados.postar_na_rede !== undefined && dados.postar_na_rede !== anuncio.postar_na_rede) {
       await togglePostarNaRede(env.DB, id, dados.postar_na_rede);
-      // Enfileirar revalidação cruzada (Lote 6)
-      try {
-        const minisite = await env.DB
-          .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
-          .bind(anuncio.corretor_id)
-          .first() as { slug: string } | undefined;
-        const cidade = await env.DB
-          .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
-          .bind(anuncio.cidade_id)
-          .first() as { nome: string } | undefined;
-
-        if (minisite && cidade) {
-          const cidadeSlug = cidade.nome
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[̀-ͯ]/g, "")
-            .replace(/[^\w\s-]/g, "")
-            .replace(/\s+/g, "-");
-          await dispararRevalidacaoCruzada(
-            env.FILA_ALTERACOES,
-            id,
-            minisite.slug,
-            anuncio.cidade_id,
-            cidadeSlug,
-          );
-        }
-      } catch (erroFila) {
-        console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
-      }
+      await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
     } else if (dados.postar_na_rede !== undefined) {
       atualizacoes.postar_na_rede = dados.postar_na_rede;
     }
@@ -401,37 +346,18 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     // Marca como vendido/removido
     if (dados.marcar_vendido) {
       await marcarVendidoRemovido(env.DB, id);
-      // Enfileirar revalidação cruzada (Lote 6)
-      try {
-        const minisite = await env.DB
-          .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
-          .bind(anuncio.corretor_id)
-          .first() as { slug: string } | undefined;
-        const cidade = await env.DB
-          .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
-          .bind(anuncio.cidade_id)
-          .first() as { nome: string } | undefined;
-
-        if (minisite && cidade) {
-          const cidadeSlug = cidade.nome
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[̀-ͯ]/g, "")
-            .replace(/[^\w\s-]/g, "")
-            .replace(/\s+/g, "-");
-          await dispararRevalidacaoCruzada(
-            env.FILA_ALTERACOES,
-            id,
-            minisite.slug,
-            anuncio.cidade_id,
-            cidadeSlug,
-          );
-        }
-      } catch (erroFila) {
-        console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
-      }
+      await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
     } else {
       await atualizarAnuncio(env.DB, id, atualizacoes);
+
+      // Qualquer edição de campo que apareça no JSON público (preço,
+      // descrição, fotos, quartos, banheiros, área, bairro etc.) precisa
+      // regenerar corretor.json/cidade.json — antes só create/delete/toggle
+      // "postar na rede" disparavam, e uma edição comum deixava o JSON
+      // público desatualizado indefinidamente. Ver auditoria de fluxo completo.
+      if (Object.keys(atualizacoes).length > 0) {
+        await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
+      }
     }
 
     const anuncioAtualizado = await buscarAnuncioPorId(env.DB, id);
@@ -485,36 +411,7 @@ async function handleDeletarAnuncio(request: Request, env: Env): Promise<Respons
 
     // Marca como vendido/removido (conforme seção 4.17)
     await marcarVendidoRemovido(env.DB, id);
-
-    // Enfileirar revalidação cruzada (Lote 6)
-    try {
-      const minisite = await env.DB
-        .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
-        .bind(anuncio.corretor_id)
-        .first() as { slug: string } | undefined;
-      const cidade = await env.DB
-        .prepare("SELECT nome FROM cidades WHERE id = ? LIMIT 1")
-        .bind(anuncio.cidade_id)
-        .first() as { nome: string } | undefined;
-
-      if (minisite && cidade) {
-        const cidadeSlug = cidade.nome
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "")
-          .replace(/[^\w\s-]/g, "")
-          .replace(/\s+/g, "-");
-        await dispararRevalidacaoCruzada(
-          env.FILA_ALTERACOES,
-          id,
-          minisite.slug,
-          anuncio.cidade_id,
-          cidadeSlug,
-        );
-      }
-    } catch (erroFila) {
-      console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
-    }
+    await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
 
     return new Response(JSON.stringify({
       sucesso: true,
