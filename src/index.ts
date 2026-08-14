@@ -22,6 +22,8 @@ export interface Env {
   MIDIAS: R2Bucket;
   FILA_ALTERACOES: Queue;
   AI: any; // Cloudflare Workers AI binding
+  // Static Assets (shell da SPA, seção 4.6) — fallback pra visitante humano
+  ASSETS: Fetcher;
   TURNSTILE_SECRET_KEY?: string;
   // URL do Feed Padrão da Rede (Blogspot institucional, módulo Publicações
   // — seção 4.19). Nunca hardcoded no código; ver src/modulos/publicacoes/logica.ts.
