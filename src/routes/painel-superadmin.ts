@@ -1,6 +1,12 @@
 // Rotas do painel do Superadmin — APIs para aprovações, cidades, módulos, visão geral
 // Conforme seção 6 e Lote 9 do project.md
-// POST/GET /painel-admin/*
+// POST/GET /api/painel-admin/*
+//
+// Prefixo /api/painel-admin/* — deliberadamente separado de /painel-admin/*
+// (o shell estático em public/painel-admin/index.html, servido via
+// env.ASSETS.fetch por routes/portal.ts). Mesmo motivo da separação em
+// routes/painel-corretor.ts: antes as duas coisas dividiam o mesmo
+// prefixo e o HTML do shell nunca era servido. Ver auditoria de fluxo completo.
 
 import { Env } from "../index";
 import {
@@ -26,7 +32,7 @@ import { rotasPainelSuperadminIsencao } from "./painel-superadmin-isencao";
 
 // ========== Rotas: Pré-Cadastros ==========
 
-// GET /painel-admin/pre-cadastros — lista pendentes
+// GET /api/painel-admin/pre-cadastros — lista pendentes
 async function rotaListarPreCadastros(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -45,7 +51,7 @@ async function rotaListarPreCadastros(request: Request, env: Env): Promise<Respo
   }
 }
 
-// GET /painel-admin/pre-cadastro/:id — detalhes
+// GET /api/painel-admin/pre-cadastro/:id — detalhes
 async function rotaBuscarPreCadastro(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -60,7 +66,7 @@ async function rotaBuscarPreCadastro(request: Request, env: Env, id: number): Pr
   }
 }
 
-// POST /painel-admin/pre-cadastro/:id/aprovar — aprova
+// POST /api/painel-admin/pre-cadastro/:id/aprovar — aprova
 async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -88,7 +94,7 @@ async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): P
   }
 }
 
-// POST /painel-admin/pre-cadastro/:id/reprovar — reprova
+// POST /api/painel-admin/pre-cadastro/:id/reprovar — reprova
 async function rotaReprovarPreCadastro(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -109,7 +115,7 @@ async function rotaReprovarPreCadastro(request: Request, env: Env, id: number): 
 
 // ========== Rotas: Cidades ==========
 
-// GET /painel-admin/cidades — lista
+// GET /api/painel-admin/cidades — lista
 async function rotaListarCidades(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -128,7 +134,7 @@ async function rotaListarCidades(request: Request, env: Env): Promise<Response> 
   }
 }
 
-// GET /painel-admin/cidade/:id — detalhes
+// GET /api/painel-admin/cidade/:id — detalhes
 async function rotaBuscarCidade(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -143,7 +149,7 @@ async function rotaBuscarCidade(request: Request, env: Env, id: number): Promise
   }
 }
 
-// PATCH /painel-admin/cidade/:id — atualiza
+// PATCH /api/painel-admin/cidade/:id — atualiza
 async function rotaAtualizarCidade(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -165,7 +171,7 @@ async function rotaAtualizarCidade(request: Request, env: Env, id: number): Prom
 
 // ========== Rotas: Módulos ==========
 
-// GET /painel-admin/modulos — lista
+// GET /api/painel-admin/modulos — lista
 async function rotaListarModulos(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -179,7 +185,7 @@ async function rotaListarModulos(request: Request, env: Env): Promise<Response> 
   }
 }
 
-// PATCH /painel-admin/modulo/:id — ativa/desativa
+// PATCH /api/painel-admin/modulo/:id — ativa/desativa
 async function rotaAlternarModulo(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -206,7 +212,7 @@ async function rotaAlternarModulo(request: Request, env: Env, id: number): Promi
 
 // ========== Rotas: Portais Independentes (Lote 12.2) ==========
 
-// GET /painel-admin/portais-independentes — lista
+// GET /api/painel-admin/portais-independentes — lista
 async function rotaListarPortaisIndependentes(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -219,7 +225,7 @@ async function rotaListarPortaisIndependentes(request: Request, env: Env): Promi
   }
 }
 
-// GET /painel-admin/portal-independente/:id — detalhes
+// GET /api/painel-admin/portal-independente/:id — detalhes
 async function rotaBuscarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -234,7 +240,7 @@ async function rotaBuscarPortalIndependente(request: Request, env: Env, id: numb
   }
 }
 
-// POST /painel-admin/portais-independentes — cria
+// POST /api/painel-admin/portais-independentes — cria
 async function rotaCriarPortalIndependente(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -263,7 +269,7 @@ async function rotaCriarPortalIndependente(request: Request, env: Env): Promise<
   }
 }
 
-// PATCH /painel-admin/portal-independente/:id — ativa/desativa
+// PATCH /api/painel-admin/portal-independente/:id — ativa/desativa
 async function rotaAlternarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -287,7 +293,7 @@ async function rotaAlternarPortalIndependente(request: Request, env: Env, id: nu
   }
 }
 
-// PUT /painel-admin/portal-independente/:id — atualiza
+// PUT /api/painel-admin/portal-independente/:id — atualiza
 async function rotaAtualizarPortalIndependente(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -315,7 +321,7 @@ async function rotaAtualizarPortalIndependente(request: Request, env: Env, id: n
 
 // ========== Rotas: Visão Geral ==========
 
-// GET /painel-admin/visao-geral — estatísticas da rede
+// GET /api/painel-admin/visao-geral — estatísticas da rede
 async function rotaVisaoGeral(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -334,88 +340,88 @@ async function rotaVisaoGeral(request: Request, env: Env): Promise<Response> {
 
 export async function rotasPainelSuperadmin(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const pathname = url.pathname.replace(/^\/painel-admin/, "");
+  const pathname = url.pathname.replace(/^\/api\/painel-admin/, "");
 
-  // GET /painel-admin/pre-cadastros
+  // GET /api/painel-admin/pre-cadastros
   if (pathname === "/pre-cadastros" && request.method === "GET") {
     return rotaListarPreCadastros(request, env);
   }
 
-  // GET /painel-admin/pre-cadastro/:id
+  // GET /api/painel-admin/pre-cadastro/:id
   const matchPreCadastro = pathname.match(/^\/pre-cadastro\/(\d+)$/);
   if (matchPreCadastro && request.method === "GET") {
     return rotaBuscarPreCadastro(request, env, parseInt(matchPreCadastro[1]));
   }
 
-  // POST /painel-admin/pre-cadastro/:id/aprovar
+  // POST /api/painel-admin/pre-cadastro/:id/aprovar
   const matchAprovar = pathname.match(/^\/pre-cadastro\/(\d+)\/aprovar$/);
   if (matchAprovar && request.method === "POST") {
     return rotaAprovarPreCadastro(request, env, parseInt(matchAprovar[1]));
   }
 
-  // POST /painel-admin/pre-cadastro/:id/reprovar
+  // POST /api/painel-admin/pre-cadastro/:id/reprovar
   const matchReprovar = pathname.match(/^\/pre-cadastro\/(\d+)\/reprovar$/);
   if (matchReprovar && request.method === "POST") {
     return rotaReprovarPreCadastro(request, env, parseInt(matchReprovar[1]));
   }
 
-  // GET /painel-admin/cidades
+  // GET /api/painel-admin/cidades
   if (pathname === "/cidades" && request.method === "GET") {
     return rotaListarCidades(request, env);
   }
 
-  // GET /painel-admin/cidade/:id
+  // GET /api/painel-admin/cidade/:id
   const matchCidade = pathname.match(/^\/cidade\/(\d+)$/);
   if (matchCidade && request.method === "GET") {
     return rotaBuscarCidade(request, env, parseInt(matchCidade[1]));
   }
 
-  // PATCH /painel-admin/cidade/:id
+  // PATCH /api/painel-admin/cidade/:id
   const matchAtualizarCidade = pathname.match(/^\/cidade\/(\d+)$/);
   if (matchAtualizarCidade && request.method === "PATCH") {
     return rotaAtualizarCidade(request, env, parseInt(matchAtualizarCidade[1]));
   }
 
-  // GET /painel-admin/modulos
+  // GET /api/painel-admin/modulos
   if (pathname === "/modulos" && request.method === "GET") {
     return rotaListarModulos(request, env);
   }
 
-  // PATCH /painel-admin/modulo/:id
+  // PATCH /api/painel-admin/modulo/:id
   const matchModulo = pathname.match(/^\/modulo\/(\d+)$/);
   if (matchModulo && request.method === "PATCH") {
     return rotaAlternarModulo(request, env, parseInt(matchModulo[1]));
   }
 
-  // GET /painel-admin/portais-independentes
+  // GET /api/painel-admin/portais-independentes
   if (pathname === "/portais-independentes" && request.method === "GET") {
     return rotaListarPortaisIndependentes(request, env);
   }
 
-  // POST /painel-admin/portais-independentes
+  // POST /api/painel-admin/portais-independentes
   if (pathname === "/portais-independentes" && request.method === "POST") {
     return rotaCriarPortalIndependente(request, env);
   }
 
-  // GET /painel-admin/portal-independente/:id
+  // GET /api/painel-admin/portal-independente/:id
   const matchPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
   if (matchPortal && request.method === "GET") {
     return rotaBuscarPortalIndependente(request, env, parseInt(matchPortal[1]));
   }
 
-  // PATCH /painel-admin/portal-independente/:id
+  // PATCH /api/painel-admin/portal-independente/:id
   const matchAlternarPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
   if (matchAlternarPortal && request.method === "PATCH") {
     return rotaAlternarPortalIndependente(request, env, parseInt(matchAlternarPortal[1]));
   }
 
-  // PUT /painel-admin/portal-independente/:id
+  // PUT /api/painel-admin/portal-independente/:id
   const matchAtualizarPortal = pathname.match(/^\/portal-independente\/(\d+)$/);
   if (matchAtualizarPortal && request.method === "PUT") {
     return rotaAtualizarPortalIndependente(request, env, parseInt(matchAtualizarPortal[1]));
   }
 
-  // GET /painel-admin/visao-geral
+  // GET /api/painel-admin/visao-geral
   if (pathname === "/visao-geral" && request.method === "GET") {
     return rotaVisaoGeral(request, env);
   }

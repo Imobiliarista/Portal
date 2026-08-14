@@ -12,7 +12,7 @@ import {
   listarLogIsencaoDoCorretor,
 } from "../db/queries-isencao";
 
-// GET /painel-admin/isencoes — lista corretores com dados de isenção
+// GET /api/painel-admin/isencoes — lista corretores com dados de isenção
 async function rotaListarIsencoes(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -30,7 +30,7 @@ async function rotaListarIsencoes(request: Request, env: Env): Promise<Response>
   }
 }
 
-// POST /painel-admin/corretor/:id/isencao — concede ou edita a isenção
+// POST /api/painel-admin/corretor/:id/isencao — concede ou edita a isenção
 async function rotaConcederIsencao(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -57,7 +57,7 @@ async function rotaConcederIsencao(request: Request, env: Env, corretorId: numbe
   }
 }
 
-// DELETE /painel-admin/corretor/:id/isencao — revoga a isenção
+// DELETE /api/painel-admin/corretor/:id/isencao — revoga a isenção
 async function rotaRevogarIsencao(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -76,7 +76,7 @@ async function rotaRevogarIsencao(request: Request, env: Env, corretorId: number
   }
 }
 
-// GET /painel-admin/corretor/:id/isencao/log — histórico de auditoria
+// GET /api/painel-admin/corretor/:id/isencao/log — histórico de auditoria
 async function rotaLogIsencao(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);

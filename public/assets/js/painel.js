@@ -50,22 +50,22 @@ class PainelCorretor {
   async carregarDados() {
     try {
       // Busca perfil
-      const resPerfil = await fetch("/painel/perfil");
+      const resPerfil = await fetch("/api/painel-corretor/perfil");
       if (!resPerfil.ok) throw new Error("Erro ao buscar perfil");
       this.perfilData = await resPerfil.json();
 
       // Busca plano
-      const resPlano = await fetch("/painel/plano");
+      const resPlano = await fetch("/api/painel-corretor/plano");
       if (!resPlano.ok) throw new Error("Erro ao buscar plano");
       this.planoData = await resPlano.json();
 
       // Busca cotas
-      const resCotas = await fetch("/painel/cotas-portal");
+      const resCotas = await fetch("/api/painel-corretor/cotas-portal");
       if (!resCotas.ok) throw new Error("Erro ao buscar cotas");
       this.cotasData = await resCotas.json();
 
       // Busca anúncios
-      const resAnuncios = await fetch("/painel/anuncios?pagina=1");
+      const resAnuncios = await fetch("/api/painel-corretor/anuncios?pagina=1");
       if (!resAnuncios.ok) throw new Error("Erro ao buscar anúncios");
       this.anunciosData = await resAnuncios.json();
 
@@ -217,7 +217,7 @@ class PainelCorretor {
 
   async carregarPaginaAnuncios(pagina) {
     try {
-      const res = await fetch(`/painel/anuncios?pagina=${pagina}`);
+      const res = await fetch(`/api/painel-corretor/anuncios?pagina=${pagina}`);
       if (!res.ok) throw new Error("Erro ao buscar anúncios");
       this.anunciosData = await res.json();
       this.paginaAnuncios = pagina;
@@ -336,7 +336,7 @@ class PainelCorretor {
 
   async atualizarStatusPortal(nomePortal, ativo) {
     try {
-      const res = await fetch("/painel/cotas-portal", {
+      const res = await fetch("/api/painel-corretor/cotas-portal", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -376,7 +376,7 @@ class PainelCorretor {
     e.preventDefault();
 
     try {
-      const res = await fetch("/painel/perfil/editar", {
+      const res = await fetch("/api/painel-corretor/perfil/editar", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -401,7 +401,7 @@ class PainelCorretor {
 
   async carregarPublicacoes() {
     try {
-      const res = await fetch("/painel/publicacoes");
+      const res = await fetch("/api/painel-corretor/publicacoes");
       if (!res.ok) throw new Error("Erro ao buscar configuração de Publicações");
       this.publicacoesData = await res.json();
     } catch (erro) {
@@ -445,7 +445,7 @@ class PainelCorretor {
     const usarFeedPadrao = document.getElementById("publicacoes-fonte-padrao").checked;
 
     try {
-      const res = await fetch("/painel/publicacoes", {
+      const res = await fetch("/api/painel-corretor/publicacoes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

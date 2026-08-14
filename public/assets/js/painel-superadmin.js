@@ -1,7 +1,7 @@
 // Painel do Superadmin — lógica client-side (Lote 9)
-// Consuma as APIs em /painel-admin/*
+// Consuma as APIs em /api/painel-admin/*
 
-const API_BASE = "/painel-admin";
+const API_BASE = "/api/painel-admin";
 
 let paginaAtual = "dashboard";
 let precadastroAtualId = null;

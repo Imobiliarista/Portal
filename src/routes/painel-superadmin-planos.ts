@@ -17,7 +17,7 @@ import {
 
 // ========== Rotas: Planos ==========
 
-// GET /painel-admin/planos — lista (?incluirInativos=1 traz também os desativados)
+// GET /api/painel-admin/planos — lista (?incluirInativos=1 traz também os desativados)
 async function rotaListarPlanos(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -33,7 +33,7 @@ async function rotaListarPlanos(request: Request, env: Env): Promise<Response> {
   }
 }
 
-// GET /painel-admin/plano/:id — detalhes
+// GET /api/painel-admin/plano/:id — detalhes
 async function rotaBuscarPlano(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -48,7 +48,7 @@ async function rotaBuscarPlano(request: Request, env: Env, id: number): Promise<
   }
 }
 
-// POST /painel-admin/planos — cria
+// POST /api/painel-admin/planos — cria
 async function rotaCriarPlano(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -83,7 +83,7 @@ async function rotaCriarPlano(request: Request, env: Env): Promise<Response> {
   }
 }
 
-// PUT /painel-admin/plano/:id — edita
+// PUT /api/painel-admin/plano/:id — edita
 async function rotaAtualizarPlano(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -113,7 +113,7 @@ async function rotaAtualizarPlano(request: Request, env: Env, id: number): Promi
   }
 }
 
-// PATCH /painel-admin/plano/:id/desativar — desativa (não afeta corretores já no plano)
+// PATCH /api/painel-admin/plano/:id/desativar — desativa (não afeta corretores já no plano)
 async function rotaDesativarPlano(request: Request, env: Env, id: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -133,7 +133,7 @@ async function rotaDesativarPlano(request: Request, env: Env, id: number): Promi
 
 // ========== Rota: Troca de Plano (6.4) ==========
 
-// POST /painel-admin/corretor/:id/trocar-plano — { plano_id }
+// POST /api/painel-admin/corretor/:id/trocar-plano — { plano_id }
 async function rotaTrocarPlano(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -155,7 +155,7 @@ async function rotaTrocarPlano(request: Request, env: Env, corretorId: number): 
 
 // ========== Rota: Contador da Promoção de Lançamento (6.5) ==========
 
-// GET /painel-admin/promocao-lancamento/contador
+// GET /api/painel-admin/promocao-lancamento/contador
 async function rotaContadorPromocaoLancamento(request: Request, env: Env): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
