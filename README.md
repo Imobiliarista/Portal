@@ -73,6 +73,14 @@ npm run watch:css   # observa mudanças durante o desenvolvimento
 npm run build:css   # gera o CSS final minificado
 ```
 
+`public/assets/css/tailwind.css` é gerado a partir de `styles/input.css` e
+**não é commitado** (ver `.gitignore`) — os arquivos HTML em `public/`
+referenciam esse arquivo localmente, não mais o CDN do Tailwind. `npm run
+deploy` já roda `build:css` automaticamente antes do `wrangler deploy` via
+hook `predeploy`; ao publicar manualmente sem passar por `npm run deploy`
+(ex.: `wrangler deploy` direto), rode `npm run build:css` antes — sem isso
+o site sobe sem nenhum estilo.
+
 ## Outros comandos úteis
 
 ```bash

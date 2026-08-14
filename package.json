@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "predeploy": "npm run build:css",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
