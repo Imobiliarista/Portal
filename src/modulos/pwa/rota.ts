@@ -66,6 +66,16 @@ async function responderManifest(url: URL, env: Env): Promise<Response> {
   const slug = extrairSlugMinisite(hostname);
   if (!slug) return new Response("Not Found", { status: 404 });
 
+  // Checagem de elegibilidade ao vivo (flag de rede + permite_pwa do plano
+  // atual do corretor) — sem isso, um corretor rebaixado de plano
+  // continuava com o manifest cacheado no R2 sendo servido normalmente até
+  // algum evento não relacionado disparar a regeneração (sincronizarArtefatosPwaDoCorretor
+  // em jobs/gerar-json-corretor.ts). Mesma checagem já feita ao vivo em
+  // paginaEscolha/paginaAndroid/paginaIphone abaixo. Não apaga o artefato do
+  // R2 aqui — só para de servi-lo enquanto não elegível.
+  const elegibilidade = await verificarElegibilidadePwa(env.DB, hostname);
+  if (!elegibilidade.elegivel) return new Response("Not Found", { status: 404 });
+
   const objeto = await env.DADOS_CACHE.get(`pwa/${slug}/manifest.json`);
   if (!objeto) return new Response("Not Found", { status: 404 });
 
@@ -93,6 +103,10 @@ async function responderServiceWorker(url: URL, env: Env): Promise<Response> {
 
   const slug = extrairSlugMinisite(hostname);
   if (!slug) return new Response("Not Found", { status: 404 });
+
+  // Mesma checagem ao vivo de responderManifest acima — ver comentário lá.
+  const elegibilidade = await verificarElegibilidadePwa(env.DB, hostname);
+  if (!elegibilidade.elegivel) return new Response("Not Found", { status: 404 });
 
   const objeto = await env.DADOS_CACHE.get(`pwa/${slug}/service-worker.js`);
   if (!objeto) return new Response("Not Found", { status: 404 });
