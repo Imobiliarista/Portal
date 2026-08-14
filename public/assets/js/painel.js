@@ -30,6 +30,7 @@ class PainelCorretor {
     document.getElementById("nav-novo-anuncio").addEventListener("click", () => this.mostrarFormAnuncio());
     document.getElementById("nav-portais").addEventListener("click", () => this.mostrarPortais());
     document.getElementById("nav-publicacoes").addEventListener("click", () => this.mostrarPublicacoes());
+    document.getElementById("nav-planos").addEventListener("click", () => this.mostrarPlanos());
     document.getElementById("nav-perfil").addEventListener("click", () => this.mostrarPerfil());
     document.getElementById("logout-btn").addEventListener("click", () => this.logout());
 
@@ -107,6 +108,7 @@ class PainelCorretor {
       "form-anuncio-view": "nav-novo-anuncio",
       "portais-view": "nav-portais",
       "publicacoes-view": "nav-publicacoes",
+      "planos-view": "nav-planos",
       "perfil-view": "nav-perfil",
     };
     const navId = navMapping[viewId];
@@ -468,6 +470,86 @@ class PainelCorretor {
     } catch (erro) {
       console.error("Erro:", erro);
       alert("Erro ao atualizar portal.");
+    }
+  }
+
+  // ========== Meu Plano (autoatendimento, seção 6.4) ==========
+
+  async mostrarPlanos() {
+    this.mostrarView("planos-view");
+    document.getElementById("page-title").textContent = "Meu Plano";
+    await this.carregarPlanos();
+    this.renderizarPlanos();
+  }
+
+  async carregarPlanos() {
+    try {
+      const res = await fetch("/api/painel-corretor/planos-disponiveis");
+      if (!res.ok) throw new Error("Erro ao buscar planos disponíveis");
+      this.planosDisponiveisData = await res.json();
+    } catch (erro) {
+      console.error("Erro ao carregar planos disponíveis:", erro);
+      this.planosDisponiveisData = null;
+    }
+  }
+
+  renderizarPlanos() {
+    const lista = document.getElementById("planos-lista");
+
+    if (!this.planosDisponiveisData || !this.planosDisponiveisData.planos) {
+      lista.innerHTML = '<p class="text-gray-600">Não foi possível carregar os planos disponíveis.</p>';
+      return;
+    }
+
+    const planoAtualId = this.planosDisponiveisData.plano_atual_id;
+
+    lista.innerHTML = this.planosDisponiveisData.planos.map((p) => {
+      const ehAtual = p.id === planoAtualId;
+      return `
+        <div class="bg-white p-6 rounded-lg card-shadow ${ehAtual ? "ring-2 ring-blue-600" : ""}">
+          <h3 class="text-lg font-semibold text-slate-900">${this.escaparHTML(p.nome)}</h3>
+          <p class="text-2xl font-bold text-slate-900 mt-2">
+            R$ ${Number(p.preco_mensalidade).toFixed(2)}<span class="text-sm font-normal text-gray-600">/mês</span>
+          </p>
+          <ul class="text-sm text-gray-600 mt-4 space-y-1">
+            <li>${p.max_anuncios} anúncios</li>
+            <li>${p.max_fotos_por_anuncio} fotos por anúncio</li>
+            <li>${p.permite_pwa ? "✅" : "❌"} App (PWA)</li>
+            <li>${p.permite_publicacoes ? "✅" : "❌"} Publicações</li>
+          </ul>
+          <button
+            class="w-full mt-4 px-4 py-2 rounded-lg font-medium transition ${
+              ehAtual ? "bg-gray-200 text-gray-600 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white"
+            }"
+            ${ehAtual ? "disabled" : `onclick="painel.trocarPlano(${p.id})"`}
+          >
+            ${ehAtual ? "Plano Atual" : "Trocar para este plano"}
+          </button>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async trocarPlano(planoId) {
+    if (!confirm("Confirma a troca de plano? A mudança tem efeito imediato sobre seus limites de anúncios/fotos.")) return;
+
+    try {
+      const res = await fetch("/api/painel-corretor/plano/trocar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plano_id: planoId }),
+      });
+
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao trocar de plano");
+
+      alert("Plano atualizado com sucesso!");
+      await this.carregarDados();
+      await this.carregarPlanos();
+      this.renderizarPlanos();
+    } catch (erro) {
+      console.error("Erro ao trocar de plano:", erro);
+      alert(erro.message || "Erro ao trocar de plano.");
     }
   }
 

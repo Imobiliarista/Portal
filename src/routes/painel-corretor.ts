@@ -11,6 +11,7 @@ import { Env } from "../index";
 import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoDoCorretor, buscarConfigUploadDoCorretor, buscarMinisiteDoCorretor } from "../db/queries-perfil";
 import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
 import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
+import { listarPlanos, trocarPlanoDoCorretor } from "../db/queries-planos";
 import { rotaAgendamentoVisita } from "../modulos/agendamento-visita/rota";
 import { estaModuloAtivo } from "../db/queries-modulos";
 import {
@@ -161,6 +162,54 @@ async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
   } catch (erro) {
     console.error("Erro ao buscar plano:", erro);
     return respostaErro("Erro ao buscar plano", 500);
+  }
+}
+
+// ========== Rota: GET /api/painel-corretor/planos-disponiveis ==========
+// Autoatendimento de troca de plano (6.4) — corretor vê o catálogo e o
+// plano atual dele, sem depender do Superadmin
+
+async function rotaPainelPlanosDisponiveis(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const planos = await listarPlanos(env.DB);
+    const corretor = await buscarCorretorPorId(env.DB, corretor_id);
+
+    return respostaSucesso({
+      planos,
+      plano_atual_id: corretor?.plano_id ?? null,
+    });
+  } catch (erro) {
+    console.error("Erro ao listar planos disponíveis:", erro);
+    return respostaErro("Erro ao listar planos disponíveis", 500);
+  }
+}
+
+// ========== Rota: POST /api/painel-corretor/plano/trocar ==========
+// Mesma regra de negócio de 6.4 (trocarPlanoDoCorretor): upgrade sempre
+// permitido; downgrade bloqueado se exceder os limites do plano novo
+
+async function rotaPainelPlanoTrocar(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const corpo = (await request.json()) as { plano_id?: number };
+    if (!corpo.plano_id) return respostaErro("plano_id é obrigatório");
+
+    const resultado = await trocarPlanoDoCorretor(env.DB, corretor_id, corpo.plano_id);
+    if (!resultado.permitido) return respostaErro(resultado.mensagem || "Troca de plano bloqueada", 409);
+
+    return respostaSucesso({ mensagem: "Plano atualizado com sucesso" });
+  } catch (erro) {
+    console.error("Erro ao trocar de plano:", erro);
+    return respostaErro("Erro ao processar troca de plano", 500);
   }
 }
 
@@ -327,6 +376,14 @@ export async function rotasPainelCorretor(request: Request, env: Env): Promise<R
 
   if (pathname === "/api/painel-corretor/plano" && request.method === "GET") {
     return rotaPainelPlano(request, env);
+  }
+
+  if (pathname === "/api/painel-corretor/planos-disponiveis" && request.method === "GET") {
+    return rotaPainelPlanosDisponiveis(request, env);
+  }
+
+  if (pathname === "/api/painel-corretor/plano/trocar" && request.method === "POST") {
+    return rotaPainelPlanoTrocar(request, env);
   }
 
   if (pathname === "/api/painel-corretor/anuncios" && request.method === "GET") {
