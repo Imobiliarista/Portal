@@ -3,7 +3,8 @@
 // real da SPA via Static Assets (seção 4.6 do project.md).
 
 import { Env } from "../index";
-import { buscarCorrelorPorSlug, estaMinisiteLiberado } from "../db/queries-corretores";
+import { lerJSON } from "../lib/r2";
+import type { StatusMinisiteJSON } from "../jobs/gerar-status-minisite";
 import { ehRotaPublicacoes, rotaPublicacoes } from "../modulos/publicacoes/rota";
 
 function extrairSlugDoSubdominio(hostname: string): string | null {
@@ -41,20 +42,24 @@ export async function rotasMinisite(
     });
   }
 
-  // Validar se o corretor/minisite existe
-  const resultado = await buscarCorrelorPorSlug(env.DB, slug);
+  // Validar se o corretor/minisite existe e está liberado — lê o artefato
+  // materializado em R2 (jobs/gerar-status-minisite.ts), nunca D1. Este é
+  // o caminho de TODO visitante de TODO tenant: a regra "zero D1 no
+  // pageview público" (Documento Técnico Edge-First, seção 2/14) depende
+  // inteiramente desta leitura não tocar em banco.
+  const status = await lerJSON<StatusMinisiteJSON>(
+    env.DADOS_CACHE,
+    `tenants/${slug}/status.json`,
+  );
 
-  if (!resultado) {
+  if (!status) {
     return new Response(`Corretor "${slug}" não encontrado`, {
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
 
-  // Verificar se o minisite está liberado
-  const liberado = await estaMinisiteLiberado(env.DB, slug);
-
-  if (!liberado) {
+  if (!status.liberado) {
     return new Response(`Minisite "${slug}" ainda não está disponível\n\nEste site está sendo preparado. Por favor, tente novamente em breve.`, {
       status: 503, // Service Unavailable
       headers: { "content-type": "text/plain; charset=utf-8" },

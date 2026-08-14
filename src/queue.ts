@@ -4,6 +4,8 @@
 import { Env } from "./index";
 import { processarGerarJsonCorretor } from "./jobs/gerar-json-corretor";
 import { processarGerarJsonCidade } from "./jobs/gerar-json-cidade";
+import { processarGerarJsonAnuncio } from "./jobs/gerar-json-anuncio";
+import { processarGerarStatusMinisite } from "./jobs/gerar-status-minisite";
 import { processarRevalidacaoCruzada } from "./jobs/revalidacao-cruzada";
 import {
   processarGerarSitemapPortal,
@@ -34,6 +36,12 @@ export async function processarFilaAlteracoes(
         message.ack();
       } else if (msg.tipo === "gerar-json-cidade") {
         await processarGerarJsonCidade(msg as any, env);
+        message.ack();
+      } else if (msg.tipo === "gerar-json-anuncio") {
+        await processarGerarJsonAnuncio(msg as any, env);
+        message.ack();
+      } else if (msg.tipo === "gerar-status-minisite") {
+        await processarGerarStatusMinisite(msg as any, env);
         message.ack();
       } else if (msg.tipo === "revalidacao-cruzada") {
         await processarRevalidacaoCruzada(msg as any, env);

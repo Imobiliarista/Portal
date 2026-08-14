@@ -31,6 +31,14 @@ export async function processarRevalidacaoCruzada(
         cidade_id,
         cidade_slug,
       },
+      {
+        // Materializa anuncios/{id}.json em R2 — fecha o gap de D1 no
+        // pageview público (bot-detect.ts passa a ler daqui em vez de
+        // consultar D1 a cada requisição de bot/crawler). Ver
+        // jobs/gerar-json-anuncio.ts.
+        tipo: "gerar-json-anuncio",
+        anuncio_id,
+      },
     ];
 
     for (const msg of mensagens) {

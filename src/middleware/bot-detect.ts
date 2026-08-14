@@ -5,19 +5,7 @@
 
 import { Env } from "../index";
 import { lerJSON } from "../lib/r2";
-
-interface AnuncioDetalhe {
-  id: number;
-  titulo: string;
-  preco_venda?: number;
-  preco_aluguel?: number;
-  descricao?: string;
-  fotos_json?: string;
-  quartos?: number;
-  banheiros?: number;
-  area_util?: number;
-  corretor_id: number;
-}
+import type { AnuncioDetalheJSON } from "../jobs/gerar-json-anuncio";
 
 const BOTS_USER_AGENTS = [
   /googlebot/i,
@@ -61,21 +49,19 @@ export async function renderizarParaBot(
   env: Env,
 ): Promise<Response | null> {
   try {
-    const anuncio = await env.DB.prepare(
-      `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel, a.descricao,
-              a.fotos_json, a.quartos, a.banheiros, a.area_util, a.vendido_removido,
-              a.corretor_id
-       FROM anuncios a
-       WHERE a.id = ?`,
-    )
-      .bind(anuncioId)
-      .first();
+    // Lê o detalhe materializado em R2 (jobs/gerar-json-anuncio.ts) — nunca
+    // consulta D1 aqui. Se o artefato ainda não existir (ex: anúncio
+    // criado há poucos segundos, fila ainda não processou), retorna null
+    // e o chamador (routes/portal.ts) cai no fallback normal do shell via
+    // Static Assets — nunca num acesso a D1 no caminho público.
+    const anuncioDados = await lerJSON<AnuncioDetalheJSON>(
+      env.DADOS_CACHE,
+      `anuncios/${anuncioId}.json`,
+    );
 
-    if (!anuncio) {
-      return new Response("Not Found", { status: 404 });
+    if (!anuncioDados) {
+      return null;
     }
-
-    const anuncioDados = anuncio as AnuncioDetalhe;
 
     // HTTP 410 Gone para anúncios vendido/removido
     if (anuncioDados.vendido_removido) {
@@ -111,15 +97,7 @@ export async function renderizarParaBot(
           }).format(preco)
         : preco;
 
-    let fotos: string[] = [];
-    if (anuncioDados.fotos_json) {
-      try {
-        fotos = JSON.parse(anuncioDados.fotos_json);
-      } catch {
-        fotos = [];
-      }
-    }
-
+    const fotos = anuncioDados.fotos || [];
     const fotoCapa = fotos.length > 0 ? fotos[0] : "";
     const descricao = escaparHtml(
       anuncioDados.descricao || "Imóvel à venda/aluguel",
