@@ -4,15 +4,24 @@ compatibility_date = "2026-08-05"
 compatibility_flags = ["nodejs_compat"]
 
 # Static Assets — shell da SPA (público e painel), modo SPA fallback.
-# Ver project.md, seção 4.6. `run_worker_first = true` porque o Worker
-# ainda precisa rodar em toda requisição pra decidir bot-detect (dynamic
-# rendering de anúncio) e roteamento de API/painel; visitante humano
-# comum recebe o shell via `env.ASSETS.fetch()` dentro do Worker.
+# Ver project.md, seção 4.6.
+#
+# Plano C, Parte 2: `run_worker_first` restrito por rota em vez do booleano
+# `true` anterior. O Worker ainda precisa rodar em toda requisição dinâmica
+# — cache de borda (src/index.ts, Parte 1), bot-detect/dynamic rendering de
+# anúncio, roteamento de API/painel, leitura de status em R2 — mas arquivo
+# estático puro (CSS/JS/ícones) nunca deve invocar o Worker, e passa a ser
+# servido direto pela edge. `!` exclui explicitamente; ordem importa
+# (última regra que casa vence, mesma semântica de `_routes.json`).
+# Prefixos estáticos confirmados em `public/` (sem contar `index.html`, que
+# é o shell da SPA e precisa passar pelo Worker): `/assets/*` (CSS/JS) e
+# `/icons/*` (ícones do PWA/favicon). Se novos prefixos 100% estáticos
+# forem adicionados a `public/`, adicionar aqui também.
 [assets]
 directory = "public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = true
+run_worker_first = ["/*", "!/assets/*", "!/icons/*"]
 
 # D1 — fonte da verdade (escrita + leitura administrativa, nunca lido
 # diretamente pelo visitante público). Ver project.md, seção 4.3.

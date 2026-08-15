@@ -15,6 +15,7 @@ import { rotaPwa } from "./modulos/pwa/rota";
 import { rotasAnuncios } from "./routes/api-anuncios";
 import { processarFilaAlteracoes } from "./queue";
 import { handleScheduled } from "./scheduled";
+import { montarChaveCacheEdge, gravarNoCacheDeBorda } from "./lib/edge-cache";
 
 export interface Env {
   DB: D1Database;
@@ -41,7 +42,11 @@ function ehSubdominio(hostname: string): boolean {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
 
     // Middleware 1: Remoção de "www" — sempre primeira etapa
@@ -142,13 +147,44 @@ export default {
 
     // Roteador principal: portal vs. minisite baseado no hostname
     // Ver project.md, seção 4.1 (roteamento por hostname)
-    if (ehSubdominio(url.hostname)) {
-      // Subdomínio: minisite do corretor
-      return rotasMinisite(request, env);
+    const despachar = (): Promise<Response> =>
+      ehSubdominio(url.hostname)
+        ? rotasMinisite(request, env) // Subdomínio: minisite do corretor
+        : rotasPortal(request, env); // Domínio raiz ou outro: portal
+
+    // Cache de borda (Plano C, Parte 1) — primeira camada de resposta pro
+    // maior volume de leitura pública do projeto (portal + até 10 mil
+    // minisites). Só GET/HEAD, só portal/minisite público de fato — nunca
+    // /painel*/painel-admin* (shell autenticado) nem qualquer rota acima
+    // (API, sitemap, feeds, pwa, busca), que seguem o fluxo normal sem
+    // passar por aqui. Ver src/lib/edge-cache.ts.
+    const elegivelParaCacheDeBorda =
+      (request.method === "GET" || request.method === "HEAD") &&
+      !url.pathname.startsWith("/painel");
+
+    if (!elegivelParaCacheDeBorda) {
+      return despachar();
     }
 
-    // Domínio raiz ou outro: portal
-    return rotasPortal(request, env);
+    const chaveCache = montarChaveCacheEdge(url, ehRobo);
+    const respostaCache = await caches.default.match(chaveCache);
+    if (respostaCache) {
+      // Hit: nada abaixo roda — sem bot-detect, sem env.ASSETS.fetch, sem R2.
+      return respostaCache;
+    }
+
+    const resposta = await despachar();
+
+    // GET apenas — HEAD não tem corpo, gravar a chave (normalizada pra GET
+    // em montarChaveCacheEdge) com um corpo vazio poisoaria a próxima leitura.
+    if (request.method === "GET") {
+      const gravacao = gravarNoCacheDeBorda(chaveCache, resposta.clone());
+      if (gravacao) {
+        ctx.waitUntil(gravacao);
+      }
+    }
+
+    return resposta;
   },
 
   // Handler da Queue (Lote 6, seção 4.4)
