@@ -10,6 +10,7 @@
 
 import { Env } from "../index";
 import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
+import { sincronizarElegibilidadePortal } from "../modulos/pwa/logica";
 import {
   listarPreCadastrosPendentes,
   buscarPreCadastro,
@@ -211,6 +212,14 @@ async function rotaAlternarModulo(request: Request, env: Env, id: number): Promi
 
     const modulos = await listarModulos(env.DB);
     const moduloAtualizado = modulos.find(m => m.id === id);
+
+    // Domínio raiz do PWA não depende de plano — só desta flag de rede
+    // (seção 4.18) — então regrava pwa/portal/elegibilidade.json aqui
+    // mesmo, sem esperar um job. modulos/pwa/rota.ts lê só esse artefato,
+    // nunca D1, no caminho público.
+    if (moduloAtualizado?.slug === "pwa") {
+      await sincronizarElegibilidadePortal(env, moduloAtualizado.ativo);
+    }
 
     return respostaSucesso(moduloAtualizado);
   } catch {

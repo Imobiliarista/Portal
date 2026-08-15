@@ -92,7 +92,7 @@ por ordem alfabética — a categorização "(d) = crítico" do escopo desta
 tarefa é binária, mas o impacto pra "zero D1 no pageview público" varia
 bastante entre eles, então a leitura abaixo separa isso.
 
-#### D1‑1 (mais grave — afeta ~100% do tráfego, todo pageview) — `modulos/pwa/rota.ts`
+#### D1‑1 (mais grave — afeta ~100% do tráfego, todo pageview) — `modulos/pwa/rota.ts` — **CORRIGIDO em 15/08**
 
 `/manifest.json` e `/sw.js` são buscados automaticamente pelo navegador
 em **toda** carga de página: `public/index.html:10` tem
@@ -108,19 +108,70 @@ nem `/sw.js` por `rotasPortal`/`rotasMinisite`, mas eles seguem elegíveis
 ao cache de borda por não começarem com `/painel`; ainda assim rodam D1
 **a cada miss de cache**, que é frequente dado o `no-cache` do SW).
 
-Consultas D1 síncronas por requisição:
+Consultas D1 síncronas por requisição (antes da correção):
 - `modulos/pwa/rota.ts:54` — `estaModuloAtivo(env.DB, "pwa")` (domínio raiz, manifest)
 - `modulos/pwa/rota.ts:76` — `verificarElegibilidadePwa(env.DB, hostname)` (minisite, manifest)
 - `modulos/pwa/rota.ts:95` — `estaModuloAtivo(env.DB, "pwa")` (domínio raiz, service worker)
 - `modulos/pwa/rota.ts:108` — `verificarElegibilidadePwa(env.DB, hostname)` (minisite, service worker)
 - `modulos/pwa/rota.ts:170`, `:197`, `:267` — `verificarElegibilidadePwa(env.DB, url.hostname)` em `/apps`, `/apps/android`, `/apps/iphone`
 
-O comentário em `pwa/rota.ts:69-75` já reconhece isso como decisão
-deliberada ("checagem de elegibilidade ao vivo") pra evitar servir
-manifest desatualizado após downgrade de plano — é uma troca consciente
-de consistência por isolamento, mas não estava documentada como exceção
-à regra "zero D1 no pageview público" em nenhum dos relatórios/documento
-técnico revisados.
+O comentário original em `pwa/rota.ts:69-75` já reconhecia isso como
+decisão deliberada ("checagem de elegibilidade ao vivo") pra evitar
+servir manifest desatualizado após downgrade de plano — uma troca
+consciente de consistência por isolamento, mas não documentada como
+exceção à regra "zero D1 no pageview público" em nenhum relatório
+anterior.
+
+**Investigação de variação por tenant:** confirmado que o conteúdo do
+manifest/SW do domínio raiz é fixo (`gerarManifestPortal()`,
+`gerarServiceWorkerAtivo(VERSAO_SW_PORTAL)`), mas o de cada minisite
+**varia de verdade** por corretor (`gerarManifestCorretor(nomeCorretor)`,
+`gerador-manifest.ts:67-80` — `name`/`short_name`/`description`
+diferentes por tenant) — e essa variação já era corretamente
+materializada em R2 por tenant (`pwa/{slug}/manifest.json`,
+`pwa/{slug}/service-worker.js`, via `sincronizarArtefatosPwaDoCorretor`).
+Por isso a correção **não** virou arquivo estático em `public/` (o que
+quebraria a personalização por corretor — exceções de `run_worker_first`
+no `wrangler.toml` são por path, não por hostname, então um
+`/manifest.json` estático seria o mesmo arquivo para o domínio raiz e
+para todos os ~10 mil minisites). A correção seguiu o padrão já usado em
+`tenants/{slug}/status.json`:
+
+- `modulos/pwa/logica.ts` — `sincronizarArtefatosPwaDoCorretor` (chamada
+  por `jobs/gerar-json-corretor.ts:131` a cada regeneração do minisite)
+  passou a gravar também `pwa/{slug}/elegibilidade.json`
+  (`{ elegivel, nomeExibicao }`), sempre — elegível ou não.
+- `modulos/pwa/logica.ts` — nova função `sincronizarElegibilidadePortal`,
+  chamada por `routes/painel-superadmin.ts` (`rotaAlternarModulo`) toda
+  vez que o Superadmin alterna o módulo `"pwa"`, grava
+  `pwa/portal/elegibilidade.json`.
+- `modulos/pwa/rota.ts` — removidas todas as 6 chamadas a
+  `env.DB`/`verificarElegibilidadePwa(env.DB, ...)`. As 5 rotas
+  (`/manifest.json`, `/sw.js`, `/apps`, `/apps/android`, `/apps/iphone`)
+  passaram a resolver elegibilidade e nome de exibição por uma única
+  função `obterElegibilidade`, que só lê `env.DADOS_CACHE` (R2):
+  `pwa/portal/elegibilidade.json` no domínio raiz,
+  `pwa/{slug}/elegibilidade.json` no minisite.
+
+Mesma folga de consistência já aceita em `tenants/{slug}/status.json`: a
+elegibilidade só reflete no próximo evento de regeneração do minisite ou
+na próxima alternância do módulo pelo Superadmin — nunca "ao vivo" por
+requisição. **Ressalva de deploy:** como o artefato `pwa/portal/elegibilidade.json`
+só é gravado quando o Superadmin *altera* o módulo `"pwa"` (não existe
+job de backfill), ele não existe ainda em produção — o Superadmin precisa
+alternar o módulo uma vez (ou desligar e religar) após o deploy desta
+correção para que `/manifest.json`/`/sw.js` do domínio raiz voltem a
+responder; até lá, `obterElegibilidade` trata artefato ausente como não
+elegível (404 no manifest, SW "suicida"), nunca cai em D1.
+
+Validado com um script standalone (`esbuild` + Node, R2 fake em memória)
+cobrindo portal elegível/não-elegível, minisite elegível
+(`pwa/joao/*`), minisite não-elegível (`pwa/maria/elegibilidade.json`
+com `elegivel:false`) e minisite sem artefato nenhum — todos os 5
+caminhos (`/manifest.json`, `/sw.js`, `/apps`, `/apps/android`,
+`/apps/iphone`) responderam com paridade exata ao comportamento anterior
+(200 com conteúdo correto quando elegível, 404/página "não disponível"
+quando não).
 
 #### D1‑2 (minisite, sob path routing) — `modulos/publicacoes/rota.ts:34`
 
@@ -177,49 +228,38 @@ fluxo de renderização** (`index.ts` → cache de borda → `portal.ts` /
 incluindo o fluxo novo do PR #41. Isso é o que a Parte 1 confirma sem
 ressalvas.
 
-Só que "caminho público" é mais largo que só esse núcleo: existem 4 achados
-(D1‑1 a D1‑4) de rotas públicas sem sessão, fora de (a)/(b)/(c), que
-seguem consultando D1 de forma síncrona a cada requisição. D1‑1
-(`pwa/rota.ts`) é o mais sério: afeta virtualmente 100% dos carregamentos
-de página (não só o HTML, mas o par manifest+service-worker que todo
-navegador busca em paralelo), no portal e em todo minisite — mesma classe
-de risco dos itens já corrigidos em 14/08, e não estava coberto por
-aquela auditoria (que citava só o HTML servido por `minisite.ts` e
-`bot-detect.ts`). D1‑2 e D1‑3 já eram conhecidos e permanecem pendentes
-pelos motivos já registrados. D1‑4 é novo nesta varredura.
+Só que "caminho público" é mais largo que só esse núcleo: existiam 4
+achados (D1‑1 a D1‑4) de rotas públicas sem sessão, fora de (a)/(b)/(c),
+que seguiam consultando D1 de forma síncrona a cada requisição. **D1‑1
+(`pwa/rota.ts`), o mais sério — afeta virtualmente 100% dos
+carregamentos de página, no portal e em todo minisite —, foi corrigido
+em 15/08** (ver detalhes na seção acima): confirmada variação real de
+conteúdo por tenant nos minisites, então a correção seguiu o mesmo padrão
+de `tenants/{slug}/status.json` (materializar em R2 por tenant) em vez de
+virar arquivo estático global, que quebraria a personalização por
+corretor. `modulos/pwa/rota.ts` não toca mais `env.DB` em nenhum caminho.
 
-### Correção proposta (não aplicada nesta tarefa — aguardando decisão)
+D1‑2 e D1‑3 já eram conhecidos e permanecem pendentes pelos motivos já
+registrados. D1‑4 é novo nesta varredura. D1‑5 (rotas de auth) é
+considerado esperado, não uma pendência.
 
-Conforme escopo, nenhuma correção de código foi aplicada; a alteração
-teria impacto em lógica de negócio (elegibilidade de módulo por plano) e
-merece decisão explícita antes de virar PR:
+### Pendências restantes (fora de escopo desta correção)
 
-1. **D1‑1 (`pwa/rota.ts`) — prioridade alta.** Mesmo padrão já usado para
-   `bot-detect.ts`/`minisite.ts`: materializar elegibilidade PWA
-   (`estaModuloAtivo("pwa")` + `permite_pwa` do plano) em R2 —
-   `tenants/{slug}/status.json` (item 1 do relatório de 14/08) já carrega
-   status de liberação; adicionar `pwa_elegivel` nesse mesmo artefato
-   fecharia o caso do minisite sem outra leitura. Pro domínio raiz
-   (`estaModuloAtivo(env.DB, "pwa")` em `:54`/`:95`), materializar
-   `config/modulos.json` (flags de rede) em R2, invalidado no toggle do
-   superadmin (`alternarModulo`, já em `painel-superadmin.ts`).
-2. **D1‑3 (feeds) — prioridade média.** Mesmo artefato de status já
-   materializado; adicionar `modulo_grupo_olx_ativo`/`cota_*` (ou
-   equivalente) resolveria `estaModuloAtivo`/`buscarCotaPortal` sem D1.
-   Cota pode ter TTL curto aceitável (é limite suave, não trava de
-   segurança).
-3. **D1‑4 (busca-ia, busca-salva, agendamento) — prioridade menor.** Os
-   três repetem o mesmo padrão `estaModuloAtivo(env.DB, "<slug>")`
-   resolvível pelo artefato `config/modulos.json` da proposta 1. As
-   consultas específicas de `agendamento-visita/rota.ts:131,163` (buscar
-   anúncio/corretor por ID) são mais difíceis de tirar de D1 sem cache
-   dedicado — mas rodam só numa ação explícita de baixo volume, não numa
-   leitura de página.
-4. **D1‑2 (publicacoes)** — mantém-se a decisão já registrada em 14/08 de
+1. **D1‑3 (feeds) — prioridade média.** Mesmo padrão da correção de
+   D1‑1 se aplicaria: materializar `modulo_ativo`/`cota_*` em R2 por
+   tenant, resolvendo `estaModuloAtivo`/`buscarCotaPortal` sem D1. Cota
+   pode ter TTL curto aceitável (é limite suave, não trava de segurança).
+2. **D1‑4 (busca-ia, busca-salva, agendamento) — prioridade menor.** Os
+   três repetem o padrão `estaModuloAtivo(env.DB, "<slug>")`, resolvível
+   por um artefato de config de rede em R2 (mesma ideia de
+   `pwa/portal/elegibilidade.json` desta correção, generalizada pra
+   outros módulos). As consultas específicas de
+   `agendamento-visita/rota.ts:131,163` (buscar anúncio/corretor por ID)
+   são mais difíceis de tirar de D1 sem cache dedicado — mas rodam só
+   numa ação explícita de baixo volume, não numa leitura de página.
+3. **D1‑2 (publicacoes)** — mantém-se a decisão já registrada em 14/08 de
    não corrigir agora (múltiplas fontes de invalidação, risco de
    inconsistência maior que o ganho).
 
-Nenhum PR foi aberto nesta tarefa — o pedido original previa isso só se
-nenhuma correção fosse necessária. Como D1‑1 a D1‑4 apareceram, a
-correção deve ser proposta e aprovada antes de virar código, conforme
-instrução recebida.
+Nenhuma dessas três pendências foi tratada nesta tarefa — escopo
+explicitamente limitado a D1‑1 (`pwa/rota.ts`).
