@@ -28,12 +28,18 @@ function obterIPCliente(request: Request): string {
 // Mapa em memória para rastreamento de força bruta (por requisição)
 // Em produção com múltiplas instâncias, usar Durable Objects ou D1
 interface TentativaLogin {
-  ip: string;
   falhas: number;
-  bloqueado_ate: number;
+  bloqueado_ate: number; // 0 = não bloqueado
+  expira_em: number; // quando a contagem de falhas é descartada por inatividade
 }
 
 const tentativasLogin: Map<string, TentativaLogin> = new Map();
+
+// Piso definido pelo dono do produto: só bloqueia a partir da 10ª falha
+// consecutiva, pra não pegar cliente real errando a senha uma ou duas vezes.
+const LIMITE_TENTATIVAS = 10;
+const DURACAO_BLOQUEIO_MS = 900_000; // 15 minutos
+const JANELA_INATIVIDADE_MS = 900_000; // reseta a contagem se ficar 15min sem nova falha
 
 function verificarBloqueio(ip: string): boolean {
   const agora = Date.now();
@@ -41,33 +47,34 @@ function verificarBloqueio(ip: string): boolean {
 
   if (!tentativa) return false;
 
-  if (agora > tentativa.bloqueado_ate) {
-    tentativasLogin.delete(ip);
-    return false;
+  if (tentativa.bloqueado_ate > 0 && agora < tentativa.bloqueado_ate) {
+    return true;
   }
 
-  return true;
+  if (agora > tentativa.expira_em) {
+    tentativasLogin.delete(ip);
+  }
+
+  return false;
 }
 
 function registrarFalhaLogin(ip: string): void {
   const agora = Date.now();
   const tentativa = tentativasLogin.get(ip);
 
-  if (!tentativa) {
+  if (!tentativa || agora > tentativa.expira_em) {
     tentativasLogin.set(ip, {
-      ip,
       falhas: 1,
-      bloqueado_ate: agora + 60_000,
+      bloqueado_ate: 0,
+      expira_em: agora + JANELA_INATIVIDADE_MS,
     });
-  } else {
-    tentativa.falhas += 1;
-    if (tentativa.falhas >= 5) {
-      tentativa.bloqueado_ate = agora + 900_000;
-    } else if (tentativa.falhas >= 3) {
-      tentativa.bloqueado_ate = agora + 300_000;
-    } else {
-      tentativa.bloqueado_ate = agora + 60_000;
-    }
+    return;
+  }
+
+  tentativa.falhas += 1;
+  tentativa.expira_em = agora + JANELA_INATIVIDADE_MS;
+  if (tentativa.falhas >= LIMITE_TENTATIVAS) {
+    tentativa.bloqueado_ate = agora + DURACAO_BLOQUEIO_MS;
   }
 }
 
