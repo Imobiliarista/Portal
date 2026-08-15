@@ -469,11 +469,16 @@ class PainelCorretor {
 
   // ========== Logout ==========
 
-  logout() {
-    if (confirm("Deseja sair do painel?")) {
-      document.cookie = "session_id=; max-age=0";
-      window.location.href = "/";
+  async logout() {
+    if (!confirm("Deseja sair do painel?")) return;
+    // session_id é HttpOnly — só o backend consegue revogar de verdade
+    // (D1 + cookie); limpar client-side não fazia nada.
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (erro) {
+      console.error("Erro ao encerrar sessão:", erro);
     }
+    window.location.href = "/login/";
   }
 
   // ========== Utilidades ==========

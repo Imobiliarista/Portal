@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Portal Imobiliário</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0f172a" />
+
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico" />
+  <link href="/assets/css/tailwind.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-bold text-slate-900">🏠 Portal Imobiliário</h1>
+      <p id="subtitulo" class="text-sm text-gray-600 mt-1">Acesse seu painel</p>
+    </div>
+
+    <div id="verificando" class="bg-white p-8 rounded-lg shadow-md text-center text-gray-600">
+      Verificando sessão...
+    </div>
+
+    <form id="form-login" class="hidden bg-white p-8 rounded-lg shadow-md space-y-4">
+      <div id="erro-login" class="hidden bg-red-50 border-l-4 border-red-400 text-red-700 text-sm p-3 rounded"></div>
+
+      <div>
+        <label for="login-usuario" class="block text-sm font-medium text-gray-700 mb-1">Usuário ou CPF</label>
+        <input
+          id="login-usuario"
+          name="usuario"
+          type="text"
+          autocomplete="username"
+          required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div>
+        <label for="login-senha" class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+        <input
+          id="login-senha"
+          name="senha"
+          type="password"
+          autocomplete="current-password"
+          required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <button
+        id="btn-login"
+        type="submit"
+        class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        Entrar
+      </button>
+    </form>
+  </div>
+
+  <script src="/assets/js/login.js"></script>
+</body>
+</html>

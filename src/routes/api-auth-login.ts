@@ -5,6 +5,16 @@ import { Env } from "../index";
 import { verificarSenha } from "../lib/senha";
 import { validarCPF, normalizarCPF } from "../lib/cpf";
 import { obterCorretorAutenticado } from "../lib/sessao";
+import { obterSessaoCompleta, calcularDestinoPosLogin } from "../lib/sessao-destino";
+
+// Domínio explícito no cookie (em vez de host-only) — necessário pro mesmo
+// session_id valer tanto na raiz (imobiliarista.net) quanto no subdomínio
+// do corretor (nome.imobiliarista.net/painel/), já que o login pode
+// acontecer em qualquer um dos dois e o redirecionamento pós-login troca
+// de host. Sem isso, logar na raiz e cair no próprio subdomínio (redirect
+// do "Login real + redirecionamento por sessão") chegaria lá sem cookie
+// nenhum.
+const COOKIE_BASE = "Path=/; Domain=imobiliarista.net; HttpOnly; Secure; SameSite=Strict";
 
 // Duração da sessão — mantida em segundos pra ficar em sincronia com o
 // Max-Age do cookie (seção 6.2 do project.md).
@@ -138,6 +148,16 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
        VALUES (?, ?, ?, ?, ?, datetime('now'))`
     ).bind(corretor.id, sessionId, ip, userAgent || null, expiraEm).run();
 
+    // Destino pós-login (superadmin, corretor liberado no próprio
+    // subdomínio, ou corretor pendente na raiz) — mesma regra usada pelos
+    // gates de /painel*/painel-admin* (src/lib/sessao-destino.ts), pra
+    // login.js nunca decidir isso por conta própria.
+    const sessaoRecemCriada = await obterSessaoCompleta(
+      new Request(request.url, { headers: { cookie: `session_id=${sessionId}` } }),
+      env,
+    );
+    const redirectTo = sessaoRecemCriada ? calcularDestinoPosLogin(sessaoRecemCriada) : "/";
+
     return new Response(JSON.stringify({
       sucesso: true,
       mensagem: "Login realizado com sucesso",
@@ -145,11 +165,12 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
       nome_completo: corretor.nome_completo,
       email: corretor.email,
       status: corretor.status,
+      redirect_to: redirectTo,
     }), {
       status: 200,
       headers: {
         "content-type": "application/json",
-        "set-cookie": `session_id=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${DURACAO_SESSAO_SEGUNDOS}`,
+        "set-cookie": `session_id=${sessionId}; ${COOKIE_BASE}; Max-Age=${DURACAO_SESSAO_SEGUNDOS}`,
       },
     });
   } catch (erro) {
@@ -179,7 +200,10 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": "session_id=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+      // Domain precisa bater exatamente com o cookie setado no login —
+      // navegador trata Domain diferente como cookie diferente, então sem
+      // isso o cookie cross-subdomínio nunca seria de fato apagado.
+      "set-cookie": `session_id=; ${COOKIE_BASE}; Max-Age=0`,
     },
   });
 }
@@ -208,12 +232,19 @@ async function handleVerificacaoSessao(request: Request, env: Env): Promise<Resp
       });
     }
 
+    // redirect_to: usado por login.js pra pular o formulário e já mandar
+    // quem chega em /login/ com sessão válida pro painel certo (raiz ou
+    // subdomínio, conforme papel/minisite — src/lib/sessao-destino.ts).
+    const sessaoCompleta = await obterSessaoCompleta(request, env);
+    const redirectTo = sessaoCompleta ? calcularDestinoPosLogin(sessaoCompleta) : null;
+
     return new Response(JSON.stringify({
       autenticado: true,
       corretor_id: corretor.id,
       nome_completo: corretor.nome_completo,
       email: corretor.email,
       status: corretor.status,
+      redirect_to: redirectTo,
     }), {
       status: 200,
       headers: { "content-type": "application/json" },

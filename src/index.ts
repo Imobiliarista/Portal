@@ -3,6 +3,7 @@ import { ehBot, renderizarParaBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
 import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
+import { servirPainelRaiz } from "./routes/painel-gate";
 import { rotasPortal } from "./routes/portal";
 import { rotasMinisite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
@@ -124,15 +125,22 @@ export default {
       return rotasAnuncios(request, env);
     }
 
-    // Roteador do painel do corretor — domínio raiz apenas
+    // Roteador do painel do corretor — independente do hostname
     // Ver project.md, Lote 8
     //
     // Prefixo de API separado do shell estático (/painel/*, servido por
-    // env.ASSETS.fetch via rotasPortal mais abaixo — mesmo padrão de
-    // portal.ts/minisite.ts, seção 4.6/4.9): antes o próprio /painel/*
-    // interceptava tudo, inclusive o HTML do shell (public/painel/index.html),
-    // que nunca chegava a ser servido. Ver auditoria de fluxo completo.
-    if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/api/painel-corretor/")) {
+    // env.ASSETS.fetch via rotasPortal/rotasMinisite mais abaixo — mesmo
+    // padrão de portal.ts/minisite.ts, seção 4.6/4.9): antes o próprio
+    // /painel/* interceptava tudo, inclusive o HTML do shell
+    // (public/painel/index.html), que nunca chegava a ser servido. Ver
+    // auditoria de fluxo completo.
+    //
+    // Deliberadamente SEM ehDominioRaiz(): a rota nunca confia no hostname
+    // pra identificar o corretor (sempre via cookie de sessão), e o corretor
+    // aprovado passa a acessar o painel no próprio subdomínio
+    // (nome.imobiliarista.net/painel/, "Login real + redirecionamento por
+    // sessão") — essa API precisa responder lá também, não só na raiz.
+    if (url.pathname.startsWith("/api/painel-corretor/")) {
       return rotasPainelCorretor(request, env);
     }
 
@@ -143,6 +151,19 @@ export default {
     // shell estático (/painel-admin/*, público/painel-admin/index.html).
     if (ehDominioRaiz(url.hostname) && url.pathname.startsWith("/api/painel-admin/")) {
       return rotasPainelSuperadmin(request, env);
+    }
+
+    // Gate de sessão pro shell de /painel*/painel-admin* na raiz — fecha a
+    // exposição da auditoria de segurança (HTML do painel servido sem
+    // checagem nenhuma via env.ASSETS.fetch). Precisa rodar ANTES do
+    // despachar()/rotasPortal abaixo, que serviria o shell sem gate
+    // nenhum pra qualquer visitante. Ver routes/painel-gate.ts.
+    if (
+      ehDominioRaiz(url.hostname) &&
+      (url.pathname === "/painel" || url.pathname.startsWith("/painel/") ||
+        url.pathname === "/painel-admin" || url.pathname.startsWith("/painel-admin/"))
+    ) {
+      return servirPainelRaiz(request, env, url);
     }
 
     // Roteador principal: portal vs. minisite baseado no hostname

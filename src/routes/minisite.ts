@@ -6,6 +6,7 @@ import { Env } from "../index";
 import { lerJSON } from "../lib/r2";
 import type { StatusMinisiteJSON } from "../jobs/gerar-status-minisite";
 import { ehRotaPublicacoes, rotaPublicacoes } from "../modulos/publicacoes/rota";
+import { obterSessaoCompleta } from "../lib/sessao-destino";
 
 function extrairSlugDoSubdominio(hostname: string): string | null {
   // Formato esperado: {slug}.imobiliarista.net
@@ -64,6 +65,35 @@ export async function rotasMinisite(
       status: 503, // Service Unavailable
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
+  }
+
+  // Painel do Superadmin não existe em subdomínio — nunca serve o shell
+  // aqui (fechava de novo a exposição da auditoria, só que por outro
+  // host). Redireciona pra raiz, onde o gate de verdade roda
+  // (routes/painel-gate.ts) com a sessão já válida nos dois hosts (cookie
+  // com Domain=imobiliarista.net, ver lib/sessao-destino.ts).
+  if (url.pathname === "/painel-admin" || url.pathname.startsWith("/painel-admin/")) {
+    return new Response(null, {
+      status: 302,
+      headers: { location: `https://imobiliarista.net${url.pathname}${url.search}` },
+    });
+  }
+
+  // Gate de sessão pro shell de /painel/* neste subdomínio — fecha a
+  // mesma exposição da auditoria de segurança (HTML do painel servido sem
+  // checagem nenhuma via env.ASSETS.fetch), agora pro caminho do
+  // corretor. Checa posse (não só "tem sessão válida de algum corretor"):
+  // status.corretor_id já veio do status.json deste slug logo acima, sem
+  // tocar D1 de novo.
+  if (url.pathname === "/painel" || url.pathname.startsWith("/painel/")) {
+    const sessao = await obterSessaoCompleta(request, env);
+    const autorizado = sessao?.papel === "corretor" && sessao.corretor_id === status.corretor_id;
+
+    if (!autorizado) {
+      return new Response(null, { status: 302, headers: { location: "/login/" } });
+    }
+
+    return env.ASSETS.fetch(request);
   }
 
   // Módulo Publicações (Lote 16, seção 4.19) — path routing, /publicacoes

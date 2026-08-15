@@ -33,7 +33,7 @@ function extrairSlugCorretor(hostname: string): string | null {
 }
 
 function gerarRobotsTxt(hostname: string, siteUrl: string): string {
-  const disallow = ["/painel/", "/painel-admin/", "/api/"];
+  const disallow = ["/painel/", "/painel-admin/", "/login/", "/api/"];
   const disallowLines = disallow.map((d) => `Disallow: ${d}`).join("\n");
 
   const linhasSitemap =
