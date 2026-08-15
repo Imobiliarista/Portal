@@ -3,17 +3,24 @@
 // cada minisite — além de servir /manifest.json e /sw.js dinamicamente
 // (dupla checagem: flag de rede + `permite_pwa` do plano do corretor).
 //
+// Elegibilidade lida exclusivamente de R2 (pwa/{slug}/elegibilidade.json
+// e pwa/portal/elegibilidade.json) — nunca D1 no caminho público. Os
+// artefatos são materializados por modulos/pwa/logica.ts: a cada
+// regeneração do minisite (sincronizarArtefatosPwaDoCorretor, via
+// jobs/gerar-json-corretor.ts) e a cada alternância do módulo pelo
+// Superadmin (sincronizarElegibilidadePortal, via
+// routes/painel-superadmin.ts). Mesma folga de consistência já aceita em
+// tenants/{slug}/status.json: a mudança só reflete no próximo evento de
+// regeneração/alternância, nunca "ao vivo" por requisição.
+//
 // Sem banner automático: o beforeinstallprompt é suprimido globalmente
 // em todas as páginas (assets/js/pwa-instalador.js) — aqui só oferecemos
 // o prompt sob ação explícita do visitante.
 
 import { Env } from "../../index";
-import { estaModuloAtivo } from "../../db/queries-modulos";
-import {
-  ehDominioRaiz,
-  extrairSlugMinisite,
-  verificarElegibilidadePwa,
-} from "./logica";
+import { ehDominioRaiz, extrairSlugMinisite } from "./logica";
+import type { ElegibilidadePwaArtefato } from "./logica";
+import { lerJSON } from "../../lib/r2";
 import { gerarManifestPortal } from "./gerador-manifest";
 import { gerarServiceWorkerAtivo, gerarServiceWorkerSuicida } from "./gerador-service-worker";
 
@@ -21,6 +28,55 @@ import { gerarServiceWorkerAtivo, gerarServiceWorkerSuicida } from "./gerador-se
 // exija invalidar o cache local (ver 4.6.1). O SW dos minisites é
 // versionado automaticamente a cada regeneração do lote (logica.ts).
 const VERSAO_SW_PORTAL = "2026-08-11";
+
+interface ElegibilidadeResolvida extends ElegibilidadePwaArtefato {
+  ehPortal: boolean;
+  encontrado: boolean;
+  slug?: string;
+}
+
+// Lê a elegibilidade PWA materializada em R2 — nunca D1. Portal:
+// pwa/portal/elegibilidade.json. Minisite: pwa/{slug}/elegibilidade.json.
+// Ausência de artefato (deploy novo antes da primeira alternância/
+// regeneração) é tratada como não-elegível, igual a qualquer outro
+// artefato materializado ainda não gerado.
+async function obterElegibilidade(url: URL, env: Env): Promise<ElegibilidadeResolvida> {
+  const hostname = url.hostname;
+
+  if (ehDominioRaiz(hostname)) {
+    const artefato = await lerJSON<ElegibilidadePwaArtefato>(
+      env.DADOS_CACHE,
+      "pwa/portal/elegibilidade.json",
+    );
+    return {
+      elegivel: artefato?.elegivel ?? false,
+      nomeExibicao: "Portal Imobiliário",
+      ehPortal: true,
+      encontrado: true,
+    };
+  }
+
+  const slug = extrairSlugMinisite(hostname);
+  if (!slug) {
+    return { elegivel: false, nomeExibicao: "", ehPortal: false, encontrado: false };
+  }
+
+  const artefato = await lerJSON<ElegibilidadePwaArtefato>(
+    env.DADOS_CACHE,
+    `pwa/${slug}/elegibilidade.json`,
+  );
+  if (!artefato) {
+    return { elegivel: false, nomeExibicao: slug, ehPortal: false, encontrado: false, slug };
+  }
+
+  return {
+    elegivel: artefato.elegivel,
+    nomeExibicao: artefato.nomeExibicao || slug,
+    ehPortal: false,
+    encontrado: true,
+    slug,
+  };
+}
 
 export async function rotaPwa(request: Request, url: URL, env: Env): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -48,11 +104,10 @@ export async function rotaPwa(request: Request, url: URL, env: Env): Promise<Res
 // ============================================================
 
 async function responderManifest(url: URL, env: Env): Promise<Response> {
-  const hostname = url.hostname;
+  const elegibilidade = await obterElegibilidade(url, env);
 
-  if (ehDominioRaiz(hostname)) {
-    const ativo = await estaModuloAtivo(env.DB, "pwa");
-    if (!ativo) return new Response("Not Found", { status: 404 });
+  if (elegibilidade.ehPortal) {
+    if (!elegibilidade.elegivel) return new Response("Not Found", { status: 404 });
 
     return new Response(JSON.stringify(gerarManifestPortal()), {
       status: 200,
@@ -63,20 +118,10 @@ async function responderManifest(url: URL, env: Env): Promise<Response> {
     });
   }
 
-  const slug = extrairSlugMinisite(hostname);
-  if (!slug) return new Response("Not Found", { status: 404 });
-
-  // Checagem de elegibilidade ao vivo (flag de rede + permite_pwa do plano
-  // atual do corretor) — sem isso, um corretor rebaixado de plano
-  // continuava com o manifest cacheado no R2 sendo servido normalmente até
-  // algum evento não relacionado disparar a regeneração (sincronizarArtefatosPwaDoCorretor
-  // em jobs/gerar-json-corretor.ts). Mesma checagem já feita ao vivo em
-  // paginaEscolha/paginaAndroid/paginaIphone abaixo. Não apaga o artefato do
-  // R2 aqui — só para de servi-lo enquanto não elegível.
-  const elegibilidade = await verificarElegibilidadePwa(env.DB, hostname);
+  if (!elegibilidade.slug) return new Response("Not Found", { status: 404 });
   if (!elegibilidade.elegivel) return new Response("Not Found", { status: 404 });
 
-  const objeto = await env.DADOS_CACHE.get(`pwa/${slug}/manifest.json`);
+  const objeto = await env.DADOS_CACHE.get(`pwa/${elegibilidade.slug}/manifest.json`);
   if (!objeto) return new Response("Not Found", { status: 404 });
 
   return new Response(await objeto.text(), {
@@ -89,11 +134,12 @@ async function responderManifest(url: URL, env: Env): Promise<Response> {
 }
 
 async function responderServiceWorker(url: URL, env: Env): Promise<Response> {
-  const hostname = url.hostname;
+  const elegibilidade = await obterElegibilidade(url, env);
 
-  if (ehDominioRaiz(hostname)) {
-    const ativo = await estaModuloAtivo(env.DB, "pwa");
-    const corpo = ativo ? gerarServiceWorkerAtivo(VERSAO_SW_PORTAL) : gerarServiceWorkerSuicida();
+  if (elegibilidade.ehPortal) {
+    const corpo = elegibilidade.elegivel
+      ? gerarServiceWorkerAtivo(VERSAO_SW_PORTAL)
+      : gerarServiceWorkerSuicida();
 
     return new Response(corpo, {
       status: 200,
@@ -101,14 +147,10 @@ async function responderServiceWorker(url: URL, env: Env): Promise<Response> {
     });
   }
 
-  const slug = extrairSlugMinisite(hostname);
-  if (!slug) return new Response("Not Found", { status: 404 });
-
-  // Mesma checagem ao vivo de responderManifest acima — ver comentário lá.
-  const elegibilidade = await verificarElegibilidadePwa(env.DB, hostname);
+  if (!elegibilidade.slug) return new Response("Not Found", { status: 404 });
   if (!elegibilidade.elegivel) return new Response("Not Found", { status: 404 });
 
-  const objeto = await env.DADOS_CACHE.get(`pwa/${slug}/service-worker.js`);
+  const objeto = await env.DADOS_CACHE.get(`pwa/${elegibilidade.slug}/service-worker.js`);
   if (!objeto) return new Response("Not Found", { status: 404 });
 
   return new Response(await objeto.text(), {
@@ -167,7 +209,7 @@ const RODAPE_PAGINA = `
 </html>`;
 
 async function paginaEscolha(url: URL, env: Env): Promise<Response> {
-  const elegibilidade = await verificarElegibilidadePwa(env.DB, url.hostname);
+  const elegibilidade = await obterElegibilidade(url, env);
 
   if (!elegibilidade.elegivel) {
     return respostaHtml(`${cabecalhoPagina("App não disponível")}
@@ -194,7 +236,7 @@ async function paginaEscolha(url: URL, env: Env): Promise<Response> {
 }
 
 async function paginaAndroid(url: URL, env: Env): Promise<Response> {
-  const elegibilidade = await verificarElegibilidadePwa(env.DB, url.hostname);
+  const elegibilidade = await obterElegibilidade(url, env);
 
   if (!elegibilidade.elegivel) {
     return respostaHtml(`${cabecalhoPagina("App não disponível")}
@@ -264,7 +306,7 @@ async function paginaAndroid(url: URL, env: Env): Promise<Response> {
 }
 
 async function paginaIphone(url: URL, env: Env): Promise<Response> {
-  const elegibilidade = await verificarElegibilidadePwa(env.DB, url.hostname);
+  const elegibilidade = await obterElegibilidade(url, env);
 
   if (!elegibilidade.elegivel) {
     return respostaHtml(`${cabecalhoPagina("App não disponível")}
