@@ -343,10 +343,15 @@ async function alternarModulo(moduloId, ativo) {
 // ========== Logout ==========
 
 function configurarLogout() {
-  document.getElementById("logout-btn").addEventListener("click", () => {
-    if (confirm("Tem certeza que deseja sair?")) {
-      // Implementar logout real quando tiver rota de logout
-      window.location.href = "/";
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    if (!confirm("Tem certeza que deseja sair?")) return;
+    // session_id é HttpOnly — só o backend consegue revogar de verdade
+    // (D1 + cookie).
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (erro) {
+      console.error("Erro ao encerrar sessão:", erro);
     }
+    window.location.href = "/login/";
   });
 }
