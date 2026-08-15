@@ -111,8 +111,15 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 
     let corretor: any;
 
+    // COLLATE NOCASE: nome_usuario é comparado sem diferenciar
+    // maiúsculas/minúsculas no login — sem isso, um corretor cadastrado
+    // como "ADMIN" não consegue entrar digitando "admin" (comparação
+    // binária padrão do SQLite/D1, já que a coluna não tem NOCASE no
+    // schema). Cadastro/unicidade continuam case-sensitive; se dois
+    // usuários coexistirem só diferindo em caixa, o login pega o primeiro
+    // que a query encontrar — cenário não esperado em uso normal.
     corretor = await env.DB.prepare(
-      "SELECT id, nome_completo, email, senha_hash, senha_salt, status FROM corretores WHERE nome_usuario = ?"
+      "SELECT id, nome_completo, email, senha_hash, senha_salt, status FROM corretores WHERE nome_usuario = ? COLLATE NOCASE"
     ).bind(usuario).first();
 
     if (!corretor) {
