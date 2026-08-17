@@ -7,12 +7,23 @@ compatibility_flags = ["nodejs_compat"]
 # API (`caches.default`, PR #41). Cache desligado no nível raiz e no
 # export default (o Gateway precisa rodar em toda requisição pra extrair
 # o tenant do hostname e popular ctx.props antes de qualquer decisão de
-# cache); ligado só nos dois entrypoints tenant-aware, cada um com seu
-# TTL — StatusBackend (curto, propagação rápida de suspensão) e
-# SiteBackend (mais longo, conteúdo do site). Em hit, o entrypoint
-# correspondente não executa: zero CPU do Worker além do Gateway. Ver
-# PROJETO_EXECUTIVO_ARQUITETURA_IMOBILIARISTA_v11_4, seções 33-47, e
-# src/status-backend.ts / src/site-backend.ts / src/index.ts.
+# cache).
+#
+# MITIGAÇÃO (regressão pós-PR #50, 2026-08-17): StatusBackend/SiteBackend
+# temporariamente com cache DESLIGADO. Corretores aprovados/online no D1
+# (ex.: aranda, teste) estavam retornando "Indisponível" publicamente logo
+# após o merge do PR #50 — suspeito principal é este mecanismo de cache em
+# exports (`ctx.exports.X(...).fetch(req, {cf:{cacheKey}})`), que não foi
+# possível validar contra o edge real antes do merge (a suposta validação
+# em `wrangler dev` citada no PR original não reproduz o comportamento
+# real deste recurso — testes locais posteriores mostraram respostas
+# inconsistentes com o cacheKey/dado em R2). Desligar aqui não muda a
+# lógica de leitura: StatusBackend/SiteBackend continuam lendo o R2
+# diretamente a cada requisição, só sem a camada de cache extra por cima.
+# Reabilitar só depois de confirmar em produção (headers CF-Cache-Status
+# reais, não emulação local) que o mecanismo isola por tenant como
+# esperado. Ver PROJETO_EXECUTIVO_ARQUITETURA_IMOBILIARISTA_v11_4, seções
+# 33-47, e src/status-backend.ts / src/site-backend.ts / src/index.ts.
 [cache]
 enabled = false
 
@@ -24,12 +35,12 @@ type = "worker"
 [exports.StatusBackend]
 type = "worker"
   [exports.StatusBackend.cache]
-  enabled = true
+  enabled = false
 
 [exports.SiteBackend]
 type = "worker"
   [exports.SiteBackend.cache]
-  enabled = true
+  enabled = false
 
 # Static Assets — shell da SPA (público e painel), modo SPA fallback.
 # Ver project.md, seção 4.6.
