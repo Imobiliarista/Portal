@@ -16,6 +16,9 @@ import {
   buscarPreCadastro,
   aprovarPreCadastro,
   reprovarPreCadastro,
+  listarMinisites,
+  alternarOfflineMinisite,
+  atualizarDadosBasicosMinisite,
   listarCidades,
   buscarCidade,
   atualizarCidade,
@@ -119,6 +122,87 @@ async function rotaReprovarPreCadastro(request: Request, env: Env, id: number): 
     return respostaSucesso({ mensagem: "Pré-cadastro reprovado com sucesso" });
   } catch {
     return respostaErro("Erro ao processar reprovação", 500);
+  }
+}
+
+// ========== Rotas: Minisites (gestão completa da rede) ==========
+
+// GET /api/painel-admin/minisites — lista todos, com busca e paginação
+async function rotaListarMinisites(request: Request, env: Env): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  try {
+    const url = new URL(request.url);
+    const pagina = parseInt(url.searchParams.get("pagina") || "1");
+    const busca = url.searchParams.get("busca") || undefined;
+    const limite = 50;
+    const offset = (pagina - 1) * limite;
+
+    const { dados, total } = await listarMinisites(env.DB, { busca, limite, offset });
+
+    return respostaSucesso({ dados, total, pagina });
+  } catch {
+    return respostaErro("Erro ao listar minisites", 500);
+  }
+}
+
+// PATCH /api/painel-admin/minisite/:corretorId/status — suspende/reativa
+// (não se aplica a pré-cadastros — usar /pre-cadastro/:id/aprovar pra esses)
+async function rotaAlternarStatusMinisite(request: Request, env: Env, corretorId: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "PATCH") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as { offline?: boolean };
+    if (body.offline === undefined) return respostaErro("offline é obrigatório");
+
+    const { sucesso, slug } = await alternarOfflineMinisite(env.DB, corretorId, body.offline);
+    if (!sucesso) {
+      return respostaErro("Erro ao alterar status do minisite (corretor precisa estar aprovado)", 500);
+    }
+
+    // Mesmo gate de materialização de rotaAprovarPreCadastro acima:
+    // qualquer troca de `offline` precisa refletir em
+    // tenants/{slug}/status.json — R2 é a única fonte lida no caminho
+    // público (routes/minisite.ts), nunca D1.
+    if (slug) {
+      await enfileirarStatusMinisite(env, slug);
+    }
+
+    return respostaSucesso({ mensagem: body.offline ? "Minisite suspenso" : "Minisite reativado" });
+  } catch {
+    return respostaErro("Erro ao processar alteração de status", 500);
+  }
+}
+
+// PATCH /api/painel-admin/minisite/:corretorId — edita nome/slug
+async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "PATCH") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as { nome?: string; slug?: string };
+    if (!body.nome?.trim() && !body.slug?.trim()) {
+      return respostaErro("Informe nome e/ou slug");
+    }
+
+    const sucesso = await atualizarDadosBasicosMinisite(env.DB, corretorId, body);
+    if (!sucesso) return respostaErro("Erro ao atualizar dados (slug pode já estar em uso)", 500);
+
+    // Slug mudou: rematerializa status.json na chave nova (R2 é indexado
+    // por slug — ver jobs/gerar-status-minisite.ts).
+    if (body.slug?.trim()) {
+      await enfileirarStatusMinisite(env, body.slug.trim());
+    }
+
+    return respostaSucesso({ mensagem: "Dados atualizados com sucesso" });
+  } catch {
+    return respostaErro("Erro ao processar atualização", 500);
   }
 }
 
@@ -380,6 +464,23 @@ export async function rotasPainelSuperadmin(request: Request, env: Env): Promise
   const matchReprovar = pathname.match(/^\/pre-cadastro\/(\d+)\/reprovar$/);
   if (matchReprovar && request.method === "POST") {
     return rotaReprovarPreCadastro(request, env, parseInt(matchReprovar[1]));
+  }
+
+  // GET /api/painel-admin/minisites
+  if (pathname === "/minisites" && request.method === "GET") {
+    return rotaListarMinisites(request, env);
+  }
+
+  // PATCH /api/painel-admin/minisite/:corretorId/status
+  const matchStatusMinisite = pathname.match(/^\/minisite\/(\d+)\/status$/);
+  if (matchStatusMinisite && request.method === "PATCH") {
+    return rotaAlternarStatusMinisite(request, env, parseInt(matchStatusMinisite[1]));
+  }
+
+  // PATCH /api/painel-admin/minisite/:corretorId
+  const matchAtualizarMinisite = pathname.match(/^\/minisite\/(\d+)$/);
+  if (matchAtualizarMinisite && request.method === "PATCH") {
+    return rotaAtualizarMinisite(request, env, parseInt(matchAtualizarMinisite[1]));
   }
 
   // GET /api/painel-admin/cidades

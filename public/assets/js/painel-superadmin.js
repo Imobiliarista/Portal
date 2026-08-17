@@ -6,6 +6,12 @@ const API_BASE = "/api/painel-admin";
 let paginaAtual = "dashboard";
 let precadastroAtualId = null;
 let cidadeAtualId = null;
+let minisitesPaginaAtual = 1;
+let minisitesTotal = 0;
+const MINISITES_POR_PAGINA = 50;
+let minisitesBuscaDebounce = null;
+let minisiteEditarCorretorId = null;
+let minisiteAprovarPreCadastroId = null;
 
 // ========== Inicialização ==========
 
@@ -35,6 +41,7 @@ function mudarSecao(secao) {
 
   // Esconder todas as seções
   document.getElementById("dashboard-view").classList.add("hidden");
+  document.getElementById("minisites-view").classList.add("hidden");
   document.getElementById("precadastros-view").classList.add("hidden");
   document.getElementById("cidades-view").classList.add("hidden");
   document.getElementById("modulos-view").classList.add("hidden");
@@ -46,6 +53,7 @@ function mudarSecao(secao) {
   // Atualizar título
   const titulos = {
     dashboard: "📊 Dashboard",
+    minisites: "🌐 Minisites",
     precadastros: "✅ Aprovações",
     cidades: "🏙️ Cidades",
     modulos: "🧩 Módulos"
@@ -53,6 +61,7 @@ function mudarSecao(secao) {
   document.getElementById("page-title").textContent = titulos[secao];
 
   // Carregar dados da seção
+  if (secao === "minisites") carregarMinisites();
   if (secao === "precadastros") carregarPreCadastros();
   if (secao === "cidades") carregarCidades();
   if (secao === "modulos") carregarModulos();
@@ -78,6 +87,221 @@ async function carregarDashboard() {
     console.error("Erro ao carregar dashboard:", erro);
   }
 }
+
+// ========== Minisites (gestão completa da rede) ==========
+
+const STATUS_MINISITE_LABEL = {
+  "pre-cadastro": { texto: "Pré-cadastro pendente", classe: "bg-yellow-100 text-yellow-800" },
+  "aprovado-online": { texto: "Aprovado — Online", classe: "bg-green-100 text-green-800" },
+  "aprovado-offline": { texto: "Offline — Suspenso", classe: "bg-gray-200 text-gray-800" },
+  "reprovado": { texto: "Reprovado", classe: "bg-red-100 text-red-800" }
+};
+
+function statusMinisiteDe(item) {
+  if (item.status_corretor === "pre-cadastro") return "pre-cadastro";
+  if (item.status_corretor === "reprovado") return "reprovado";
+  return item.offline ? "aprovado-offline" : "aprovado-online";
+}
+
+async function carregarMinisites() {
+  try {
+    const busca = document.getElementById("minisites-busca").value.trim();
+    const params = new URLSearchParams({ pagina: String(minisitesPaginaAtual) });
+    if (busca) params.set("busca", busca);
+
+    const resposta = await fetch(`${API_BASE}/minisites?${params.toString()}`);
+    if (!resposta.ok) throw new Error("Erro ao carregar minisites");
+
+    const dados = await resposta.json();
+    minisitesTotal = dados.total || 0;
+
+    renderizarTabelaMinisites(dados.dados || []);
+
+    document.getElementById("minisites-contador").textContent = `${minisitesTotal} registro(s)`;
+    document.getElementById("minisites-pagina-label").textContent = `Página ${minisitesPaginaAtual}`;
+    document.getElementById("minisites-anterior-btn").disabled = minisitesPaginaAtual <= 1;
+    document.getElementById("minisites-proxima-btn").disabled = minisitesPaginaAtual * MINISITES_POR_PAGINA >= minisitesTotal;
+  } catch (erro) {
+    console.error("Erro ao carregar minisites:", erro);
+  }
+}
+
+function renderizarTabelaMinisites(lista) {
+  const tbody = document.getElementById("minisites-tbody");
+  tbody.innerHTML = "";
+
+  if (lista.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-gray-600">Nenhum minisite encontrado</td></tr>`;
+    return;
+  }
+
+  lista.forEach(item => {
+    const statusKey = statusMinisiteDe(item);
+    const status = STATUS_MINISITE_LABEL[statusKey];
+    const criadoEm = item.criado_em ? new Date(item.criado_em).toLocaleDateString("pt-BR") : "-";
+
+    const tr = document.createElement("tr");
+    tr.className = "border-b last:border-0 hover:bg-gray-50";
+    tr.innerHTML = `
+      <td class="px-4 py-3 font-medium text-slate-900">${item.nome_completo}</td>
+      <td class="px-4 py-3 text-gray-700">${item.slug}</td>
+      <td class="px-4 py-3"><span class="text-xs px-2 py-1 rounded ${status.classe}">${status.texto}</span></td>
+      <td class="px-4 py-3 text-gray-700">${item.plano_nome || "-"}</td>
+      <td class="px-4 py-3 text-gray-600">${criadoEm}</td>
+      <td class="px-4 py-3">
+        <div class="flex flex-wrap gap-2" data-acoes></div>
+      </td>
+    `;
+
+    const acoes = tr.querySelector("[data-acoes]");
+
+    if (statusKey === "pre-cadastro") {
+      acoes.appendChild(criarBotaoAcao("Aprovar", "text-green-600 hover:text-green-800", () => abrirModalAprovarMinisite(item)));
+    } else if (statusKey === "aprovado-online") {
+      acoes.appendChild(criarBotaoAcao("Suspender", "text-orange-600 hover:text-orange-800", () => alternarStatusMinisite(item, true)));
+    } else if (statusKey === "aprovado-offline") {
+      acoes.appendChild(criarBotaoAcao("Reativar", "text-green-600 hover:text-green-800", () => alternarStatusMinisite(item, false)));
+    }
+
+    acoes.appendChild(criarBotaoAcao("Ver site", "text-blue-600 hover:text-blue-800", () => {
+      window.open(`https://${item.slug}.imobiliarista.net`, "_blank", "noopener");
+    }));
+
+    acoes.appendChild(criarBotaoAcao("Editar", "text-gray-600 hover:text-gray-900", () => abrirModalEditarMinisite(item)));
+
+    tbody.appendChild(tr);
+  });
+}
+
+function criarBotaoAcao(texto, classes, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = `text-xs font-semibold ${classes}`;
+  btn.textContent = texto;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+async function alternarStatusMinisite(item, offline) {
+  const acao = offline ? "suspender" : "reativar";
+  if (!confirm(`Confirma ${acao} o minisite de "${item.nome_completo}" (${item.slug})?`)) return;
+
+  try {
+    const resposta = await fetch(`${API_BASE}/minisite/${item.corretor_id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offline })
+    });
+
+    if (!resposta.ok) throw new Error(`Erro ao ${acao}`);
+
+    carregarMinisites();
+  } catch (erro) {
+    console.error(`Erro ao ${acao} minisite:`, erro);
+    alert(`Erro ao ${acao} o minisite`);
+  }
+}
+
+function abrirModalEditarMinisite(item) {
+  minisiteEditarCorretorId = item.corretor_id;
+  document.getElementById("minisite-editar-nome").value = item.nome_completo;
+  document.getElementById("minisite-editar-slug").value = item.slug;
+  document.getElementById("minisite-editar-modal").classList.remove("hidden");
+}
+
+function fecharModalEditarMinisite() {
+  document.getElementById("minisite-editar-modal").classList.add("hidden");
+  minisiteEditarCorretorId = null;
+}
+
+document.getElementById("minisite-editar-fechar-btn").addEventListener("click", fecharModalEditarMinisite);
+
+document.getElementById("minisite-editar-salvar-btn").addEventListener("click", async () => {
+  const nome = document.getElementById("minisite-editar-nome").value.trim();
+  const slug = document.getElementById("minisite-editar-slug").value.trim();
+
+  if (!nome || !slug) {
+    alert("Preencha nome e slug");
+    return;
+  }
+
+  try {
+    const resposta = await fetch(`${API_BASE}/minisite/${minisiteEditarCorretorId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nome, slug })
+    });
+
+    if (!resposta.ok) throw new Error("Erro ao atualizar");
+
+    alert("✅ Dados atualizados com sucesso!");
+    fecharModalEditarMinisite();
+    carregarMinisites();
+  } catch (erro) {
+    console.error("Erro ao atualizar minisite:", erro);
+    alert("Erro ao atualizar dados (slug pode já estar em uso)");
+  }
+});
+
+function abrirModalAprovarMinisite(item) {
+  minisiteAprovarPreCadastroId = item.pre_cadastro_id;
+  document.getElementById("minisite-aprovar-slug").value = item.slug || "";
+  document.getElementById("minisite-aprovar-modal").classList.remove("hidden");
+}
+
+function fecharModalAprovarMinisite() {
+  document.getElementById("minisite-aprovar-modal").classList.add("hidden");
+  minisiteAprovarPreCadastroId = null;
+}
+
+document.getElementById("minisite-aprovar-fechar-btn").addEventListener("click", fecharModalAprovarMinisite);
+
+document.getElementById("minisite-aprovar-confirmar-btn").addEventListener("click", async () => {
+  const slug = document.getElementById("minisite-aprovar-slug").value.trim();
+  if (!slug) {
+    alert("Digite o slug do minisite");
+    return;
+  }
+
+  try {
+    // Reaproveita a mesma rota/lógica de aprovação da fila de pré-cadastros
+    // (POST /pre-cadastro/:id/aprovar → aprovarPreCadastro), sem duplicar.
+    const resposta = await fetch(`${API_BASE}/pre-cadastro/${minisiteAprovarPreCadastroId}/aprovar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug_minisite: slug })
+    });
+
+    if (!resposta.ok) throw new Error("Erro ao aprovar");
+
+    alert("✅ Minisite aprovado com sucesso!");
+    fecharModalAprovarMinisite();
+    carregarMinisites();
+  } catch (erro) {
+    console.error("Erro ao aprovar minisite:", erro);
+    alert("Erro ao aprovar minisite");
+  }
+});
+
+document.getElementById("minisites-busca").addEventListener("input", () => {
+  clearTimeout(minisitesBuscaDebounce);
+  minisitesBuscaDebounce = setTimeout(() => {
+    minisitesPaginaAtual = 1;
+    carregarMinisites();
+  }, 300);
+});
+
+document.getElementById("minisites-anterior-btn").addEventListener("click", () => {
+  if (minisitesPaginaAtual <= 1) return;
+  minisitesPaginaAtual--;
+  carregarMinisites();
+});
+
+document.getElementById("minisites-proxima-btn").addEventListener("click", () => {
+  if (minisitesPaginaAtual * MINISITES_POR_PAGINA >= minisitesTotal) return;
+  minisitesPaginaAtual++;
+  carregarMinisites();
+});
 
 // ========== Pré-Cadastros ==========
 
