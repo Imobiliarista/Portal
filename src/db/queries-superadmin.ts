@@ -136,6 +136,156 @@ export async function reprovarPreCadastro(db: D1Database, precadastro_id: number
   }
 }
 
+// ========== Minisites (gestão completa da rede) ==========
+
+export interface MinisiteListagem {
+  minisite_id: number;
+  corretor_id: number;
+  nome_completo: string;
+  slug: string;
+  offline: boolean;
+  status_corretor: string; // 'pre-cadastro' | 'aprovado' | 'reprovado'
+  plano_nome: string | null;
+  criado_em: string;
+  // Presente só quando status_corretor === 'pre-cadastro' — deixa o front
+  // reaproveitar POST /pre-cadastro/:id/aprovar direto desta tela, sem
+  // duplicar a lógica de aprovarPreCadastro().
+  pre_cadastro_id: number | null;
+}
+
+// Lista todos os minisites da rede (join com corretores/planos/pré-cadastro),
+// com busca por nome ou slug e paginação — visão completa que complementa a
+// fila de "pré-cadastros pendentes" (listarPreCadastrosPendentes acima).
+export async function listarMinisites(
+  db: D1Database,
+  opcoes: { busca?: string; limite?: number; offset?: number } = {}
+): Promise<{ dados: MinisiteListagem[]; total: number }> {
+  const limite = opcoes.limite ?? 50;
+  const offset = opcoes.offset ?? 0;
+  const busca = opcoes.busca?.trim();
+
+  try {
+    const filtro = busca ? "AND (c.nome_completo LIKE ? OR m.slug LIKE ?)" : "";
+    const bindsFiltro = busca ? [`%${busca}%`, `%${busca}%`] : [];
+
+    const totalRow = (await db
+      .prepare(
+        `SELECT COUNT(*) as total
+         FROM minisites m
+         JOIN corretores c ON c.id = m.corretor_id
+         WHERE 1=1 ${filtro}`
+      )
+      .bind(...bindsFiltro)
+      .first()) as { total: number };
+
+    const resultados = await db
+      .prepare(
+        `SELECT
+           m.id as minisite_id, m.corretor_id, m.slug, m.offline, m.criado_em,
+           c.nome_completo, c.status as status_corretor,
+           p.nome as plano_nome,
+           pc.id as pre_cadastro_id
+         FROM minisites m
+         JOIN corretores c ON c.id = m.corretor_id
+         LEFT JOIN planos p ON p.id = c.plano_id
+         LEFT JOIN pre_cadastros pc ON pc.corretor_id = c.id AND pc.status = 'pendente'
+         WHERE 1=1 ${filtro}
+         ORDER BY m.criado_em DESC
+         LIMIT ? OFFSET ?`
+      )
+      .bind(...bindsFiltro, limite, offset)
+      .all();
+
+    const dados: MinisiteListagem[] = (resultados.results || []).map((r: any) => ({
+      minisite_id: r.minisite_id,
+      corretor_id: r.corretor_id,
+      nome_completo: r.nome_completo,
+      slug: r.slug,
+      offline: !!r.offline,
+      status_corretor: r.status_corretor,
+      plano_nome: r.plano_nome ?? null,
+      criado_em: r.criado_em,
+      pre_cadastro_id: r.pre_cadastro_id ?? null,
+    }));
+
+    return { dados, total: totalRow?.total ?? 0 };
+  } catch (erro) {
+    console.error("Erro ao listar minisites:", erro);
+    return { dados: [], total: 0 };
+  }
+}
+
+// Suspende/reativa um minisite JÁ APROVADO — alterna minisites.offline a
+// qualquer momento (não só na aprovação inicial, que é o único caminho
+// que aprovarPreCadastro cobre). Só se aplica a corretores com
+// status='aprovado': pré-cadastros continuam usando aprovarPreCadastro, e
+// reprovados não têm site pra suspender/reativar.
+export async function alternarOfflineMinisite(
+  db: D1Database,
+  corretor_id: number,
+  offline: boolean
+): Promise<{ sucesso: boolean; slug?: string }> {
+  try {
+    const corretor = (await db
+      .prepare("SELECT status FROM corretores WHERE id = ? LIMIT 1")
+      .bind(corretor_id)
+      .first()) as { status: string } | null;
+
+    if (!corretor || corretor.status !== "aprovado") {
+      return { sucesso: false };
+    }
+
+    const agora = new Date().toISOString();
+
+    await db
+      .prepare("UPDATE minisites SET offline = ?, atualizado_em = ? WHERE corretor_id = ?")
+      .bind(offline ? 1 : 0, agora, corretor_id)
+      .run();
+
+    const minisite = (await db
+      .prepare("SELECT slug FROM minisites WHERE corretor_id = ? LIMIT 1")
+      .bind(corretor_id)
+      .first()) as { slug: string } | null;
+
+    return { sucesso: true, slug: minisite?.slug };
+  } catch (erro) {
+    console.error("Erro ao alternar status do minisite:", erro);
+    return { sucesso: false };
+  }
+}
+
+// Edita nome do corretor e/ou slug do minisite (dados básicos) — usado
+// pela tela de gestão pra correções pontuais, sem passar pelo fluxo de
+// pré-cadastro/aprovação.
+export async function atualizarDadosBasicosMinisite(
+  db: D1Database,
+  corretor_id: number,
+  dados: { nome?: string; slug?: string }
+): Promise<boolean> {
+  try {
+    const agora = new Date().toISOString();
+
+    if (dados.nome?.trim()) {
+      await db
+        .prepare("UPDATE corretores SET nome_completo = ?, atualizado_em = ? WHERE id = ?")
+        .bind(dados.nome.trim(), agora, corretor_id)
+        .run();
+    }
+
+    if (dados.slug?.trim()) {
+      await db
+        .prepare("UPDATE minisites SET slug = ?, atualizado_em = ? WHERE corretor_id = ?")
+        .bind(dados.slug.trim(), agora, corretor_id)
+        .run();
+    }
+
+    return true;
+  } catch (erro) {
+    console.error("Erro ao atualizar dados básicos do minisite:", erro);
+    return false;
+  }
+}
+
 // ========== Cidades ==========
 
 // Lista cidades
