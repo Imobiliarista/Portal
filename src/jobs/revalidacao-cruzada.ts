@@ -69,7 +69,13 @@ export async function dispararRevalidacaoCruzada(
     cidade_slug,
   };
 
+  // DIAGNÓSTICO TEMPORÁRIO (investigação "fila zero mensagens" 2026-08-17):
+  // log explícito antes/depois do .send() pra confirmar nos logs do Worker
+  // se a chamada está sendo disparada e se ela de fato lança erro. Remover
+  // depois que a causa raiz for confirmada e corrigida.
+  console.log(`→ [DIAG] dispararRevalidacaoCruzada: chamando FILA_ALTERACOES.send() para anúncio ${anuncio_id}`);
   await fila.send(mensagem);
+  console.log(`✓ [DIAG] dispararRevalidacaoCruzada: FILA_ALTERACOES.send() concluído sem erro para anúncio ${anuncio_id}`);
   console.log(`→ Revalidação cruzada enfileirada para anúncio ${anuncio_id}`);
 }
 

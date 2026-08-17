@@ -73,10 +73,17 @@ export async function enfileirarStatusMinisite(
   env: Env,
   slug: string,
 ): Promise<void> {
+  // DIAGNÓSTICO TEMPORÁRIO (investigação "fila zero mensagens" 2026-08-17):
+  // log explícito antes/depois do .send() pra confirmar nos logs do Worker
+  // se a chamada está sendo disparada e se ela de fato lança erro. Remover
+  // depois que a causa raiz for confirmada e corrigida.
+  console.log(`→ [DIAG] enfileirarStatusMinisite: chamando FILA_ALTERACOES.send() para slug="${slug}"`);
   try {
     await env.FILA_ALTERACOES.send({ tipo: "gerar-status-minisite", slug });
+    console.log(`✓ [DIAG] enfileirarStatusMinisite: FILA_ALTERACOES.send() concluído sem erro para slug="${slug}"`);
   } catch (erroFila) {
     console.warn(`Aviso: falha ao enfileirar status do minisite "${slug}":`, erroFila);
+    console.error(`✗ [DIAG] enfileirarStatusMinisite: FILA_ALTERACOES.send() lançou erro para slug="${slug}":`, erroFila);
   }
 }
 
