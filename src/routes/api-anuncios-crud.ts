@@ -26,6 +26,27 @@ import { obterCorretorAutenticado } from "../lib/sessao";
 
 // ========== Auxiliares ==========
 
+// Tenta revalidar o anúncio no R2 (corretor.json/cidade.json/anuncio.json)
+// sem deixar uma falha na fila (env.FILA_ALTERACOES) virar um 500 genérico
+// pro corretor — o anúncio já foi persistido em D1 com sucesso quando isso
+// roda, então não faz sentido reportar falha total. Mesmo princípio de
+// routes/painel-superadmin.ts::tentarMaterializarStatus.
+async function tentarRevalidarAnuncio(
+  env: Env,
+  anuncioId: number,
+  corretorId: number,
+  cidadeId: number,
+): Promise<string | undefined> {
+  try {
+    await enfileirarRevalidacaoDoAnuncio(env, anuncioId, corretorId, cidadeId);
+    return undefined;
+  } catch (erroFila) {
+    const detalhe = erroFila instanceof Error ? erroFila.message : String(erroFila);
+    console.error(`Anúncio ${anuncioId} salvo em D1, mas falhou ao enfileirar revalidação em R2:`, erroFila);
+    return `Anúncio salvo, mas a atualização pública pode estar atrasada (falha ao enfileirar: ${detalhe}).`;
+  }
+}
+
 // Valida campos obrigatórios por tipo de imóvel quando portal externo está ativo
 async function validarCamposObrigatorios(
   db: D1Database,
@@ -199,7 +220,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
     await atualizarAnuncio(env.DB, anuncioId, { slug } as any);
 
     // Enfileirar regeneração de JSON (Lote 6)
-    await enfileirarRevalidacaoDoAnuncio(env, anuncioId, corretorId, dados.cidade_id);
+    const aviso = await tentarRevalidarAnuncio(env, anuncioId, corretorId, dados.cidade_id);
 
     const anuncio = await buscarAnuncioPorId(env.DB, anuncioId);
 
@@ -207,6 +228,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       sucesso: true,
       mensagem: "Anúncio criado com sucesso",
       anuncio,
+      ...(aviso ? { aviso } : {}),
     }), {
       status: 201,
       headers: { "content-type": "application/json" },
@@ -335,10 +357,12 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
       atualizacoes.video_youtube_id = getYouTubeId(dados.video_youtube_url) || undefined;
     }
 
+    let aviso: string | undefined;
+
     // Toggle "postar na rede" dispara revalidação cruzada
     if (dados.postar_na_rede !== undefined && dados.postar_na_rede !== anuncio.postar_na_rede) {
       await togglePostarNaRede(env.DB, id, dados.postar_na_rede);
-      await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
+      aviso = await tentarRevalidarAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
     } else if (dados.postar_na_rede !== undefined) {
       atualizacoes.postar_na_rede = dados.postar_na_rede;
     }
@@ -346,7 +370,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     // Marca como vendido/removido
     if (dados.marcar_vendido) {
       await marcarVendidoRemovido(env.DB, id);
-      await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
+      aviso = await tentarRevalidarAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
     } else {
       await atualizarAnuncio(env.DB, id, atualizacoes);
 
@@ -356,7 +380,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
       // "postar na rede" disparavam, e uma edição comum deixava o JSON
       // público desatualizado indefinidamente. Ver auditoria de fluxo completo.
       if (Object.keys(atualizacoes).length > 0) {
-        await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
+        aviso = await tentarRevalidarAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
       }
     }
 
@@ -366,6 +390,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
       sucesso: true,
       mensagem: "Anúncio atualizado com sucesso",
       anuncio: anuncioAtualizado,
+      ...(aviso ? { aviso } : {}),
     }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -411,11 +436,12 @@ async function handleDeletarAnuncio(request: Request, env: Env): Promise<Respons
 
     // Marca como vendido/removido (conforme seção 4.17)
     await marcarVendidoRemovido(env.DB, id);
-    await enfileirarRevalidacaoDoAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
+    const aviso = await tentarRevalidarAnuncio(env, id, anuncio.corretor_id, anuncio.cidade_id);
 
     return new Response(JSON.stringify({
       sucesso: true,
       mensagem: "Anúncio marcado como vendido/removido",
+      ...(aviso ? { aviso } : {}),
     }), {
       status: 200,
       headers: { "content-type": "application/json" },

@@ -87,6 +87,13 @@ function slugificarCidade(nome: string): string {
 // (criar, editar qualquer campo, excluir, alternar "postar na rede") —
 // consolida o que antes era ~20 linhas duplicadas em cada handler de
 // api-anuncios-crud.ts e api-anuncios-backup.ts.
+// IMPORTANTE: não engolir o erro aqui. Antes este catch só dava
+// console.warn e retornava normalmente — a rota HTTP que chamou (criação,
+// edição, toggle "postar na rede", exclusão, restauração de backup)
+// respondia sucesso pro usuário mesmo quando a materialização em R2
+// falhava. Quem chama precisa saber que a revalidação falhou pra decidir
+// o que informar — ver routes/api-anuncios-crud.ts e
+// routes/api-anuncios-backup.ts.
 export async function enfileirarRevalidacaoDoAnuncio(
   env: Env,
   anuncio_id: number,
@@ -113,7 +120,8 @@ export async function enfileirarRevalidacaoDoAnuncio(
       );
     }
   } catch (erroFila) {
-    console.warn("Aviso: falha ao enfileirar revalidação:", erroFila);
+    console.error(`Falha ao enfileirar revalidação do anúncio ${anuncio_id}:`, erroFila);
+    throw erroFila;
   }
 }
 

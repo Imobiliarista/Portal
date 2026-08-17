@@ -193,7 +193,13 @@ async function alternarStatusMinisite(item, offline) {
       body: JSON.stringify({ offline })
     });
 
+    const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error(`Erro ao ${acao}`);
+
+    // A ação já foi salva mesmo quando a materialização em R2 falha — ver
+    // routes/painel-superadmin.ts::tentarMaterializarStatus. Avisa o
+    // Superadmin em vez de deixar a falha passar em silêncio.
+    if (dados.aviso) alert(dados.aviso);
 
     carregarMinisites();
   } catch (erro) {
@@ -245,7 +251,7 @@ document.getElementById("minisite-editar-salvar-btn").addEventListener("click", 
     const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error(dados.erro || "Erro ao atualizar");
 
-    alert("✅ Dados atualizados com sucesso!");
+    alert(dados.aviso ? `✅ Dados atualizados com sucesso!\n\n⚠️ ${dados.aviso}` : "✅ Dados atualizados com sucesso!");
     fecharModalEditarMinisite();
     carregarMinisites();
   } catch (erro) {
@@ -308,6 +314,9 @@ document.getElementById("minisite-criar-salvar-btn").addEventListener("click", a
     if (dados.senha_gerada) {
       mensagem += `\nSenha gerada: ${dados.senha_gerada}\n\nAnote agora — essa senha não será exibida novamente.`;
     }
+    if (dados.aviso) {
+      mensagem += `\n\n⚠️ ${dados.aviso}`;
+    }
     alert(mensagem);
 
     fecharModalCriarMinisite();
@@ -347,9 +356,10 @@ document.getElementById("minisite-aprovar-confirmar-btn").addEventListener("clic
       body: JSON.stringify({ slug_minisite: slug })
     });
 
+    const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error("Erro ao aprovar");
 
-    alert("✅ Minisite aprovado com sucesso!");
+    alert(dados.aviso ? `✅ Minisite aprovado com sucesso!\n\n⚠️ ${dados.aviso}` : "✅ Minisite aprovado com sucesso!");
     fecharModalAprovarMinisite();
     carregarMinisites();
   } catch (erro) {
@@ -465,9 +475,10 @@ document.getElementById("precadastro-aprovar-btn").addEventListener("click", asy
       body: JSON.stringify({ slug_minisite: slug })
     });
 
+    const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error("Erro ao aprovar");
 
-    alert("✅ Pré-cadastro aprovado com sucesso!");
+    alert(dados.aviso ? `✅ Pré-cadastro aprovado com sucesso!\n\n⚠️ ${dados.aviso}` : "✅ Pré-cadastro aprovado com sucesso!");
     fecharModalPreCadastro();
     carregarPreCadastros();
   } catch (erro) {

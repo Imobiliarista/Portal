@@ -179,7 +179,21 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
     // Materializa tenants/{slug}/status.json em R2 (liberado=false, já
     // que offline=true acima) — routes/minisite.ts lê daqui, nunca de D1,
     // no caminho público. Ver jobs/gerar-status-minisite.ts.
-    await enfileirarStatusMinisite(env, slugMinisite);
+    //
+    // O cadastro em si já foi persistido em D1 acima — se a materialização
+    // falhar aqui, não faz sentido reverter tudo e barrar o cadastro do
+    // corretor. O site já nasce offline (minisite.offline=true) então o
+    // impacto público imediato é nulo; e a aprovação do Superadmin
+    // (routes/painel-superadmin.ts::rotaAprovarPreCadastro) chama o mesmo
+    // enfileiramento de novo, dando uma segunda chance de materializar.
+    let avisoMaterializacao: string | undefined;
+    try {
+      await enfileirarStatusMinisite(env, slugMinisite);
+    } catch (erroFila) {
+      const detalhe = erroFila instanceof Error ? erroFila.message : String(erroFila);
+      console.error(`Pré-cadastro do corretor ${corretorId} salvo, mas falhou ao materializar status do minisite "${slugMinisite}" em R2:`, erroFila);
+      avisoMaterializacao = `Cadastro salvo, mas a liberação inicial do site pode demorar um pouco mais (falha ao enfileirar: ${detalhe}). Isso não impede a aprovação — nossa equipe será notificada.`;
+    }
 
     // Limites de anúncios/fotos vêm do Plano, atribuído no momento da
     // aprovação (ver queries-superadmin.ts::aprovarPreCadastro, Lote 14).
@@ -200,6 +214,7 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       sucesso: true,
       mensagem: "Pré-cadastro realizado com sucesso. Você já pode fazer login.",
       corretor_id: corretorId,
+      ...(avisoMaterializacao ? { aviso: avisoMaterializacao } : {}),
     }), {
       status: 201,
       headers: { "content-type": "application/json" },

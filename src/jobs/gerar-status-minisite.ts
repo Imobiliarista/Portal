@@ -69,6 +69,14 @@ export async function processarGerarStatusMinisite(
 
 // Helper de conveniência pra chamar dos pontos que alteram o status
 // (cadastro e aprovação) sem duplicar o `.send()` em cada call site.
+//
+// IMPORTANTE: não engolir o erro aqui. Antes este catch só dava
+// console.warn e retornava normalmente — a rota HTTP que chamou (aprovação,
+// criação, edição, toggle, pré-cadastro) respondia sucesso pro Superadmin
+// mesmo quando a materialização em R2 falhava, e o site inteiro podia
+// ficar "Indisponível" sem ninguém perceber. Quem chama precisa saber que
+// a materialização falhou pra decidir o que informar ao Superadmin — ver
+// routes/painel-superadmin.ts e routes/api-auth-cadastro.ts.
 export async function enfileirarStatusMinisite(
   env: Env,
   slug: string,
@@ -76,7 +84,8 @@ export async function enfileirarStatusMinisite(
   try {
     await env.FILA_ALTERACOES.send({ tipo: "gerar-status-minisite", slug });
   } catch (erroFila) {
-    console.warn(`Aviso: falha ao enfileirar status do minisite "${slug}":`, erroFila);
+    console.error(`Falha ao enfileirar status do minisite "${slug}":`, erroFila);
+    throw erroFila;
   }
 }
 

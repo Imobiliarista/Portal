@@ -36,6 +36,27 @@ import { obterSuperadminIdDaSessao, respostaErro, respostaSucesso } from "../lib
 import { rotasPainelSuperadminPlanos } from "./painel-superadmin-planos";
 import { rotasPainelSuperadminIsencao } from "./painel-superadmin-isencao";
 
+// Materializa tenants/{slug}/status.json em R2 sem deixar uma falha na
+// fila (env.FILA_ALTERACOES) derrubar a resposta da ação principal —
+// aprovação, criação, toggle de status e edição já foram persistidos em
+// D1 com sucesso quando isso roda, então não faz sentido reverter tudo.
+// Mesmo princípio de queries-superadmin.ts::criarCorretorPeloSuperadmin:
+// nunca esconde o erro real do Superadmin atrás de uma mensagem genérica
+// (ou, pior, de um catch silencioso) — só evita que a ação já salva seja
+// reportada como falha total.
+async function tentarMaterializarStatus(env: Env, slug: string | undefined): Promise<string | undefined> {
+  if (!slug) return undefined;
+
+  try {
+    await enfileirarStatusMinisite(env, slug);
+    return undefined;
+  } catch (erroFila) {
+    const detalhe = erroFila instanceof Error ? erroFila.message : String(erroFila);
+    console.error(`Ação persistida em D1, mas falhou ao materializar status do minisite "${slug}" em R2:`, erroFila);
+    return `A ação foi salva, mas a publicação/atualização pública do site pode estar atrasada (falha ao enfileirar: ${detalhe}). Tente novamente em instantes usando o botão Suspender/Reativar na tela de Minisites.`;
+  }
+}
+
 // ========== Rotas: Pré-Cadastros ==========
 
 // GET /api/painel-admin/pre-cadastros — lista pendentes
@@ -97,11 +118,14 @@ async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): P
     // Materializa tenants/{slug}/status.json (liberado=true) — ver
     // jobs/gerar-status-minisite.ts. routes/minisite.ts lê daqui, nunca
     // consulta D1 no caminho público.
-    if (slugAprovado) {
-      await enfileirarStatusMinisite(env, slugAprovado);
-    }
+    //
+    // A aprovação em si já foi persistida em D1 acima — se a materialização
+    // falhar aqui, não faz sentido reverter isso. Avisa o Superadmin que a
+    // publicação pública pode estar atrasada em vez de mentir dizendo que
+    // tudo funcionou (ou, pior, engolir o erro em silêncio).
+    const aviso = await tentarMaterializarStatus(env, slugAprovado);
 
-    return respostaSucesso({ mensagem: "Pré-cadastro aprovado com sucesso" });
+    return respostaSucesso({ mensagem: "Pré-cadastro aprovado com sucesso", ...(aviso ? { aviso } : {}) });
   } catch {
     return respostaErro("Erro ao processar aprovação", 500);
   }
@@ -191,9 +215,7 @@ async function rotaCriarMinisite(request: Request, env: Env): Promise<Response> 
     // tenants/{slug}/status.json em R2 assim que existe — mesmo
     // comportamento do pré-cadastro público (routes/api-auth-cadastro.ts),
     // que enfileira mesmo quando offline=true (liberado=false).
-    if (resultado.slug) {
-      await enfileirarStatusMinisite(env, resultado.slug);
-    }
+    const aviso = await tentarMaterializarStatus(env, resultado.slug);
 
     return respostaSucesso({
       mensagem: "Corretor criado com sucesso",
@@ -201,6 +223,7 @@ async function rotaCriarMinisite(request: Request, env: Env): Promise<Response> 
       slug: resultado.slug,
       nome_usuario: resultado.nome_usuario,
       senha_gerada: resultado.senha_gerada,
+      ...(aviso ? { aviso } : {}),
     });
   } catch {
     return respostaErro("Erro ao processar criação", 500);
@@ -228,11 +251,12 @@ async function rotaAlternarStatusMinisite(request: Request, env: Env, corretorId
     // qualquer troca de `offline` precisa refletir em
     // tenants/{slug}/status.json — R2 é a única fonte lida no caminho
     // público (routes/minisite.ts), nunca D1.
-    if (slug) {
-      await enfileirarStatusMinisite(env, slug);
-    }
+    const aviso = await tentarMaterializarStatus(env, slug);
 
-    return respostaSucesso({ mensagem: body.offline ? "Minisite suspenso" : "Minisite reativado" });
+    return respostaSucesso({
+      mensagem: body.offline ? "Minisite suspenso" : "Minisite reativado",
+      ...(aviso ? { aviso } : {}),
+    });
   } catch {
     return respostaErro("Erro ao processar alteração de status", 500);
   }
@@ -262,11 +286,9 @@ async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: num
 
     // Slug mudou: rematerializa status.json na chave nova (R2 é indexado
     // por slug — ver jobs/gerar-status-minisite.ts).
-    if (resultado.slug) {
-      await enfileirarStatusMinisite(env, resultado.slug);
-    }
+    const aviso = await tentarMaterializarStatus(env, resultado.slug);
 
-    return respostaSucesso({ mensagem: "Dados atualizados com sucesso" });
+    return respostaSucesso({ mensagem: "Dados atualizados com sucesso", ...(aviso ? { aviso } : {}) });
   } catch {
     return respostaErro("Erro ao processar atualização", 500);
   }
