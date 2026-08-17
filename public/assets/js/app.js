@@ -2,10 +2,9 @@
 // Ordem de carregamento: app.js → app-dados.js → app-ui.js → app-roteamento.js → filtros.js
 // (app-ui deve carregar antes de app-roteamento, pois app-roteamento chama renderListings())
 
-// URLs públicas dos buckets R2 (domínio padrão *.r2.dev por enquanto — trocar
-// aqui quando migrarmos para domínio customizado).
-const R2_DADOS_URL = 'https://pub-1df8aa8ebdcc4a14ab44733880ba7197.r2.dev';
-const R2_MIDIAS_URL = 'https://pub-bb3b2e1aa0894c65932b283e855b781b.r2.dev';
+// URLs públicas dos buckets R2 (Custom Domains).
+const R2_DADOS_URL = 'https://dados.imobiliarista.net';
+const R2_MIDIAS_URL = 'https://midias.imobiliarista.net';
 
 const CONFIG = {
   r2DadosUrl: R2_DADOS_URL,

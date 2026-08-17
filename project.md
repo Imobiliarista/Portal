@@ -269,7 +269,7 @@ zone_name = "imobiliarista.net"
 
 Acesso a D1 e R2 sempre via **binding direto** (não API REST/S3 SDK externo) — mais rápido, mais barato, sem tokens expostos.
 
-R2 em dois buckets separados: `DADOS_CACHE` (`imob-dados`) para os JSONs de cidade/corretor, XMLs de feed e backups do D1; `MIDIAS` (`imob-midias`) para as fotos dos anúncios. Cada bucket tem sua própria URL pública `*.r2.dev` (ver 4.4), consumida pelo front-end via as constantes `R2_DADOS_URL`/`R2_MIDIAS_URL` em `public/assets/js/app.js` — trocar ali quando migrarmos para domínio customizado.
+R2 em dois buckets separados: `DADOS_CACHE` (`imob-dados`) para os JSONs de cidade/corretor, XMLs de feed e backups do D1; `MIDIAS` (`imob-midias`) para as fotos dos anúncios. Cada bucket tem seu próprio Custom Domain público (ver 4.4) — `https://dados.imobiliarista.net` e `https://midias.imobiliarista.net` — consumido pelo front-end via as constantes `R2_DADOS_URL`/`R2_MIDIAS_URL` em `public/assets/js/app.js`.
 
 **Importante:** são duas rotas, não uma. `*.imobiliarista.net/*` cobre os subdomínios, mas **não cobre o domínio raiz puro** — por isso a rota `imobiliarista.net/*` precisa existir separadamente, senão o domínio raiz nem passa pelo Worker.
 
