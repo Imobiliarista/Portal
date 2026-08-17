@@ -18,7 +18,8 @@ import {
   reprovarPreCadastro,
   listarMinisites,
   alternarOfflineMinisite,
-  atualizarDadosBasicosMinisite,
+  atualizarDadosCompletosMinisite,
+  criarCorretorPeloSuperadmin,
   listarCidades,
   buscarCidade,
   atualizarCidade,
@@ -147,6 +148,65 @@ async function rotaListarMinisites(request: Request, env: Env): Promise<Response
   }
 }
 
+// POST /api/painel-admin/minisites — cria corretor + minisite completos,
+// direto pelo Superadmin (sem passar pelo formulário público)
+async function rotaCriarMinisite(request: Request, env: Env): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  if (request.method !== "POST") return respostaErro("Método não permitido", 405);
+
+  try {
+    const body = await request.json() as {
+      nome?: string; email?: string; telefone?: string; creci?: string; cpf?: string;
+      nome_usuario?: string; senha?: string; sexo?: string; data_nascimento?: string;
+      nacionalidade?: string; endereco_residencial?: string; slug?: string; ja_aprovado?: boolean;
+    };
+
+    if (!body.nome || !body.email || !body.telefone || !body.creci || !body.cpf ||
+        !body.sexo || !body.data_nascimento || !body.nacionalidade || !body.endereco_residencial) {
+      return respostaErro("Preencha todos os campos obrigatórios");
+    }
+
+    const resultado = await criarCorretorPeloSuperadmin(env.DB, {
+      nome: body.nome,
+      email: body.email,
+      telefone: body.telefone,
+      creci: body.creci,
+      cpf: body.cpf,
+      nome_usuario: body.nome_usuario,
+      senha: body.senha,
+      sexo: body.sexo,
+      data_nascimento: body.data_nascimento,
+      nacionalidade: body.nacionalidade,
+      endereco_residencial: body.endereco_residencial,
+      slug: body.slug,
+      ja_aprovado: body.ja_aprovado === true,
+    });
+
+    if (!resultado.sucesso) return respostaErro(resultado.erro || "Erro ao criar corretor", 409);
+
+    // Mesmo gate de materialização das demais rotas desta tela: todo
+    // minisite (pendente ou já aprovado) precisa de
+    // tenants/{slug}/status.json em R2 assim que existe — mesmo
+    // comportamento do pré-cadastro público (routes/api-auth-cadastro.ts),
+    // que enfileira mesmo quando offline=true (liberado=false).
+    if (resultado.slug) {
+      await enfileirarStatusMinisite(env, resultado.slug);
+    }
+
+    return respostaSucesso({
+      mensagem: "Corretor criado com sucesso",
+      corretor_id: resultado.corretor_id,
+      slug: resultado.slug,
+      nome_usuario: resultado.nome_usuario,
+      senha_gerada: resultado.senha_gerada,
+    });
+  } catch {
+    return respostaErro("Erro ao processar criação", 500);
+  }
+}
+
 // PATCH /api/painel-admin/minisite/:corretorId/status — suspende/reativa
 // (não se aplica a pré-cadastros — usar /pre-cadastro/:id/aprovar pra esses)
 async function rotaAlternarStatusMinisite(request: Request, env: Env, corretorId: number): Promise<Response> {
@@ -178,7 +238,9 @@ async function rotaAlternarStatusMinisite(request: Request, env: Env, corretorId
   }
 }
 
-// PATCH /api/painel-admin/minisite/:corretorId — edita nome/slug
+// PATCH /api/painel-admin/minisite/:corretorId — edita nome, CPF, CRECI,
+// e-mail, telefone, endereço e/ou slug (todos opcionais — atualiza só o
+// que veio no corpo)
 async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -186,18 +248,22 @@ async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: num
   if (request.method !== "PATCH") return respostaErro("Método não permitido", 405);
 
   try {
-    const body = await request.json() as { nome?: string; slug?: string };
-    if (!body.nome?.trim() && !body.slug?.trim()) {
-      return respostaErro("Informe nome e/ou slug");
+    const body = await request.json() as {
+      nome?: string; cpf?: string; creci?: string; email?: string;
+      telefone?: string; endereco_residencial?: string; slug?: string;
+    };
+
+    if (Object.values(body).every((v) => !v?.toString().trim())) {
+      return respostaErro("Informe ao menos um campo para atualizar");
     }
 
-    const sucesso = await atualizarDadosBasicosMinisite(env.DB, corretorId, body);
-    if (!sucesso) return respostaErro("Erro ao atualizar dados (slug pode já estar em uso)", 500);
+    const resultado = await atualizarDadosCompletosMinisite(env.DB, corretorId, body);
+    if (!resultado.sucesso) return respostaErro(resultado.erro || "Erro ao atualizar dados", 409);
 
     // Slug mudou: rematerializa status.json na chave nova (R2 é indexado
     // por slug — ver jobs/gerar-status-minisite.ts).
-    if (body.slug?.trim()) {
-      await enfileirarStatusMinisite(env, body.slug.trim());
+    if (resultado.slug) {
+      await enfileirarStatusMinisite(env, resultado.slug);
     }
 
     return respostaSucesso({ mensagem: "Dados atualizados com sucesso" });
@@ -469,6 +535,11 @@ export async function rotasPainelSuperadmin(request: Request, env: Env): Promise
   // GET /api/painel-admin/minisites
   if (pathname === "/minisites" && request.method === "GET") {
     return rotaListarMinisites(request, env);
+  }
+
+  // POST /api/painel-admin/minisites
+  if (pathname === "/minisites" && request.method === "POST") {
+    return rotaCriarMinisite(request, env);
   }
 
   // PATCH /api/painel-admin/minisite/:corretorId/status

@@ -52,6 +52,18 @@ export async function hashSenha(senha: string, salt?: string): Promise<{ hash: s
   return { hash: hashBase64, salt: saltUsado };
 }
 
+// Gera uma senha inicial aleatória (12 caracteres, alfanumérica) — usada
+// quando o Superadmin cria um corretor sem definir senha manualmente
+// (routes/painel-superadmin.ts). Só gera o valor em texto puro pra
+// exibir uma única vez ao Superadmin; o hash de verdade continua sendo
+// feito por hashSenha() acima, sem esquema novo.
+export function gerarSenhaAleatoria(): string {
+  const alfabeto = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alfabeto[b % alfabeto.length]).join("");
+}
+
 // Verifica se uma senha corresponde ao hash armazenado
 export async function verificarSenha(senha: string, hashArmazenado: string, saltArmazenado: string): Promise<boolean> {
   try {

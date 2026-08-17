@@ -3,6 +3,9 @@
 
 import { PreCadastro, Cidade, ModuloAtivo } from "../types/modelos";
 import { atribuirPlanoNaAprovacao } from "./queries-planos";
+import { normalizarCPF } from "../lib/cpf";
+import { hashSenha, gerarSenhaAleatoria } from "../lib/senha";
+import { validarCamposCorretor, verificarUnicidadeCorretor, DadosCorretorFormulario } from "../lib/validacao-corretor";
 
 export interface PortalIndependente {
   id: number;
@@ -142,6 +145,11 @@ export interface MinisiteListagem {
   minisite_id: number;
   corretor_id: number;
   nome_completo: string;
+  cpf: string;
+  creci: string;
+  email: string;
+  telefone: string;
+  endereco_residencial: string;
   slug: string;
   offline: boolean;
   status_corretor: string; // 'pre-cadastro' | 'aprovado' | 'reprovado'
@@ -182,7 +190,8 @@ export async function listarMinisites(
       .prepare(
         `SELECT
            m.id as minisite_id, m.corretor_id, m.slug, m.offline, m.criado_em,
-           c.nome_completo, c.status as status_corretor,
+           c.nome_completo, c.cpf, c.creci, c.email, c.telefone, c.endereco_residencial,
+           c.status as status_corretor,
            p.nome as plano_nome,
            pc.id as pre_cadastro_id
          FROM minisites m
@@ -200,6 +209,11 @@ export async function listarMinisites(
       minisite_id: r.minisite_id,
       corretor_id: r.corretor_id,
       nome_completo: r.nome_completo,
+      cpf: r.cpf,
+      creci: r.creci,
+      email: r.email,
+      telefone: r.telefone,
+      endereco_residencial: r.endereco_residencial,
       slug: r.slug,
       offline: !!r.offline,
       status_corretor: r.status_corretor,
@@ -254,35 +268,275 @@ export async function alternarOfflineMinisite(
   }
 }
 
-// Edita nome do corretor e/ou slug do minisite (dados básicos) — usado
-// pela tela de gestão pra correções pontuais, sem passar pelo fluxo de
-// pré-cadastro/aprovação.
-export async function atualizarDadosBasicosMinisite(
+export interface AtualizarMinisiteInput {
+  nome?: string;
+  cpf?: string;
+  creci?: string;
+  email?: string;
+  telefone?: string;
+  endereco_residencial?: string;
+  slug?: string;
+}
+
+// Edita dados do corretor (nome, CPF, CRECI, e-mail, telefone, endereço)
+// e/ou o slug do minisite — usado pela tela de gestão pra correções
+// pontuais, sem passar pelo fluxo de pré-cadastro/aprovação. Mesma
+// validação de formato/unicidade da criação (lib/validacao-corretor.ts),
+// só que parcial: valida e checa unicidade apenas dos campos enviados.
+export async function atualizarDadosCompletosMinisite(
   db: D1Database,
   corretor_id: number,
-  dados: { nome?: string; slug?: string }
-): Promise<boolean> {
+  dados: AtualizarMinisiteInput
+): Promise<{ sucesso: boolean; erro?: string; slug?: string }> {
   try {
-    const agora = new Date().toISOString();
+    const erroValidacao = validarCamposCorretor(dados, { exigirTodos: false });
+    if (erroValidacao) return { sucesso: false, erro: erroValidacao };
 
-    if (dados.nome?.trim()) {
-      await db
-        .prepare("UPDATE corretores SET nome_completo = ?, atualizado_em = ? WHERE id = ?")
-        .bind(dados.nome.trim(), agora, corretor_id)
-        .run();
-    }
+    const cpfNormalizado = dados.cpf ? normalizarCPF(dados.cpf) : undefined;
+
+    const erroUnicidade = await verificarUnicidadeCorretor(
+      db,
+      { email: dados.email, cpf: cpfNormalizado, creci: dados.creci },
+      corretor_id
+    );
+    if (erroUnicidade) return { sucesso: false, erro: erroUnicidade };
 
     if (dados.slug?.trim()) {
+      const slugEmUso = await db
+        .prepare("SELECT id FROM minisites WHERE slug = ? AND corretor_id != ?")
+        .bind(dados.slug.trim(), corretor_id)
+        .first();
+      if (slugEmUso) return { sucesso: false, erro: "Slug já está em uso" };
+    }
+
+    const agora = new Date().toISOString();
+    const atualizacoes: string[] = [];
+    const valores: any[] = [];
+
+    if (dados.nome?.trim()) {
+      atualizacoes.push("nome_completo = ?");
+      valores.push(dados.nome.trim());
+    }
+    if (cpfNormalizado) {
+      atualizacoes.push("cpf = ?");
+      valores.push(cpfNormalizado);
+    }
+    if (dados.creci?.trim()) {
+      atualizacoes.push("creci = ?");
+      valores.push(dados.creci.trim());
+    }
+    if (dados.email?.trim()) {
+      atualizacoes.push("email = ?");
+      valores.push(dados.email.trim().toLowerCase());
+    }
+    if (dados.telefone?.trim()) {
+      atualizacoes.push("telefone = ?");
+      valores.push(dados.telefone.trim());
+    }
+    if (dados.endereco_residencial?.trim()) {
+      atualizacoes.push("endereco_residencial = ?");
+      valores.push(dados.endereco_residencial.trim());
+    }
+
+    if (atualizacoes.length > 0) {
+      atualizacoes.push("atualizado_em = ?");
+      valores.push(agora, corretor_id);
+      await db.prepare(`UPDATE corretores SET ${atualizacoes.join(", ")} WHERE id = ?`).bind(...valores).run();
+    }
+
+    let slugFinal: string | undefined;
+    if (dados.slug?.trim()) {
+      slugFinal = dados.slug.trim();
       await db
         .prepare("UPDATE minisites SET slug = ?, atualizado_em = ? WHERE corretor_id = ?")
-        .bind(dados.slug.trim(), agora, corretor_id)
+        .bind(slugFinal, agora, corretor_id)
         .run();
     }
 
-    return true;
+    return { sucesso: true, slug: slugFinal };
   } catch (erro) {
-    console.error("Erro ao atualizar dados básicos do minisite:", erro);
-    return false;
+    console.error("Erro ao atualizar dados do minisite:", erro);
+    return { sucesso: false, erro: "Erro ao atualizar dados" };
+  }
+}
+
+// Gera um slug de minisite único a partir do nome (mesma regra do
+// pré-cadastro público em routes/api-auth-cadastro.ts), concatenando um
+// sufixo numérico se a base já existir.
+async function gerarSlugMinisiteUnico(db: D1Database, nome: string): Promise<string> {
+  const base = nome.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "") || "corretor";
+  let candidato = base;
+  let sufixo = 1;
+  while (await db.prepare("SELECT id FROM minisites WHERE slug = ?").bind(candidato).first()) {
+    sufixo += 1;
+    candidato = `${base}-${sufixo}`;
+  }
+  return candidato;
+}
+
+// Gera um nome_usuario único a partir do nome — mesmo formato usado nos
+// registros de teste/seed (maiúsculo, sem espaços/acentuação).
+async function gerarNomeUsuarioUnico(db: D1Database, nome: string): Promise<string> {
+  const base = nome.trim().toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9]/g, "") || "CORRETOR";
+  let candidato = base;
+  let sufixo = 1;
+  while (await db.prepare("SELECT id FROM corretores WHERE nome_usuario = ?").bind(candidato).first()) {
+    sufixo += 1;
+    candidato = `${base}${sufixo}`;
+  }
+  return candidato;
+}
+
+export interface CriarCorretorSuperadminInput extends Omit<DadosCorretorFormulario, "nome_usuario"> {
+  nome_usuario?: string; // opcional aqui — gerado a partir do nome se ausente
+  senha?: string; // opcional — gerada aleatoriamente se ausente
+  slug?: string; // opcional — gerado a partir do nome se ausente
+  ja_aprovado: boolean;
+}
+
+export interface CriarCorretorSuperadminResultado {
+  sucesso: boolean;
+  erro?: string;
+  corretor_id?: number;
+  slug?: string;
+  nome_usuario?: string;
+  // Só presente quando o Superadmin NÃO informou senha — precisa ser
+  // exibida uma única vez pro Superadmin comunicar ao corretor (o hash é
+  // a única coisa persistida).
+  senha_gerada?: string;
+}
+
+// Cria um corretor completo direto pelo Superadmin — mesmos campos e
+// validações do pré-cadastro público (routes/api-auth-cadastro.ts), sem
+// depender do formulário público nem do Turnstile. `ja_aprovado` decide
+// se nasce como 'pre-cadastro' (precisa passar por aprovarPreCadastro
+// depois, e por isso ganha uma linha em pre_cadastros pra aparecer na
+// fila) ou já 'aprovado' (minisite liberado e plano atribuído de
+// imediato, mesmo caminho de atribuirPlanoNaAprovacao usado na aprovação
+// normal). R2 (tenants/{slug}/status.json) NÃO é materializado aqui —
+// fica a cargo da rota chamadora, mesmo padrão de aprovarPreCadastro.
+export async function criarCorretorPeloSuperadmin(
+  db: D1Database,
+  dados: CriarCorretorSuperadminInput
+): Promise<CriarCorretorSuperadminResultado> {
+  // nome_usuario é opcional na entrada (gerado a partir do nome quando
+  // ausente) mas obrigatório pra validarCamposCorretor — resolve ANTES de
+  // validar, senão o caminho "deixar em branco pra gerar" nunca passa.
+  const nomeUsuario = dados.nome_usuario?.trim() || (await gerarNomeUsuarioUnico(db, dados.nome || ""));
+
+  const erroValidacao = validarCamposCorretor({ ...dados, nome_usuario: nomeUsuario }, { exigirTodos: true });
+  if (erroValidacao) return { sucesso: false, erro: erroValidacao };
+
+  const cpfNormalizado = normalizarCPF(dados.cpf);
+  const slug = dados.slug?.trim() || (await gerarSlugMinisiteUnico(db, dados.nome));
+
+  const erroUnicidade = await verificarUnicidadeCorretor(db, {
+    email: dados.email,
+    cpf: cpfNormalizado,
+    nome_usuario: nomeUsuario,
+    creci: dados.creci,
+  });
+  if (erroUnicidade) return { sucesso: false, erro: erroUnicidade };
+
+  if (dados.slug?.trim()) {
+    const slugEmUso = await db.prepare("SELECT id FROM minisites WHERE slug = ?").bind(slug).first();
+    if (slugEmUso) return { sucesso: false, erro: "Slug já está em uso" };
+  }
+
+  const senhaFornecida = dados.senha?.trim();
+  if (senhaFornecida && senhaFornecida.length < 8) {
+    return { sucesso: false, erro: "Senha deve ter no mínimo 8 caracteres" };
+  }
+  const senhaFinal = senhaFornecida || gerarSenhaAleatoria();
+
+  try {
+    const { hash: senhaHash, salt: senhaSalt } = await hashSenha(senhaFinal);
+    const agora = new Date().toISOString();
+    const status = dados.ja_aprovado ? "aprovado" : "pre-cadastro";
+
+    const insertCorretor = await db
+      .prepare(
+        `INSERT INTO corretores (
+          nome_completo, sexo, data_nascimento, nacionalidade, cpf, creci,
+          nome_usuario, senha_hash, senha_salt,
+          endereco_residencial, telefone, email,
+          status, criado_em, atualizado_em
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        dados.nome.trim(),
+        dados.sexo.trim(),
+        dados.data_nascimento.trim(),
+        dados.nacionalidade.trim(),
+        cpfNormalizado,
+        dados.creci.trim(),
+        nomeUsuario,
+        senhaHash,
+        senhaSalt,
+        dados.endereco_residencial.trim(),
+        dados.telefone.trim(),
+        dados.email.toLowerCase(),
+        status,
+        agora,
+        agora
+      )
+      .run();
+
+    const corretorId = insertCorretor.meta.last_row_id as number;
+
+    if (!dados.ja_aprovado) {
+      // Espelha o registro que o pré-cadastro público cria — sem isso
+      // esse corretor não aparece na fila de Aprovações nem pode ser
+      // promovido depois por aprovarPreCadastro.
+      await db
+        .prepare(
+          `INSERT INTO pre_cadastros (
+            corretor_id, nome, email, telefone, creci, status, criado_em, atualizado_em
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          corretorId,
+          dados.nome.trim(),
+          dados.email.toLowerCase(),
+          dados.telefone.trim(),
+          dados.creci.trim(),
+          "pendente",
+          agora,
+          agora
+        )
+        .run();
+    }
+
+    await db
+      .prepare("INSERT INTO minisites (corretor_id, slug, offline, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?)")
+      .bind(corretorId, slug, dados.ja_aprovado ? 0 : 1, agora, agora)
+      .run();
+
+    await db
+      .prepare(
+        "INSERT INTO config_upload_corretor (corretor_id, max_resolucao_upload_bytes, criado_em, atualizado_em) VALUES (?, ?, ?, ?)"
+      )
+      .bind(corretorId, 5_000_000, agora, agora)
+      .run();
+
+    // Mesma atribuição de plano de aprovarPreCadastro (Promoção de
+    // Lançamento se houver vaga, senão o plano padrão) — só faz sentido
+    // pra quem já nasce aprovado; quem fica pendente ganha o plano só na
+    // aprovação de verdade.
+    if (dados.ja_aprovado) {
+      await atribuirPlanoNaAprovacao(db, corretorId);
+    }
+
+    return {
+      sucesso: true,
+      corretor_id: corretorId,
+      slug,
+      nome_usuario: nomeUsuario,
+      senha_gerada: senhaFornecida ? undefined : senhaFinal,
+    };
+  } catch (erro) {
+    console.error("Erro ao criar corretor pelo Superadmin:", erro);
+    return { sucesso: false, erro: "Erro ao criar corretor" };
   }
 }
 

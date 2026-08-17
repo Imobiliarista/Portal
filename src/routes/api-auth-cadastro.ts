@@ -3,8 +3,9 @@
 
 import { Env } from "../index";
 import { hashSenha } from "../lib/senha";
-import { validarCPF, normalizarCPF } from "../lib/cpf";
+import { normalizarCPF } from "../lib/cpf";
 import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
+import { validarCamposCorretor, verificarUnicidadeCorretor } from "../lib/validacao-corretor";
 
 const VERSAO_TERMOS_ATUAL = "1.0.0";
 
@@ -61,34 +62,6 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       endereco_residencial: string;
     };
 
-    if (!dados.nome?.trim()) {
-      return new Response(JSON.stringify({ erro: "Nome é obrigatório" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.email?.includes("@")) {
-      return new Response(JSON.stringify({ erro: "E-mail inválido" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.telefone?.trim()) {
-      return new Response(JSON.stringify({ erro: "Telefone é obrigatório" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.creci?.trim()) {
-      return new Response(JSON.stringify({ erro: "CRECI é obrigatório" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
     if (!dados.senha || dados.senha.length < 8) {
       return new Response(JSON.stringify({ erro: "Senha deve ter no mínimo 8 caracteres" }), {
         status: 400,
@@ -105,48 +78,17 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
 
     // Campos de identidade civil/profissional — imutáveis após o cadastro
     // (seção 6.1.1 do project.md): preenchidos aqui, travados dali em diante.
+    // Validação compartilhada com a criação direta pelo Superadmin — ver
+    // lib/validacao-corretor.ts.
+    const erroValidacao = validarCamposCorretor(dados);
+    if (erroValidacao) {
+      return new Response(JSON.stringify({ erro: erroValidacao }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const cpfNormalizado = normalizarCPF(dados.cpf || "");
-    if (!validarCPF(cpfNormalizado)) {
-      return new Response(JSON.stringify({ erro: "CPF inválido" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.nome_usuario?.trim() || dados.nome_usuario.trim().length < 3) {
-      return new Response(JSON.stringify({ erro: "Nome de usuário deve ter no mínimo 3 caracteres" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.sexo?.trim()) {
-      return new Response(JSON.stringify({ erro: "Sexo é obrigatório" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.data_nascimento?.trim() || isNaN(Date.parse(dados.data_nascimento))) {
-      return new Response(JSON.stringify({ erro: "Data de nascimento inválida" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.nacionalidade?.trim()) {
-      return new Response(JSON.stringify({ erro: "Nacionalidade é obrigatória" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    if (!dados.endereco_residencial?.trim()) {
-      return new Response(JSON.stringify({ erro: "Endereço residencial é obrigatório" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
 
     const ipCliente = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || undefined;
     if (!await validarTurnstile(dados.turnstile_token, env, ipCliente)) {
@@ -156,45 +98,14 @@ async function handlePreCadastro(request: Request, env: Env): Promise<Response> 
       });
     }
 
-    const verificaEmail = await env.DB.prepare(
-      "SELECT id FROM corretores WHERE email = ?"
-    ).bind(dados.email.toLowerCase()).first();
-
-    if (verificaEmail) {
-      return new Response(JSON.stringify({ erro: "E-mail já cadastrado" }), {
-        status: 409,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const verificaCpf = await env.DB.prepare(
-      "SELECT id FROM corretores WHERE cpf = ?"
-    ).bind(cpfNormalizado).first();
-
-    if (verificaCpf) {
-      return new Response(JSON.stringify({ erro: "CPF já cadastrado" }), {
-        status: 409,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const verificaUsuario = await env.DB.prepare(
-      "SELECT id FROM corretores WHERE nome_usuario = ?"
-    ).bind(dados.nome_usuario.trim()).first();
-
-    if (verificaUsuario) {
-      return new Response(JSON.stringify({ erro: "Nome de usuário já cadastrado" }), {
-        status: 409,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const verificaCreci = await env.DB.prepare(
-      "SELECT id FROM corretores WHERE creci = ?"
-    ).bind(dados.creci.trim()).first();
-
-    if (verificaCreci) {
-      return new Response(JSON.stringify({ erro: "CRECI já cadastrado" }), {
+    const erroUnicidade = await verificarUnicidadeCorretor(env.DB, {
+      email: dados.email,
+      cpf: cpfNormalizado,
+      nome_usuario: dados.nome_usuario,
+      creci: dados.creci,
+    });
+    if (erroUnicidade) {
+      return new Response(JSON.stringify({ erro: erroUnicidade }), {
         status: 409,
         headers: { "content-type": "application/json" },
       });
