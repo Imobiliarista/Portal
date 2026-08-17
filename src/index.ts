@@ -1,11 +1,9 @@
 import { redirecionarSemWww } from "./middleware/www-redirect";
-import { ehBot, renderizarParaBot } from "./middleware/bot-detect";
+import { ehBot } from "./middleware/bot-detect";
 import { rotasAuth } from "./routes/api-auth";
 import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { servirPainelRaiz } from "./routes/painel-gate";
-import { rotasPortal } from "./routes/portal";
-import { rotasMinisite } from "./routes/minisite";
 import { rotasSitemap } from "./routes/sitemap";
 import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
@@ -16,7 +14,10 @@ import { rotaPwa } from "./modulos/pwa/rota";
 import { rotasAnuncios } from "./routes/api-anuncios";
 import { processarFilaAlteracoes } from "./queue";
 import { handleScheduled } from "./scheduled";
-import { montarChaveCacheEdge, gravarNoCacheDeBorda } from "./lib/edge-cache";
+import type { StatusMinisiteJSON } from "./jobs/gerar-status-minisite";
+
+export { StatusBackend } from "./status-backend";
+export { SiteBackend } from "./site-backend";
 
 export interface Env {
   DB: D1Database;
@@ -40,6 +41,31 @@ function ehDominioRaiz(hostname: string): boolean {
 function ehSubdominio(hostname: string): boolean {
   // Subdomínio tem formato "algo.imobiliarista.net"
   return hostname.endsWith(".imobiliarista.net") && !ehDominioRaiz(hostname);
+}
+
+// Migrado de routes/minisite.ts (v11.4, seção 40): a extração de slug é
+// responsabilidade única do Gateway agora — é ele quem transforma
+// hostname em ctx.props.tenant antes de repassar a chamada via
+// ctx.exports. StatusBackend/SiteBackend nunca leem hostname pra decidir
+// tenant (seção 38).
+function extrairSlugDoSubdominio(hostname: string): string | null {
+  // Formato esperado: {slug}.imobiliarista.net
+  const partes = hostname.split(".");
+
+  // Deve ter pelo menos 3 partes: slug.imobiliarista.net
+  if (partes.length < 3) {
+    return null;
+  }
+
+  // Pega a primeira parte (slug)
+  const slug = partes[0];
+
+  // Valida: slug não pode ser vazio, e o restante deve ser "imobiliarista.net"
+  if (!slug || slug.length === 0) {
+    return null;
+  }
+
+  return slug.toLowerCase();
 }
 
 export default {
@@ -129,8 +155,8 @@ export default {
     // Ver project.md, Lote 8
     //
     // Prefixo de API separado do shell estático (/painel/*, servido por
-    // env.ASSETS.fetch via rotasPortal/rotasMinisite mais abaixo — mesmo
-    // padrão de portal.ts/minisite.ts, seção 4.6/4.9): antes o próprio
+    // env.ASSETS.fetch dentro de SiteBackend mais abaixo — mesmo padrão
+    // de site-backend.ts, seção 4.6/4.9): antes o próprio
     // /painel/* interceptava tudo, inclusive o HTML do shell
     // (public/painel/index.html), que nunca chegava a ser servido. Ver
     // auditoria de fluxo completo.
@@ -156,7 +182,7 @@ export default {
     // Gate de sessão pro shell de /painel*/painel-admin* na raiz — fecha a
     // exposição da auditoria de segurança (HTML do painel servido sem
     // checagem nenhuma via env.ASSETS.fetch). Precisa rodar ANTES do
-    // despachar()/rotasPortal abaixo, que serviria o shell sem gate
+    // caminho de tenant/SiteBackend abaixo, que serviria o shell sem gate
     // nenhum pra qualquer visitante. Ver routes/painel-gate.ts.
     if (
       ehDominioRaiz(url.hostname) &&
@@ -166,46 +192,64 @@ export default {
       return servirPainelRaiz(request, env, url);
     }
 
-    // Roteador principal: portal vs. minisite baseado no hostname
-    // Ver project.md, seção 4.1 (roteamento por hostname)
-    const despachar = (): Promise<Response> =>
-      ehSubdominio(url.hostname)
-        ? rotasMinisite(request, env) // Subdomínio: minisite do corretor
-        : rotasPortal(request, env); // Domínio raiz ou outro: portal
+    // A partir daqui: caminho de portal/minisite, com cache multi-tenant
+    // isolado via Workers Cache (v11.4 — ver PROJETO_EXECUTIVO_ARQUITETURA_
+    // IMOBILIARISTA_v11_4, seções 39-49, e src/status-backend.ts /
+    // src/site-backend.ts). Responsabilidade única do Gateway daqui em
+    // diante: extrair o tenant do hostname e repassar via ctx.exports —
+    // nunca consulta D1/R2, nunca renderiza (seções 40-41).
+    const tenant = ehSubdominio(url.hostname)
+      ? extrairSlugDoSubdominio(url.hostname)
+      : "__portal__"; // Domínio raiz — tenant especial (seção 32)
 
-    // Cache de borda (Plano C, Parte 1) — primeira camada de resposta pro
-    // maior volume de leitura pública do projeto (portal + até 10 mil
-    // minisites). Só GET/HEAD, só portal/minisite público de fato — nunca
-    // /painel*/painel-admin* (shell autenticado) nem qualquer rota acima
-    // (API, sitemap, feeds, pwa, busca), que seguem o fluxo normal sem
-    // passar por aqui. Ver src/lib/edge-cache.ts.
-    const elegivelParaCacheDeBorda =
-      (request.method === "GET" || request.method === "HEAD") &&
-      !url.pathname.startsWith("/painel");
-
-    if (!elegivelParaCacheDeBorda) {
-      return despachar();
+    if (!tenant) {
+      return new Response("Subdomínio inválido", {
+        status: 400,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
     }
 
-    const chaveCache = montarChaveCacheEdge(url, ehRobo);
-    const respostaCache = await caches.default.match(chaveCache);
-    if (respostaCache) {
-      // Hit: nada abaixo roda — sem bot-detect, sem env.ASSETS.fetch, sem R2.
-      return respostaCache;
-    }
+    // Gate de status — só existe pra minisite de corretor (mesma exceção
+    // de sempre: o domínio raiz não tem corretor pra suspender, e nunca
+    // teve tenants/__portal__/status.json). Sequencial, não paralelo com
+    // SiteBackend (decisão fechada, seção 48): economizar a leitura do
+    // site inteiro em corretor suspenso pesa mais que o ganho de
+    // latência do paralelismo.
+    //
+    // cf.cacheKey explícito e tenant-aware nas duas chamadas abaixo — não
+    // dá pra confiar só em ctx.props pra isolar a chave (seção 38):
+    // validado em wrangler dev que, sem isso, a chave por padrão NÃO leva
+    // o tenant em conta (seção 37) e uma requisição interna com a mesma
+    // URL/path pra dois tenants diferentes colide na mesma entrada de
+    // cache — exatamente o cenário que a seção 36 proíbe. Nunca reduzir
+    // isto a só ctx.props sem o cacheKey explícito.
+    if (tenant !== "__portal__") {
+      const statusResp = await ctx.exports
+        .StatusBackend({ props: { tenant } })
+        .fetch(new Request(`http://internal/status/${tenant}`), {
+          cf: { cacheKey: `status::${tenant}` },
+        });
+      const status = (await statusResp.json()) as StatusMinisiteJSON | null;
+      const ativo = status !== null && status.existe && status.liberado;
 
-    const resposta = await despachar();
-
-    // GET apenas — HEAD não tem corpo, gravar a chave (normalizada pra GET
-    // em montarChaveCacheEdge) com um corpo vazio poisoaria a próxima leitura.
-    if (request.method === "GET") {
-      const gravacao = gravarNoCacheDeBorda(chaveCache, resposta.clone());
-      if (gravacao) {
-        ctx.waitUntil(gravacao);
+      if (!ativo) {
+        return new Response("Indisponível", {
+          status: 404,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
       }
     }
 
-    return resposta;
+    // A mesma URL pode responder com HTML pré-renderizado pra bot ou com
+    // o shell da SPA pra humano (dynamic rendering, seção 4.6/98-101) —
+    // a variante precisa entrar na cache key aqui, ANTES do entrypoint
+    // rodar: quem decide se serve do cache é a plataforma, antes mesmo de
+    // chamar ctx.exports, então só o chamador (Gateway) pode influenciá-la.
+    const variante = ehRobo ? "bot" : "human";
+
+    return ctx.exports.SiteBackend({ props: { tenant } }).fetch(request, {
+      cf: { cacheKey: `site::${tenant}::${url.pathname}${url.search}::${variante}` },
+    });
   },
 
   // Handler da Queue (Lote 6, seção 4.4)
