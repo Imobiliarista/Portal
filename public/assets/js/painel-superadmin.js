@@ -204,8 +204,13 @@ async function alternarStatusMinisite(item, offline) {
 
 function abrirModalEditarMinisite(item) {
   minisiteEditarCorretorId = item.corretor_id;
-  document.getElementById("minisite-editar-nome").value = item.nome_completo;
-  document.getElementById("minisite-editar-slug").value = item.slug;
+  document.getElementById("minisite-editar-nome").value = item.nome_completo || "";
+  document.getElementById("minisite-editar-cpf").value = item.cpf || "";
+  document.getElementById("minisite-editar-creci").value = item.creci || "";
+  document.getElementById("minisite-editar-email").value = item.email || "";
+  document.getElementById("minisite-editar-telefone").value = item.telefone || "";
+  document.getElementById("minisite-editar-endereco").value = item.endereco_residencial || "";
+  document.getElementById("minisite-editar-slug").value = item.slug || "";
   document.getElementById("minisite-editar-modal").classList.remove("hidden");
 }
 
@@ -218,10 +223,15 @@ document.getElementById("minisite-editar-fechar-btn").addEventListener("click", 
 
 document.getElementById("minisite-editar-salvar-btn").addEventListener("click", async () => {
   const nome = document.getElementById("minisite-editar-nome").value.trim();
+  const cpf = document.getElementById("minisite-editar-cpf").value.trim();
+  const creci = document.getElementById("minisite-editar-creci").value.trim();
+  const email = document.getElementById("minisite-editar-email").value.trim();
+  const telefone = document.getElementById("minisite-editar-telefone").value.trim();
+  const endereco_residencial = document.getElementById("minisite-editar-endereco").value.trim();
   const slug = document.getElementById("minisite-editar-slug").value.trim();
 
-  if (!nome || !slug) {
-    alert("Preencha nome e slug");
+  if (!nome || !cpf || !creci || !email || !telefone || !endereco_residencial || !slug) {
+    alert("Preencha todos os campos");
     return;
   }
 
@@ -229,17 +239,82 @@ document.getElementById("minisite-editar-salvar-btn").addEventListener("click", 
     const resposta = await fetch(`${API_BASE}/minisite/${minisiteEditarCorretorId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome, slug })
+      body: JSON.stringify({ nome, cpf, creci, email, telefone, endereco_residencial, slug })
     });
 
-    if (!resposta.ok) throw new Error("Erro ao atualizar");
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(dados.erro || "Erro ao atualizar");
 
     alert("✅ Dados atualizados com sucesso!");
     fecharModalEditarMinisite();
     carregarMinisites();
   } catch (erro) {
     console.error("Erro ao atualizar minisite:", erro);
-    alert("Erro ao atualizar dados (slug pode já estar em uso)");
+    alert(erro.message || "Erro ao atualizar dados");
+  }
+});
+
+// ========== Criação completa de corretor/minisite ==========
+
+function abrirModalCriarMinisite() {
+  ["nome", "cpf", "creci", "sexo", "nascimento", "nacionalidade", "email", "telefone", "endereco", "usuario", "senha", "slug"]
+    .forEach(campo => { document.getElementById(`minisite-criar-${campo}`).value = ""; });
+  document.getElementById("minisite-criar-nacionalidade").value = "Brasileira";
+  document.getElementById("minisite-criar-ja-aprovado").checked = false;
+  document.getElementById("minisite-criar-modal").classList.remove("hidden");
+}
+
+function fecharModalCriarMinisite() {
+  document.getElementById("minisite-criar-modal").classList.add("hidden");
+}
+
+document.getElementById("minisite-adicionar-btn").addEventListener("click", abrirModalCriarMinisite);
+document.getElementById("minisite-criar-fechar-btn").addEventListener("click", fecharModalCriarMinisite);
+
+document.getElementById("minisite-criar-salvar-btn").addEventListener("click", async () => {
+  const corpo = {
+    nome: document.getElementById("minisite-criar-nome").value.trim(),
+    cpf: document.getElementById("minisite-criar-cpf").value.trim(),
+    creci: document.getElementById("minisite-criar-creci").value.trim(),
+    sexo: document.getElementById("minisite-criar-sexo").value.trim(),
+    data_nascimento: document.getElementById("minisite-criar-nascimento").value.trim(),
+    nacionalidade: document.getElementById("minisite-criar-nacionalidade").value.trim(),
+    email: document.getElementById("minisite-criar-email").value.trim(),
+    telefone: document.getElementById("minisite-criar-telefone").value.trim(),
+    endereco_residencial: document.getElementById("minisite-criar-endereco").value.trim(),
+    nome_usuario: document.getElementById("minisite-criar-usuario").value.trim() || undefined,
+    senha: document.getElementById("minisite-criar-senha").value.trim() || undefined,
+    slug: document.getElementById("minisite-criar-slug").value.trim() || undefined,
+    ja_aprovado: document.getElementById("minisite-criar-ja-aprovado").checked
+  };
+
+  const camposObrigatorios = ["nome", "cpf", "creci", "sexo", "data_nascimento", "nacionalidade", "email", "telefone", "endereco_residencial"];
+  if (camposObrigatorios.some(campo => !corpo[campo])) {
+    alert("Preencha todos os campos obrigatórios (marcados com *)");
+    return;
+  }
+
+  try {
+    const resposta = await fetch(`${API_BASE}/minisites`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo)
+    });
+
+    const dados = await resposta.json();
+    if (!resposta.ok) throw new Error(dados.erro || "Erro ao criar corretor");
+
+    let mensagem = `✅ Corretor criado com sucesso!\n\nUsuário: ${dados.nome_usuario}\nSlug: ${dados.slug}`;
+    if (dados.senha_gerada) {
+      mensagem += `\nSenha gerada: ${dados.senha_gerada}\n\nAnote agora — essa senha não será exibida novamente.`;
+    }
+    alert(mensagem);
+
+    fecharModalCriarMinisite();
+    carregarMinisites();
+  } catch (erro) {
+    console.error("Erro ao criar minisite:", erro);
+    alert(erro.message || "Erro ao criar corretor");
   }
 });
 
