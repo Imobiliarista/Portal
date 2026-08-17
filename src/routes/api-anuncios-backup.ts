@@ -186,11 +186,25 @@ async function handleRestaurar(request: Request, env: Env): Promise<Response> {
 
     // Grava — cria só os novos, preservando o ID original do backup (seção 4.11: identificador imutável)
     const criados: number[] = [];
+    const falhasRevalidacao: number[] = [];
     for (const a of novos) {
       await restaurarAnuncioComId(env.DB, a);
       criados.push(a.id);
-      await enfileirarRevalidacaoDoAnuncio(env, a.id, corretorId, a.cidade_id);
+      // Cada anúncio já foi persistido em D1 acima — uma falha de fila num
+      // item isolado não pode abortar o restante da restauração nem virar
+      // um 500 genérico pro corretor (mesmo princípio de
+      // routes/api-anuncios-crud.ts::tentarRevalidarAnuncio).
+      try {
+        await enfileirarRevalidacaoDoAnuncio(env, a.id, corretorId, a.cidade_id);
+      } catch (erroFila) {
+        console.error(`Anúncio ${a.id} restaurado em D1, mas falhou ao enfileirar revalidação em R2:`, erroFila);
+        falhasRevalidacao.push(a.id);
+      }
     }
+
+    const aviso = falhasRevalidacao.length > 0
+      ? `${falhasRevalidacao.length} anúncio(s) restaurado(s), mas a atualização pública pode estar atrasada (IDs: ${falhasRevalidacao.join(", ")}).`
+      : undefined;
 
     return new Response(JSON.stringify({
       sucesso: true,
@@ -199,6 +213,7 @@ async function handleRestaurar(request: Request, env: Env): Promise<Response> {
       ignorados_existentes: ignoradosExistentes,
       ignorados_outro_corretor: deOutroCorretor,
       invalidos,
+      ...(aviso ? { aviso } : {}),
     }), { status: 201, headers: { "content-type": "application/json" } });
   } catch (erro) {
     console.error("Erro ao restaurar anúncios:", erro);
