@@ -536,7 +536,12 @@ export async function criarCorretorPeloSuperadmin(
     };
   } catch (erro) {
     console.error("Erro ao criar corretor pelo Superadmin:", erro);
-    return { sucesso: false, erro: "Erro ao criar corretor" };
+    // Rota restrita ao Superadmin (obterSuperadminIdDaSessao) — expor o
+    // detalhe real do erro (ex: "no such table"/"no such column" de uma
+    // migration pendente em produção) evita ter que ir direto nos logs do
+    // Worker pra saber por que a criação falhou.
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    return { sucesso: false, erro: `Erro ao criar corretor: ${detalhe}` };
   }
 }
 
