@@ -3,6 +3,34 @@ main = "src/index.ts"
 compatibility_date = "2026-08-05"
 compatibility_flags = ["nodejs_compat"]
 
+# Workers Cache multi-tenant (v11.4) — substitui o cache manual via Cache
+# API (`caches.default`, PR #41). Cache desligado no nível raiz e no
+# export default (o Gateway precisa rodar em toda requisição pra extrair
+# o tenant do hostname e popular ctx.props antes de qualquer decisão de
+# cache); ligado só nos dois entrypoints tenant-aware, cada um com seu
+# TTL — StatusBackend (curto, propagação rápida de suspensão) e
+# SiteBackend (mais longo, conteúdo do site). Em hit, o entrypoint
+# correspondente não executa: zero CPU do Worker além do Gateway. Ver
+# PROJETO_EXECUTIVO_ARQUITETURA_IMOBILIARISTA_v11_4, seções 33-47, e
+# src/status-backend.ts / src/site-backend.ts / src/index.ts.
+[cache]
+enabled = false
+
+[exports.default]
+type = "worker"
+  [exports.default.cache]
+  enabled = false
+
+[exports.StatusBackend]
+type = "worker"
+  [exports.StatusBackend.cache]
+  enabled = true
+
+[exports.SiteBackend]
+type = "worker"
+  [exports.SiteBackend.cache]
+  enabled = true
+
 # Static Assets — shell da SPA (público e painel), modo SPA fallback.
 # Ver project.md, seção 4.6.
 #
