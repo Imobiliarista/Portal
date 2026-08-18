@@ -16,13 +16,10 @@ import {
   restaurarAnuncioComId,
 } from "../db/queries-anuncios";
 import { enfileirarRevalidacaoDoAnuncio } from "../jobs/revalidacao-cruzada";
-import {
-  mapearTipoNegocioParaVRSync,
-  mapearCategoriaParaVRSync,
-  mapearTipoImovelParaVRSync,
-  validarCamposObrigatorios,
-} from "../lib/vrsync-mapper";
-import { sanitizarParaXML } from "../lib/sanitize";
+import { validarCamposObrigatorios } from "../lib/vrsync-mapper";
+import { resolverPrecos, AnuncioParaExportacao } from "../lib/feeds/core";
+import { sanitizarParaExportacao } from "../lib/sanitize";
+import { formatadores } from "../lib/feeds/registry";
 
 const VERSAO_SCHEMA_BACKUP = "1.0.0";
 
@@ -224,9 +221,11 @@ async function handleRestaurar(request: Request, env: Env): Promise<Response> {
 // ========== (b) Exportação em formato de mercado — GET /api/anuncios/exportar/:portal ==========
 // Via de mão única (nunca entra pela rota /restaurar) — reaproveita os
 // mapeadores de taxonomia de lib/vrsync-mapper.ts (Lote 12/seção 4.11).
-// "grupo-olx" é sempre VRSync XML; portais independentes seguem o `formato`
-// cadastrado em portais_independentes pelo Superadmin — hoje só "vrsync-xml"
-// tem mapeador implementado (mesma limitação de modulos/feed-portais-independentes/gerador.ts).
+// "grupo-olx" é só mais uma linha de portais_independentes (migration
+// 0016); o `formato` cadastrado ali decide o mapeador via
+// lib/feeds/registry.ts, mesmo registro usado por
+// modulos/feed-portais-independentes/gerador.ts — hoje só "vrsync-xml"
+// tem formatador implementado.
 
 interface LinhaExportacao {
   id: number;
@@ -234,6 +233,7 @@ interface LinhaExportacao {
   descricao?: string;
   preco_venda?: number;
   preco_aluguel?: number;
+  cep?: string;
   tipo_negocio_slug: string;
   categoria_slug: string;
   tipo_imovel_slug: string;
@@ -247,92 +247,41 @@ interface LinhaExportacao {
   banheiros?: number;
   vagas_garagem?: number;
   fotos_json?: string;
+  video_youtube_id?: string;
+  criado_em: string;
 }
 
-function escaparXML(texto: string): string {
-  return texto
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+// Converte uma linha já buscada com JOIN (tipo_negocio_slug/categoria_slug/
+// tipo_imovel_slug/cidade_nome vindos direto da query, sem re-consultar por
+// ID) pro mesmo formato que o feed automático usa — só um lugar decide como
+// o XML fica (lib/feeds/), esta função só monta o objeto de entrada.
+function linhaParaAnuncioExportacao(a: LinhaExportacao): AnuncioParaExportacao {
+  const { precoVenda, precoLocacao } = resolverPrecos(a.tipo_negocio_slug, a.preco_venda, a.preco_aluguel);
+  const fotos: string[] = a.fotos_json ? JSON.parse(a.fotos_json) : [];
 
-// Gera XML VRSync a partir das linhas já mapeadas — mesmo formato de tags
-// usado no feed automático (feed-grupo-olx/gerador.ts), garantindo que a
-// cópia exportada avulsa seja compatível com o que o portal já recebe
-function construirXMLVRSync(linhas: LinhaExportacao[]): string {
-  const cabecalho = `<?xml version="1.0" encoding="UTF-8"?>\n<PropertyList>\n`;
-  const rodape = `</PropertyList>`;
-
-  const propriedades = linhas
-    .map((a) => {
-      const tipoNegocio = mapearTipoNegocioParaVRSync(a.tipo_negocio_slug);
-      const categoria = mapearCategoriaParaVRSync(a.categoria_slug);
-      const tipo = mapearTipoImovelParaVRSync(a.tipo_imovel_slug);
-      const preco = a.preco_venda || a.preco_aluguel;
-      const fotos: string[] = a.fotos_json ? JSON.parse(a.fotos_json) : [];
-
-      let xml = `  <Property>\n`;
-      xml += `    <ID>${a.id}</ID>\n`;
-      xml += `    <Title>${escaparXML(sanitizarParaXML(a.titulo))}</Title>\n`;
-
-      if (a.descricao) {
-        xml += `    <Description>${escaparXML(sanitizarParaXML(a.descricao))}</Description>\n`;
-      }
-
-      xml += `    <TransactionType>${tipoNegocio}</TransactionType>\n`;
-      xml += `    <PropertyType>${categoria}</PropertyType>\n`;
-      xml += `    <UnitType>${tipo}</UnitType>\n`;
-
-      if (preco) {
-        xml += `    <Price>${preco}</Price>\n`;
-      }
-
-      if (a.exibir_endereco_completo && a.endereco_completo) {
-        xml += `    <Address>${escaparXML(a.endereco_completo)}</Address>\n`;
-      } else if (a.bairro) {
-        xml += `    <Neighborhood>${escaparXML(a.bairro)}</Neighborhood>\n`;
-      }
-
-      if (a.cidade_nome) {
-        xml += `    <City>${escaparXML(a.cidade_nome)}</City>\n`;
-      }
-
-      if (a.area_total) {
-        xml += `    <TotalArea>${a.area_total}</TotalArea>\n`;
-      }
-
-      if (a.area_util) {
-        xml += `    <BuiltArea>${a.area_util}</BuiltArea>\n`;
-      }
-
-      if (a.quartos !== undefined && a.quartos !== null) {
-        xml += `    <Bedrooms>${a.quartos}</Bedrooms>\n`;
-      }
-
-      if (a.banheiros !== undefined && a.banheiros !== null) {
-        xml += `    <Bathrooms>${a.banheiros}</Bathrooms>\n`;
-      }
-
-      if (a.vagas_garagem !== undefined && a.vagas_garagem !== null) {
-        xml += `    <Parking>${a.vagas_garagem}</Parking>\n`;
-      }
-
-      if (fotos.length > 0) {
-        xml += `    <Images>\n`;
-        for (const foto of fotos) {
-          xml += `      <Image>${escaparXML(foto)}</Image>\n`;
-        }
-        xml += `    </Images>\n`;
-      }
-
-      xml += `  </Property>\n`;
-      return xml;
-    })
-    .join("");
-
-  return cabecalho + propriedades + rodape;
+  return {
+    id: a.id,
+    titulo: sanitizarParaExportacao(a.titulo),
+    descricao: a.descricao ? sanitizarParaExportacao(a.descricao, 6000) : undefined,
+    precoVenda,
+    precoLocacao,
+    cep: a.cep || undefined,
+    tipoNegocioSlug: a.tipo_negocio_slug,
+    categoriaSlug: a.categoria_slug,
+    tipoImovelSlug: a.tipo_imovel_slug,
+    cidadeNome: a.cidade_nome,
+    bairro: a.bairro ? sanitizarParaExportacao(a.bairro) : undefined,
+    enderecoCompleto: a.endereco_completo ? sanitizarParaExportacao(a.endereco_completo) : undefined,
+    exibirEnderecoCompleto: !!a.exibir_endereco_completo,
+    areaTotal: a.area_total,
+    areaUtil: a.area_util,
+    quartos: a.quartos,
+    banheiros: a.banheiros,
+    vagasGaragem: a.vagas_garagem,
+    fotos: fotos.length > 0 ? fotos : undefined,
+    videoUrl: a.video_youtube_id ? `https://www.youtube.com/watch?v=${a.video_youtube_id}` : undefined,
+    criadoEm: a.criado_em,
+  };
 }
 
 async function handleExportar(request: Request, env: Env, portalSlug: string): Promise<Response> {
@@ -342,22 +291,24 @@ async function handleExportar(request: Request, env: Env, portalSlug: string): P
     const corretorId = await obterCorretorAutenticado(request, env);
     if (!corretorId) return respostaErro("Não autenticado", 401);
 
-    // Resolve o formato do portal pedido
-    let formato: string;
-    if (portalSlug === "grupo-olx") {
-      formato = "vrsync-xml";
-    } else {
-      const portal = await env.DB
-        .prepare("SELECT formato FROM portais_independentes WHERE slug = ? LIMIT 1")
-        .bind(portalSlug)
-        .first() as { formato: string } | undefined;
-      if (!portal) return respostaErro(`Portal "${portalSlug}" não encontrado`, 404);
-      formato = portal.formato;
+    // Resolve o formato do portal pedido — Grupo OLX é só mais uma linha
+    // de portais_independentes desde a migration 0016 (fusão do módulo
+    // feed-grupo-olx), sem caso especial aqui.
+    const portal = await env.DB
+      .prepare("SELECT formato FROM portais_independentes WHERE slug = ? LIMIT 1")
+      .bind(portalSlug)
+      .first() as { formato: string } | undefined;
+    if (!portal) return respostaErro(`Portal "${portalSlug}" não encontrado`, 404);
+
+    const formatador = formatadores[portal.formato];
+    if (!formatador) {
+      return respostaErro(`Formato "${portal.formato}" ainda não possui mapeador de exportação implementado`, 501);
     }
 
-    if (formato !== "vrsync-xml") {
-      return respostaErro(`Formato "${formato}" ainda não possui mapeador de exportação implementado`, 501);
-    }
+    const corretor = await env.DB
+      .prepare("SELECT nome_completo FROM corretores WHERE id = ? LIMIT 1")
+      .bind(corretorId)
+      .first() as { nome_completo: string } | undefined;
 
     const resultado = await env.DB
       .prepare(
@@ -379,14 +330,15 @@ async function handleExportar(request: Request, env: Env, portalSlug: string): P
     // Só exporta anúncios que passam na validação de campos obrigatórios do
     // portal (mesma checagem usada no feed automático — seção 4.11)
     const linhasValidas = linhas.filter((a) => validarCamposObrigatorios(a.tipo_imovel_slug, a).valido);
+    const anunciosExportacao = linhasValidas.map(linhaParaAnuncioExportacao);
 
-    const xml = construirXMLVRSync(linhasValidas);
+    const arquivo = formatador.gerar(corretor?.nome_completo || "", anunciosExportacao);
 
-    return new Response(xml, {
+    return new Response(arquivo.conteudo, {
       status: 200,
       headers: {
-        "content-type": "application/xml; charset=utf-8",
-        "content-disposition": `attachment; filename="anuncios-${portalSlug}.xml"`,
+        "content-type": arquivo.contentType,
+        "content-disposition": `attachment; filename="anuncios-${portalSlug}.${arquivo.extensao}"`,
       },
     });
   } catch (erro) {

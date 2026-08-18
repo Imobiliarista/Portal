@@ -1,5 +1,6 @@
-// Rota: GET /feeds/{portal-slug}/{slug-corretor}.{ext} — Serve arquivos de portais independentes
-// Seção 4.11 do project.md
+// Rota: GET /feeds/{portal-slug}/{slug-corretor}.{ext} — serve arquivos
+// de qualquer portal externo, Grupo OLX incluso (seção 4.11 do
+// project.md; reconstrução do feed fundiu feed-grupo-olx aqui).
 //
 // Checagem dupla (flag de rede + cota ativa) em tempo de requisição, não
 // só na geração do feed (processarGerarFeedPortalIndependente): sem isso,
@@ -15,6 +16,7 @@ import { estaModuloAtivo } from "../../db/queries-modulos";
 import { buscarCotaPortal } from "../../db/queries-cotas-portal";
 import { lerJSON } from "../../lib/r2";
 import type { StatusMinisiteJSON } from "../../jobs/gerar-status-minisite";
+import { buscarPortalIndependente } from "./gerador";
 
 // Rota: GET /feeds/{portal}/{slug}.{ext}
 export async function rotaFeedPortalIndependente(
@@ -22,7 +24,8 @@ export async function rotaFeedPortalIndependente(
   url: URL,
   env: Env
 ): Promise<Response> {
-  // Extrai portal e slug da URL: /feeds/imovelweb/marcos.xml
+  // Extrai portal e slug da URL: /feeds/imovelweb/marcos.xml,
+  // /feeds/grupo-olx/marcos.xml
   const pathname = url.pathname;
   const parts = pathname.split("/").filter(Boolean); // Remove strings vazias
 
@@ -39,7 +42,12 @@ export async function rotaFeedPortalIndependente(
   }
 
   try {
-    const moduloAtivo = await estaModuloAtivo(env.DB, "feed-portais-independentes");
+    const portal = await buscarPortalIndependente(env.DB, portalSlug);
+    if (!portal) {
+      return new Response("Feed não encontrado", { status: 404 });
+    }
+
+    const moduloAtivo = await estaModuloAtivo(env.DB, portal.modulo_flag_slug);
     if (!moduloAtivo) {
       return new Response("Feed não encontrado", { status: 404 });
     }

@@ -1,11 +1,21 @@
 // Job: Revalidação cruzada — coordena regeneração de corretor + cidade
 // Seção 4.4.1.1: quando toggle "postar na rede" muda ou anúncio é deletado
+//
+// Também dispara a regeneração dos feeds de portais externos ativos do
+// corretor (Grupo OLX + portais independentes, seção 4.11) — achado da
+// reconstrução do feed OLX: antes desta correção, NENHUM ponto do código
+// disparava essa geração (a função pronta pra isso,
+// dispararGeracaoXMLGrupoOLX, nunca era chamada de lugar nenhum), então o
+// XML nunca era atualizado depois da criação/edição/exclusão de um
+// anúncio.
 
 import { Env } from "../index";
+import { listarCotasPortalDoCorretor } from "../db/queries-cotas-portal";
 
 interface MensagemRevalidacaoCruzada {
   tipo: "revalidacao-cruzada";
   anuncio_id: number;
+  corretor_id: number;
   corretor_slug: string;
   cidade_id: number;
   cidade_slug: string;
@@ -15,10 +25,10 @@ export async function processarRevalidacaoCruzada(
   mensagem: MensagemRevalidacaoCruzada,
   env: Env,
 ): Promise<void> {
-  const { anuncio_id, corretor_slug, cidade_id, cidade_slug } = mensagem;
+  const { anuncio_id, corretor_id, corretor_slug, cidade_id, cidade_slug } = mensagem;
 
   try {
-    const mensagens = [
+    const mensagens: Record<string, unknown>[] = [
       {
         tipo: "gerar-json-corretor",
         corretor_slug,
@@ -41,6 +51,20 @@ export async function processarRevalidacaoCruzada(
       },
     ];
 
+    // Uma mensagem por portal externo com cota ativa — mesmo princípio
+    // de "uma mensagem por arquivo a ser gerado" (seção 4.4) já seguido
+    // acima. processarGerarFeedPortalIndependente regenera o feed inteiro
+    // daquele corretor+portal a partir do estado atual do D1, não só o
+    // anúncio que mudou.
+    const cotasAtivas = await listarCotasPortalDoCorretor(env.DB, corretor_id);
+    for (const cota of cotasAtivas.filter((c) => c.ativo)) {
+      mensagens.push({
+        tipo: "gerar-feed-portal-independente",
+        corretor_slug,
+        portal_slug: cota.portal_nome,
+      });
+    }
+
     for (const msg of mensagens) {
       await env.FILA_ALTERACOES.send(msg);
     }
@@ -57,6 +81,7 @@ export async function processarRevalidacaoCruzada(
 export async function dispararRevalidacaoCruzada(
   fila: Queue,
   anuncio_id: number,
+  corretor_id: number,
   corretor_slug: string,
   cidade_id: number,
   cidade_slug: string,
@@ -64,6 +89,7 @@ export async function dispararRevalidacaoCruzada(
   const mensagem = {
     tipo: "revalidacao-cruzada",
     anuncio_id,
+    corretor_id,
     corretor_slug,
     cidade_id,
     cidade_slug,
@@ -114,6 +140,7 @@ export async function enfileirarRevalidacaoDoAnuncio(
       await dispararRevalidacaoCruzada(
         env.FILA_ALTERACOES,
         anuncio_id,
+        corretor_id,
         minisite.slug,
         cidade_id,
         slugificarCidade(cidade.nome),

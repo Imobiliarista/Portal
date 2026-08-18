@@ -11,7 +11,6 @@ import {
   processarGerarSitemapPortal,
   processarGerarSitemapCorretor,
 } from "./jobs/gerar-sitemap";
-import { processarGerarXMLGrupoOLX } from "./modulos/feed-grupo-olx/gerador";
 import { processarGerarFeedPortalIndependente } from "./modulos/feed-portais-independentes/gerador";
 
 type MensagemFila = {
@@ -51,9 +50,6 @@ export async function processarFilaAlteracoes(
         message.ack();
       } else if (msg.tipo === "gerar-sitemap-corretor") {
         await processarGerarSitemapCorretor(msg as any, env);
-        message.ack();
-      } else if (msg.tipo === "gerar-xml-grupo-olx") {
-        await processarGerarXMLGrupoOLX(msg as any, env);
         message.ack();
       } else if (msg.tipo === "gerar-feed-portal-independente") {
         await processarGerarFeedPortalIndependente(msg as any, env);

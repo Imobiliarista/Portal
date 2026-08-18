@@ -5,7 +5,6 @@ import { rotasPainelCorretor } from "./routes/painel-corretor";
 import { rotasPainelSuperadmin } from "./routes/painel-superadmin";
 import { servirPainelRaiz } from "./routes/painel-gate";
 import { rotasSitemap } from "./routes/sitemap";
-import { rotaFeedGrupoOLX } from "./modulos/feed-grupo-olx/rota";
 import { rotaFeedPortalIndependente } from "./modulos/feed-portais-independentes/rota";
 import { rotaBuscaIA } from "./modulos/busca-ia/rota";
 import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
@@ -108,17 +107,13 @@ export default {
       return rotaPwa(request, url, env);
     }
 
-    // Rota de feeds externos — Grupo OLX (Lote 12.1)
-    if (url.pathname.match(/^\/feeds\/grupo-olx\/[a-z0-9-]+\.xml$/i)) {
-      return rotaFeedGrupoOLX(request, url, env);
-    }
-
-    // Rota de feeds externos — Portais Independentes (Lote 12.2)
+    // Rota de feeds externos — Portais Independentes, Grupo OLX incluso
+    // como mais uma linha de portais_independentes (Lote 12.1/12.2 +
+    // reconstrução do feed, seção 4.11 — fusão de feed-grupo-olx aqui,
+    // migration 0016). A regex genérica já casa /feeds/grupo-olx/{slug}.xml
+    // como qualquer outro portal_slug, sem caso especial.
     if (url.pathname.match(/^\/feeds\/[a-z0-9-]+\/[a-z0-9-]+\.(xml|csv|json)$/i)) {
-      // Evita conflito com grupo-olx verificando se não é grupo-olx
-      if (!url.pathname.includes("grupo-olx")) {
-        return rotaFeedPortalIndependente(request, url, env);
-      }
+      return rotaFeedPortalIndependente(request, url, env);
     }
 
     // Rota de busca por IA — domínio raiz apenas (Lote 12.3)

@@ -47,14 +47,23 @@ async function tentarRevalidarAnuncio(
   }
 }
 
-// Valida campos obrigatórios por tipo de imóvel quando portal externo está ativo
+// Valida campos obrigatórios por tipo de imóvel quando o anúncio vai ser
+// publicado no Grupo OLX (publicar_grupo_olx = true) — seção 4.11.
+// Antes desta correção, o gate era `dados.portal_externo`, um campo que
+// nenhum formulário jamais enviava (nunca persistido, nunca lido em
+// nenhum outro lugar do código) — a validação inteira era código morto.
+// `publicar_grupo_olx` é o toggle real, persistido em `anuncios`.
 async function validarCamposObrigatorios(
   db: D1Database,
   tipo_imovel_id: number,
   dados: any,
-  temPortalExterno: boolean
+  publicarGrupoOlx: boolean
 ): Promise<string | null> {
-  if (!temPortalExterno) return null;
+  if (!publicarGrupoOlx) return null;
+
+  if (!dados.cep?.trim()) {
+    return "CEP é obrigatório pra publicar no Grupo OLX";
+  }
 
   // Busca o tipo de imóvel para validação
   const tipoImovel = await db
@@ -159,13 +168,13 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       });
     }
 
-    // Valida campos obrigatórios por portal externo
-    const temPortalExterno = !!dados.portal_externo;
+    // Valida campos obrigatórios pra publicação no Grupo OLX
+    const publicarGrupoOlx = dados.publicar_grupo_olx === true;
     const erroCamposObrigatorios = await validarCamposObrigatorios(
       env.DB,
       dados.tipo_imovel_id,
       dados,
-      temPortalExterno
+      publicarGrupoOlx
     );
     if (erroCamposObrigatorios) {
       return new Response(JSON.stringify({ erro: erroCamposObrigatorios }), {
@@ -202,6 +211,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       bairro,
       endereco_completo: dados.endereco_completo,
       exibir_endereco_completo: dados.exibir_endereco_completo || false,
+      cep: dados.cep?.trim() || undefined,
       area_total: dados.area_total,
       area_util: dados.area_util,
       quartos: dados.quartos,
@@ -212,6 +222,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
       fotos_json: dados.fotos_json,
       video_youtube_id: videoYouTubeId,
       tour_360_url: tour360Url || undefined,
+      publicar_grupo_olx: publicarGrupoOlx,
       slug: slug, // Slug provisório
     });
 
@@ -330,6 +341,23 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
 
     const dados = await request.json() as any;
 
+    // Estado resultante (dado novo se enviado, senão o que já estava
+    // salvo) — a obrigatoriedade do CEP depende do valor final de
+    // publicar_grupo_olx, não só do que veio nesta requisição: editar um
+    // campo qualquer com o toggle já ligado antes não deve reabrir a
+    // exigência de reenviar o CEP se ele já estava preenchido.
+    const publicarGrupoOlxResultante = dados.publicar_grupo_olx !== undefined
+      ? dados.publicar_grupo_olx === true
+      : anuncio.publicar_grupo_olx;
+    const cepResultante = dados.cep !== undefined ? dados.cep?.trim() : anuncio.cep;
+
+    if (publicarGrupoOlxResultante && !cepResultante) {
+      return new Response(JSON.stringify({ erro: "CEP é obrigatório pra publicar no Grupo OLX" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     // Sanitiza campos editáveis
     const atualizacoes: Partial<Anuncio> = {};
 
@@ -340,6 +368,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     if (dados.bairro !== undefined) atualizacoes.bairro = dados.bairro ? sanitizarBairroRegiao(dados.bairro) : "";
     if (dados.endereco_completo !== undefined) atualizacoes.endereco_completo = dados.endereco_completo;
     if (dados.exibir_endereco_completo !== undefined) atualizacoes.exibir_endereco_completo = dados.exibir_endereco_completo;
+    if (dados.cep !== undefined) atualizacoes.cep = dados.cep?.trim() || "";
     if (dados.area_total !== undefined) atualizacoes.area_total = dados.area_total;
     if (dados.area_util !== undefined) atualizacoes.area_util = dados.area_util;
     if (dados.quartos !== undefined) atualizacoes.quartos = dados.quartos;
@@ -348,6 +377,7 @@ async function handleEditarAnuncio(request: Request, env: Env): Promise<Response
     if (dados.cozinhas !== undefined) atualizacoes.cozinhas = dados.cozinhas;
     if (dados.lavanderias !== undefined) atualizacoes.lavanderias = dados.lavanderias;
     if (dados.fotos_json !== undefined) atualizacoes.fotos_json = dados.fotos_json;
+    if (dados.publicar_grupo_olx !== undefined) atualizacoes.publicar_grupo_olx = dados.publicar_grupo_olx === true;
     if (dados.tour_360_url !== undefined) {
       const tour360Sanitizado = dados.tour_360_url ? sanitizarTour360Url(dados.tour_360_url) : "";
       atualizacoes.tour_360_url = tour360Sanitizado || "";
