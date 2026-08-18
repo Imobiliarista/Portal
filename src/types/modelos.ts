@@ -171,6 +171,7 @@ export interface Anuncio {
   bairro?: string;
   endereco_completo?: string;
   exibir_endereco_completo: boolean;
+  cep?: string; // exigido só quando publicar_grupo_olx = true (seção 4.11)
 
   // Especificações
   area_total?: number;
@@ -189,6 +190,7 @@ export interface Anuncio {
   // Status de publicação
   postar_na_rede: boolean; // true = visível no portal e na rede
   vendido_removido: boolean; // true = HTTP 410 para bots
+  publicar_grupo_olx: boolean; // toggle real por anúncio (seção 4.11) — exige cep
 
   // URL amigável: /cidade/negocio/tipo/slug-id
   slug: string;

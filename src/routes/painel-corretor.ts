@@ -232,12 +232,35 @@ async function rotaPainelCotasPortalAtualizar(request: Request, env: Env): Promi
 
     if (!corpo.portal_nome) return respostaErro("portal_nome é obrigatório");
 
+    const ativo = corpo.ativo === true;
+
     await atualizarCotaPortal(env.DB, corretor_id, corpo.portal_nome, {
       quantidade_contratada: corpo.quantidade_contratada === null || corpo.quantidade_contratada === undefined
         ? null
         : parseInt(corpo.quantidade_contratada, 10),
-      ativo: corpo.ativo === true,
+      ativo,
     });
+
+    // Sem isso, o primeiro corretor a ligar uma cota ficaria sem feed
+    // nenhum até editar algum anúncio depois — jobs/revalidacao-cruzada.ts
+    // só regenera feeds de portais já ativos no momento da mutação do
+    // anúncio, não cobre o instante em que a cota é ligada pela primeira
+    // vez. Mesmo achado do §0 da reconstrução do feed (disparo nunca
+    // existia antes desta correção).
+    if (ativo) {
+      const minisite = await buscarMinisiteDoCorretor(env.DB, corretor_id);
+      if (minisite) {
+        try {
+          await env.FILA_ALTERACOES.send({
+            tipo: "gerar-feed-portal-independente",
+            corretor_slug: minisite.slug,
+            portal_slug: corpo.portal_nome,
+          });
+        } catch (erroFila) {
+          console.error(`Falha ao enfileirar geração inicial do feed "${corpo.portal_nome}":`, erroFila);
+        }
+      }
+    }
 
     return respostaSucesso({ mensagem: "Cota atualizada com sucesso" });
   } catch (erro) {

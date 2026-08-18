@@ -1,51 +1,34 @@
-// Tabela de-para: taxonomia interna ↔ taxonomia VRSync (Grupo OLX)
+// Tabela de-para: taxonomia interna ↔ schema real do Grupo OLX (VRSync)
 // Conforme seção 4.11 do project.md
+//
+// Substitui o mapa anterior (mapearTipoNegocioParaVRSync/mapearCategoriaParaVRSync/
+// mapearTipoImovelParaVRSync), que devolvia strings em inglês inventadas
+// ("Apartment", "House", "Residential") sem correspondência com nenhum
+// schema real de portal brasileiro — achado raiz da reconstrução do feed.
+// O schema real não tem tags separadas de TransactionType/PropertyType: o
+// tipo de negócio já é implícito em qual tag de preço é emitida
+// (PrecoVenda vs. PrecoLocacao, ver feeds/formatadores/vrsync-olx.ts), e
+// SubTipoImovel cobre sozinho o que antes eram duas tags.
 
-// Mapeamento de Tipo de Negócio (Venda/Locação) para VRSync
-export function mapearTipoNegocioParaVRSync(tipoNegocioSlug: string): string {
-  const mapa: Record<string, string> = {
-    venda: "Venda",
-    locacao: "Aluguel",
-  };
-  return mapa[tipoNegocioSlug.toLowerCase()] || tipoNegocioSlug;
-}
+// Agrupamento fechado dos 21 valores de tipos_imovel.slug em 4 categorias
+// (decisão registrada: Temporada/Aluguel de quartos ficam fora de escopo,
+// não existe 5ª/6ª categoria pra isso). O código/string exato que o Grupo
+// OLX espera por grupo não está confirmado numa documentação real — os
+// valores abaixo são placeholder (`TBD_*`) até alguém confirmar contra a
+// especificação oficial do Canal Pro antes deste feed ir pro ar de vez.
+const GRUPOS_SUBTIPO_IMOVEL: Record<string, string[]> = {
+  TBD_APARTAMENTOS: ["apartamento", "cobertura"],
+  TBD_CASAS: ["casa", "chacara"],
+  TBD_TERRENOS_SITIOS_FAZENDAS: ["terreno", "area", "sitio", "fazenda"],
+  TBD_COMERCIO_INDUSTRIA: ["loja", "sala", "predio", "galpao", "barracao", "salao"],
+};
 
-// Mapeamento de Categoria de Imóvel para VRSync PropertyType
-export function mapearCategoriaParaVRSync(categoriaSlug: string): string {
-  const mapa: Record<string, string> = {
-    residencial: "Residential",
-    comercial: "Commercial",
-    corporativo: "Commercial",
-    industrial: "Commercial",
-    rural: "Residential",
-  };
-  return mapa[categoriaSlug.toLowerCase()] || "Residential";
-}
-
-// Mapeamento de Tipo de Imóvel para VRSync UnitType
-export function mapearTipoImovelParaVRSync(tipoImovelSlug: string): string {
-  const mapa: Record<string, string> = {
-    // Residencial
-    apartamento: "Apartment",
-    casa: "House",
-    cobertura: "Penthouse",
-    chacara: "House",
-    terreno: "Land",
-    area: "Land",
-
-    // Comercial
-    loja: "Shop",
-    sala: "Office",
-    predio: "Building",
-    galpao: "Garage",
-    barracao: "Garage",
-    salao: "Office",
-
-    // Rural
-    fazenda: "Farm",
-    sitio: "House",
-  };
-  return mapa[tipoImovelSlug.toLowerCase()] || "Residential";
+export function mapearSubTipoImovel(tipoImovelSlug: string): string {
+  const slug = tipoImovelSlug.toLowerCase();
+  for (const [grupo, slugs] of Object.entries(GRUPOS_SUBTIPO_IMOVEL)) {
+    if (slugs.includes(slug)) return grupo;
+  }
+  return "TBD_CASAS"; // fallback conservador — nunca deixa a tag vazia
 }
 
 // Valida campos obrigatórios por tipo de imóvel (conforme seção 4.11)

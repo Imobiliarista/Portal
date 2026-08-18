@@ -21,6 +21,7 @@ export async function criarAnuncio(
     bairro?: string;
     endereco_completo?: string;
     exibir_endereco_completo: boolean;
+    cep?: string;
     area_total?: number;
     area_util?: number;
     quartos?: number;
@@ -31,6 +32,7 @@ export async function criarAnuncio(
     fotos_json?: string;
     video_youtube_id?: string;
     tour_360_url?: string;
+    publicar_grupo_olx?: boolean;
     slug: string;
   }
 ): Promise<number> {
@@ -41,12 +43,12 @@ export async function criarAnuncio(
       `INSERT INTO anuncios (
         corretor_id, titulo, descricao, preco_venda, preco_aluguel,
         tipo_negocio_id, categoria_imovel_id, tipo_imovel_id,
-        cidade_id, bairro, endereco_completo, exibir_endereco_completo,
+        cidade_id, bairro, endereco_completo, exibir_endereco_completo, cep,
         area_total, area_util, quartos, banheiros, vagas_garagem, cozinhas, lavanderias,
         fotos_json, video_youtube_id, tour_360_url,
-        postar_na_rede, vendido_removido, slug,
+        postar_na_rede, vendido_removido, publicar_grupo_olx, slug,
         criado_em, atualizado_em
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       dados.corretor_id,
@@ -61,6 +63,7 @@ export async function criarAnuncio(
       dados.bairro || null,
       dados.endereco_completo || null,
       dados.exibir_endereco_completo ? 1 : 0,
+      dados.cep || null,
       dados.area_total || null,
       dados.area_util || null,
       dados.quartos || null,
@@ -73,6 +76,7 @@ export async function criarAnuncio(
       dados.tour_360_url || null,
       1, // postar_na_rede = true por padrão
       0, // vendido_removido = false por padrão
+      dados.publicar_grupo_olx ? 1 : 0,
       dados.slug,
       agora,
       agora
@@ -175,6 +179,7 @@ export async function atualizarAnuncio(
       "bairro",
       "endereco_completo",
       "exibir_endereco_completo",
+      "cep",
       "area_total",
       "area_util",
       "quartos",
@@ -187,6 +192,7 @@ export async function atualizarAnuncio(
       "tour_360_url",
       "postar_na_rede",
       "vendido_removido",
+      "publicar_grupo_olx",
       "slug",
     ];
 
@@ -265,12 +271,12 @@ export async function restaurarAnuncioComId(db: D1Database, anuncio: Anuncio): P
       `INSERT INTO anuncios (
         id, corretor_id, titulo, descricao, preco_venda, preco_aluguel,
         tipo_negocio_id, categoria_imovel_id, tipo_imovel_id,
-        cidade_id, bairro, endereco_completo, exibir_endereco_completo,
+        cidade_id, bairro, endereco_completo, exibir_endereco_completo, cep,
         area_total, area_util, quartos, banheiros, vagas_garagem, cozinhas, lavanderias,
         fotos_json, video_youtube_id, tour_360_url,
-        postar_na_rede, vendido_removido, slug,
+        postar_na_rede, vendido_removido, publicar_grupo_olx, slug,
         criado_em, atualizado_em
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       anuncio.id,
@@ -286,6 +292,7 @@ export async function restaurarAnuncioComId(db: D1Database, anuncio: Anuncio): P
       anuncio.bairro || null,
       anuncio.endereco_completo || null,
       anuncio.exibir_endereco_completo ? 1 : 0,
+      anuncio.cep || null,
       anuncio.area_total || null,
       anuncio.area_util || null,
       anuncio.quartos || null,
@@ -298,6 +305,7 @@ export async function restaurarAnuncioComId(db: D1Database, anuncio: Anuncio): P
       anuncio.tour_360_url || null,
       anuncio.postar_na_rede ? 1 : 0,
       anuncio.vendido_removido ? 1 : 0,
+      anuncio.publicar_grupo_olx ? 1 : 0,
       anuncio.slug,
       anuncio.criado_em || agora,
       agora
