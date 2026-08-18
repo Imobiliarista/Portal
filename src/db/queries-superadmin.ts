@@ -146,6 +146,7 @@ export interface MinisiteListagem {
   corretor_id: number;
   nome_completo: string;
   cpf: string;
+  nome_usuario: string;
   creci: string;
   email: string;
   telefone: string;
@@ -190,7 +191,7 @@ export async function listarMinisites(
       .prepare(
         `SELECT
            m.id as minisite_id, m.corretor_id, m.slug, m.offline, m.criado_em,
-           c.nome_completo, c.cpf, c.creci, c.email, c.telefone, c.endereco_residencial,
+           c.nome_completo, c.cpf, c.nome_usuario, c.creci, c.email, c.telefone, c.endereco_residencial,
            c.status as status_corretor,
            p.nome as plano_nome,
            pc.id as pre_cadastro_id
@@ -210,6 +211,7 @@ export async function listarMinisites(
       corretor_id: r.corretor_id,
       nome_completo: r.nome_completo,
       cpf: r.cpf,
+      nome_usuario: r.nome_usuario,
       creci: r.creci,
       email: r.email,
       telefone: r.telefone,
@@ -271,6 +273,7 @@ export async function alternarOfflineMinisite(
 export interface AtualizarMinisiteInput {
   nome?: string;
   cpf?: string;
+  nome_usuario?: string;
   creci?: string;
   email?: string;
   telefone?: string;
@@ -296,7 +299,7 @@ export async function atualizarDadosCompletosMinisite(
 
     const erroUnicidade = await verificarUnicidadeCorretor(
       db,
-      { email: dados.email, cpf: cpfNormalizado, creci: dados.creci },
+      { email: dados.email, cpf: cpfNormalizado, nome_usuario: dados.nome_usuario, creci: dados.creci },
       corretor_id
     );
     if (erroUnicidade) return { sucesso: false, erro: erroUnicidade };
@@ -320,6 +323,10 @@ export async function atualizarDadosCompletosMinisite(
     if (cpfNormalizado) {
       atualizacoes.push("cpf = ?");
       valores.push(cpfNormalizado);
+    }
+    if (dados.nome_usuario?.trim()) {
+      atualizacoes.push("nome_usuario = ?");
+      valores.push(dados.nome_usuario.trim());
     }
     if (dados.creci?.trim()) {
       atualizacoes.push("creci = ?");

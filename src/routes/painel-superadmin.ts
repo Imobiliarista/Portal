@@ -262,9 +262,9 @@ async function rotaAlternarStatusMinisite(request: Request, env: Env, corretorId
   }
 }
 
-// PATCH /api/painel-admin/minisite/:corretorId — edita nome, CPF, CRECI,
-// e-mail, telefone, endereço e/ou slug (todos opcionais — atualiza só o
-// que veio no corpo)
+// PATCH /api/painel-admin/minisite/:corretorId — edita nome, CPF, nome de
+// usuário, CRECI, e-mail, telefone, endereço e/ou slug (todos opcionais —
+// atualiza só o que veio no corpo)
 async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: number): Promise<Response> {
   const superadminId = await obterSuperadminIdDaSessao(request, env);
   if (!superadminId) return respostaErro("Não autorizado", 401);
@@ -273,7 +273,7 @@ async function rotaAtualizarMinisite(request: Request, env: Env, corretorId: num
 
   try {
     const body = await request.json() as {
-      nome?: string; cpf?: string; creci?: string; email?: string;
+      nome?: string; cpf?: string; nome_usuario?: string; creci?: string; email?: string;
       telefone?: string; endereco_residencial?: string; slug?: string;
     };
 

@@ -212,6 +212,7 @@ function abrirModalEditarMinisite(item) {
   minisiteEditarCorretorId = item.corretor_id;
   document.getElementById("minisite-editar-nome").value = item.nome_completo || "";
   document.getElementById("minisite-editar-cpf").value = item.cpf || "";
+  document.getElementById("minisite-editar-usuario").value = item.nome_usuario || "";
   document.getElementById("minisite-editar-creci").value = item.creci || "";
   document.getElementById("minisite-editar-email").value = item.email || "";
   document.getElementById("minisite-editar-telefone").value = item.telefone || "";
@@ -230,13 +231,14 @@ document.getElementById("minisite-editar-fechar-btn").addEventListener("click", 
 document.getElementById("minisite-editar-salvar-btn").addEventListener("click", async () => {
   const nome = document.getElementById("minisite-editar-nome").value.trim();
   const cpf = document.getElementById("minisite-editar-cpf").value.trim();
+  const nome_usuario = document.getElementById("minisite-editar-usuario").value.trim();
   const creci = document.getElementById("minisite-editar-creci").value.trim();
   const email = document.getElementById("minisite-editar-email").value.trim();
   const telefone = document.getElementById("minisite-editar-telefone").value.trim();
   const endereco_residencial = document.getElementById("minisite-editar-endereco").value.trim();
   const slug = document.getElementById("minisite-editar-slug").value.trim();
 
-  if (!nome || !cpf || !creci || !email || !telefone || !endereco_residencial || !slug) {
+  if (!nome || !cpf || !nome_usuario || !creci || !email || !telefone || !endereco_residencial || !slug) {
     alert("Preencha todos os campos");
     return;
   }
@@ -245,7 +247,7 @@ document.getElementById("minisite-editar-salvar-btn").addEventListener("click", 
     const resposta = await fetch(`${API_BASE}/minisite/${minisiteEditarCorretorId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome, cpf, creci, email, telefone, endereco_residencial, slug })
+      body: JSON.stringify({ nome, cpf, nome_usuario, creci, email, telefone, endereco_residencial, slug })
     });
 
     const dados = await resposta.json().catch(() => ({}));
