@@ -10,6 +10,8 @@ class PainelCorretor {
     this.anunciosData = [];
     this.paginaAnuncios = 1;
     this.publicacoesData = null;
+    this.taxonomiaData = null;
+    this.editandoAnuncioId = null;
 
     this.inicializar();
   }
@@ -27,6 +29,7 @@ class PainelCorretor {
     document.getElementById("nav-dashboard").addEventListener("click", () => this.mostrarDashboard());
     document.getElementById("nav-anuncios").addEventListener("click", () => this.mostrarAnuncios());
     document.getElementById("nav-novo-anuncio").addEventListener("click", () => this.mostrarFormAnuncio());
+    document.getElementById("novo-anuncio-btn-header").addEventListener("click", () => this.mostrarFormAnuncio());
     document.getElementById("nav-portais").addEventListener("click", () => this.mostrarPortais());
     document.getElementById("nav-publicacoes").addEventListener("click", () => this.mostrarPublicacoes());
     document.getElementById("nav-perfil").addEventListener("click", () => this.mostrarPerfil());
@@ -40,6 +43,8 @@ class PainelCorretor {
     // Formulário de anúncio
     document.getElementById("form-anuncio").addEventListener("submit", (e) => this.enviarFormAnuncio(e));
     document.getElementById("cancel-form-btn").addEventListener("click", () => this.mostrarAnuncios());
+    document.getElementById("anuncio-categoria").addEventListener("change", () => this.atualizarSelectTipoImovel());
+    document.getElementById("anuncio-publicar-grupo-olx").addEventListener("change", () => this.atualizarObrigatoriedadeCep());
 
     // Formulário de perfil
     document.getElementById("form-perfil-editar").addEventListener("submit", (e) => this.enviarFormPerfil(e));
@@ -122,6 +127,10 @@ class PainelCorretor {
   }
 
   mostrarFormAnuncio() {
+    // Sempre reseta o modo de edição — sem isso, cancelar uma edição e
+    // depois clicar em "Novo Anúncio" submeteria como PUT no anúncio
+    // editado antes, não como POST de um anúncio novo.
+    this.editandoAnuncioId = null;
     this.mostrarView("form-anuncio-view");
     document.getElementById("page-title").textContent = "Novo Anúncio";
     this.renderizarFormAnuncio();
@@ -181,7 +190,7 @@ class PainelCorretor {
     const lista = document.getElementById("anuncios-list");
 
     if (!this.anunciosData.anuncios || this.anunciosData.anuncios.length === 0) {
-      lista.innerHTML = '<p class="text-gray-600 py-8">Nenhum anúncio cadastrado. <a href="#" class="text-blue-600 hover:underline">Criar novo</a></p>';
+      lista.innerHTML = '<p class="text-gray-600 py-8">Nenhum anúncio cadastrado. <a href="#" onclick="painel.mostrarFormAnuncio(); return false;" class="text-blue-600 hover:underline">Criar novo</a></p>';
       document.getElementById("anuncios-pagination").innerHTML = "";
       return;
     }
@@ -191,13 +200,13 @@ class PainelCorretor {
         <div class="flex-1">
           <h3 class="font-semibold text-slate-900">${this.escaparHTML(a.titulo)}</h3>
           <p class="text-sm text-gray-600">
-            ID: ${a.id} • Preço: R$ ${a.preco_venda || a.preco_aluguel || "A negociar"} • ${a.postar_na_rede ? "✓ Na rede" : "Restrito"}
+            ID: ${a.id} • Preço: R$ ${a.preco_venda || a.preco_aluguel || "A negociar"} • ${a.vendido_removido ? "🚫 Vendido/Removido" : (a.postar_na_rede ? "✓ Na rede" : "Restrito")}
           </p>
           <p class="text-xs text-gray-500 mt-1">${new Date(a.atualizado_em).toLocaleDateString("pt-BR")}</p>
         </div>
         <div class="flex gap-2">
           <button class="px-3 py-1 bg-blue-100 text-blue-600 rounded text-sm hover:bg-blue-200 transition" onclick="painel.editarAnuncio(${a.id})">✏️ Editar</button>
-          <button class="px-3 py-1 bg-red-100 text-red-600 rounded text-sm hover:bg-red-200 transition" onclick="painel.deletarAnuncio(${a.id})">🗑️ Deletar</button>
+          ${a.vendido_removido ? "" : `<button class="px-3 py-1 bg-red-100 text-red-600 rounded text-sm hover:bg-red-200 transition" onclick="painel.deletarAnuncio(${a.id})">🗑️ Deletar</button>`}
         </div>
       </div>
     `).join("");
@@ -228,41 +237,250 @@ class PainelCorretor {
     }
   }
 
-  editarAnuncio(id) {
-    alert(`Editar anúncio ${id} (Lote 9)`);
+  async editarAnuncio(id) {
+    try {
+      await this.garantirTaxonomiaCarregada();
+
+      const res = await fetch(`/api/anuncios/${id}`);
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao buscar anúncio");
+
+      this.editandoAnuncioId = id;
+      this.mostrarView("form-anuncio-view");
+      document.getElementById("page-title").textContent = "Editar Anúncio";
+      document.getElementById("form-anuncio-titulo").textContent = "Editar Anúncio";
+
+      this.preencherFormAnuncio(dados.anuncio);
+    } catch (erro) {
+      console.error("Erro ao carregar anúncio:", erro);
+      alert(erro.message || "Erro ao carregar anúncio pra edição.");
+    }
   }
 
   async deletarAnuncio(id) {
-    if (!confirm("Tem certeza que deseja deletar este anúncio?")) return;
-    alert(`Deletar anúncio ${id} (Lote 5)`);
+    if (!confirm("Tem certeza que deseja deletar este anúncio? Ele será marcado como vendido/removido.")) return;
+
+    try {
+      const res = await fetch(`/api/anuncios/${id}`, { method: "DELETE" });
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao deletar anúncio");
+
+      alert(dados.mensagem || "Anúncio removido com sucesso!");
+      await this.carregarPaginaAnuncios(this.paginaAnuncios);
+    } catch (erro) {
+      console.error("Erro ao deletar anúncio:", erro);
+      alert(erro.message || "Erro ao deletar anúncio.");
+    }
   }
 
   // ========== Formulário de Anúncio ==========
 
-  renderizarFormAnuncio() {
-    // Carrega selects de taxonomia (Lote 5)
-    // Por enquanto, placeholder de valores estáticos
-    const tipoImove = document.getElementById("anuncio-tipo");
-    tipoImove.innerHTML = `
-      <option value="">Tipo de Imóvel</option>
-      <option value="apartamento">Apartamento</option>
-      <option value="casa">Casa</option>
-      <option value="terreno">Terreno</option>
-      <option value="comercial">Comercial</option>
-    `;
+  // Busca a taxonomia (tipos de negócio, categorias→tipos de imóvel,
+  // cidades) uma vez só e reaproveita — dado de referência, igual pra
+  // qualquer anúncio, não precisa recarregar a cada abertura do formulário.
+  async garantirTaxonomiaCarregada() {
+    if (this.taxonomiaData) return;
+
+    const res = await fetch("/api/painel-corretor/taxonomia");
+    if (!res.ok) throw new Error("Erro ao buscar taxonomia");
+    this.taxonomiaData = await res.json();
 
     const cidade = document.getElementById("anuncio-cidade");
-    cidade.innerHTML = `
-      <option value="">Cidade</option>
-      <option value="londrina">Londrina</option>
-      <option value="cambé">Cambé</option>
-      <option value="maringá">Maringá</option>
-    `;
+    cidade.innerHTML =
+      '<option value="">Cidade</option>' +
+      this.taxonomiaData.cidades
+        .map((c) => `<option value="${c.id}">${this.escaparHTML(c.nome)} - ${c.uf}</option>`)
+        .join("");
+  }
+
+  // Repopula o select de Tipo de Imóvel a partir da Categoria escolhida —
+  // cada categoria tem um conjunto diferente de tipos (seção 5.3).
+  // `tipoImovelIdSelecionado` é usado só na edição, pra restaurar o valor
+  // depois de repopular as opções.
+  atualizarSelectTipoImovel(tipoImovelIdSelecionado) {
+    const categoriaSlug = document.getElementById("anuncio-categoria").value;
+    const tipoSelect = document.getElementById("anuncio-tipo");
+
+    const categoria = this.taxonomiaData?.categorias.find((c) => c.slug === categoriaSlug);
+    if (!categoria) {
+      tipoSelect.innerHTML = '<option value="">Tipo de Imóvel</option>';
+      return;
+    }
+
+    tipoSelect.innerHTML =
+      '<option value="">Tipo de Imóvel</option>' +
+      categoria.tipos_imovel.map((t) => `<option value="${t.id}">${this.escaparHTML(t.nome)}</option>`).join("");
+
+    if (tipoImovelIdSelecionado) {
+      tipoSelect.value = String(tipoImovelIdSelecionado);
+    }
+  }
+
+  // CEP só é obrigatório quando o corretor marca "Publicar no Grupo OLX"
+  // (seção 4.11) — mesma regra do backend (api-anuncios-crud.ts), aplicada
+  // aqui só pra dar feedback antes de tentar salvar.
+  atualizarObrigatoriedadeCep() {
+    const publicarGrupoOlx = document.getElementById("anuncio-publicar-grupo-olx").checked;
+    const cepInput = document.getElementById("anuncio-cep");
+    const ajuda = document.getElementById("anuncio-cep-ajuda");
+
+    cepInput.required = publicarGrupoOlx;
+    ajuda.textContent = publicarGrupoOlx
+      ? "Obrigatório pra publicar no Grupo OLX."
+      : 'Obrigatório só se você marcar "Publicar no Grupo OLX" abaixo.';
+  }
+
+  limparFormAnuncio() {
+    document.getElementById("form-anuncio").reset();
+    document.getElementById("anuncio-tipo").innerHTML = '<option value="">Tipo de Imóvel</option>';
+    document.getElementById("anuncio-postar-rede").checked = true;
+    document.getElementById("anuncio-publicar-grupo-olx").checked = false;
+    this.atualizarObrigatoriedadeCep();
+  }
+
+  async renderizarFormAnuncio() {
+    try {
+      await this.garantirTaxonomiaCarregada();
+    } catch (erro) {
+      console.error("Erro ao carregar taxonomia:", erro);
+      alert("Erro ao carregar categorias/cidades. Tente recarregar a página.");
+      return;
+    }
+
+    if (!this.editandoAnuncioId) {
+      document.getElementById("form-anuncio-titulo").textContent = "Novo Anúncio";
+      this.limparFormAnuncio();
+    }
+  }
+
+  // Preenche o formulário com um anúncio existente (edição). `anuncio` vem
+  // direto de GET /api/anuncios/:id — campos de taxonomia são IDs (banco),
+  // não slugs, então tipo de negócio/categoria precisam de busca reversa
+  // na taxonomia já carregada pra achar o slug que o <select> usa como value.
+  preencherFormAnuncio(anuncio) {
+    const tipoNegocio = this.taxonomiaData.tipos_negocio.find((t) => t.id === anuncio.tipo_negocio_id);
+    const categoria = this.taxonomiaData.categorias.find((c) => c.id === anuncio.categoria_imovel_id);
+
+    document.getElementById("anuncio-titulo").value = anuncio.titulo || "";
+    document.getElementById("anuncio-tipo-negocio").value = tipoNegocio?.slug || "";
+    document.getElementById("anuncio-descricao").value = anuncio.descricao || "";
+    document.getElementById("anuncio-categoria").value = categoria?.slug || "";
+    this.atualizarSelectTipoImovel(anuncio.tipo_imovel_id);
+    document.getElementById("anuncio-cidade").value = String(anuncio.cidade_id || "");
+    document.getElementById("anuncio-preco").value = anuncio.preco_venda ?? anuncio.preco_aluguel ?? "";
+    document.getElementById("anuncio-bairro").value = anuncio.bairro || "";
+    document.getElementById("anuncio-endereco").value = anuncio.endereco_completo || "";
+    document.getElementById("anuncio-exibir-endereco").checked = !!anuncio.exibir_endereco_completo;
+    document.getElementById("anuncio-cep").value = anuncio.cep || "";
+    document.getElementById("anuncio-quartos").value = anuncio.quartos ?? "";
+    document.getElementById("anuncio-banheiros").value = anuncio.banheiros ?? "";
+    document.getElementById("anuncio-vagas").value = anuncio.vagas_garagem ?? "";
+    document.getElementById("anuncio-area-util").value = anuncio.area_util ?? "";
+    document.getElementById("anuncio-video-youtube").value = "";
+    document.getElementById("anuncio-tour-360").value = anuncio.tour_360_url || "";
+    document.getElementById("anuncio-postar-rede").checked = !!anuncio.postar_na_rede;
+    document.getElementById("anuncio-publicar-grupo-olx").checked = !!anuncio.publicar_grupo_olx;
+    this.atualizarObrigatoriedadeCep();
+  }
+
+  // Monta o payload a partir dos campos do formulário. Retorna
+  // { payload } em caso de sucesso ou { erro } se alguma validação de
+  // frontend falhar — mesmas regras já aplicadas no backend
+  // (api-anuncios-crud.ts), checadas aqui só pra dar feedback mais rápido.
+  coletarPayloadFormAnuncio() {
+    const tipoNegocioSlug = document.getElementById("anuncio-tipo-negocio").value;
+    const categoriaSlug = document.getElementById("anuncio-categoria").value;
+    const tipoImovelId = document.getElementById("anuncio-tipo").value;
+    const cidadeId = document.getElementById("anuncio-cidade").value;
+    const cep = document.getElementById("anuncio-cep").value.trim();
+    const publicarGrupoOlx = document.getElementById("anuncio-publicar-grupo-olx").checked;
+
+    const tipoNegocio = this.taxonomiaData.tipos_negocio.find((t) => t.slug === tipoNegocioSlug);
+    const categoria = this.taxonomiaData.categorias.find((c) => c.slug === categoriaSlug);
+
+    if (!tipoNegocio || !categoria || !tipoImovelId || !cidadeId) {
+      return { erro: "Preencha tipo de negócio, categoria, tipo de imóvel e cidade." };
+    }
+
+    if (publicarGrupoOlx && !cep) {
+      return { erro: "CEP é obrigatório pra publicar no Grupo OLX." };
+    }
+
+    const preco = document.getElementById("anuncio-preco").value;
+    const precoNumero = preco ? Number(preco) : undefined;
+
+    const payload = {
+      titulo: document.getElementById("anuncio-titulo").value.trim(),
+      descricao: document.getElementById("anuncio-descricao").value.trim() || undefined,
+      tipo_negocio_id: tipoNegocio.id,
+      categoria_imovel_id: categoria.id,
+      tipo_imovel_id: Number(tipoImovelId),
+      cidade_id: Number(cidadeId),
+      // Preço vai só no campo certo pra classificação do anúncio — mesma
+      // regra do backend (lib/feeds/core.ts::resolverPrecos): nunca os
+      // dois preenchidos ao mesmo tempo, pra não confundir precedência
+      // depois numa troca de tipo de negócio.
+      preco_venda: tipoNegocioSlug === "venda" ? precoNumero : undefined,
+      preco_aluguel: tipoNegocioSlug === "locacao" ? precoNumero : undefined,
+      bairro: document.getElementById("anuncio-bairro").value.trim() || undefined,
+      endereco_completo: document.getElementById("anuncio-endereco").value.trim() || undefined,
+      exibir_endereco_completo: document.getElementById("anuncio-exibir-endereco").checked,
+      cep: cep || undefined,
+      quartos: document.getElementById("anuncio-quartos").value ? Number(document.getElementById("anuncio-quartos").value) : undefined,
+      banheiros: document.getElementById("anuncio-banheiros").value ? Number(document.getElementById("anuncio-banheiros").value) : undefined,
+      vagas_garagem: document.getElementById("anuncio-vagas").value ? Number(document.getElementById("anuncio-vagas").value) : undefined,
+      area_util: document.getElementById("anuncio-area-util").value ? Number(document.getElementById("anuncio-area-util").value) : undefined,
+      video_youtube_url: document.getElementById("anuncio-video-youtube").value.trim() || undefined,
+      tour_360_url: document.getElementById("anuncio-tour-360").value.trim() || undefined,
+      postar_na_rede: document.getElementById("anuncio-postar-rede").checked,
+      publicar_grupo_olx: publicarGrupoOlx,
+    };
+
+    return { payload };
   }
 
   async enviarFormAnuncio(e) {
     e.preventDefault();
-    alert("Salvar anúncio (integração com /painel/anuncios POST do Lote 5)");
+
+    if (!this.taxonomiaData) {
+      alert("Categorias/cidades ainda não carregaram. Aguarde um instante e tente de novo.");
+      return;
+    }
+
+    const { payload, erro } = this.coletarPayloadFormAnuncio();
+    if (erro) {
+      alert(erro);
+      return;
+    }
+
+    if (!payload.titulo) {
+      alert("Título é obrigatório.");
+      return;
+    }
+
+    const editando = !!this.editandoAnuncioId;
+    const url = editando ? `/api/anuncios/${this.editandoAnuncioId}` : "/api/anuncios";
+    const metodo = editando ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method: metodo,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.erro || "Erro ao salvar anúncio");
+
+      alert(dados.aviso || dados.mensagem || (editando ? "Anúncio atualizado com sucesso!" : "Anúncio criado com sucesso!"));
+
+      this.editandoAnuncioId = null;
+      await this.carregarPaginaAnuncios(1);
+      this.mostrarAnuncios();
+    } catch (erro) {
+      console.error("Erro ao salvar anúncio:", erro);
+      alert(erro.message || "Erro ao salvar anúncio.");
+    }
   }
 
   // ========== Portais Integrados ==========
