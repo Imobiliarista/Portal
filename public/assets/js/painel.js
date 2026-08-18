@@ -10,6 +10,9 @@ class PainelCorretor {
     this.anunciosData = [];
     this.paginaAnuncios = 1;
     this.publicacoesData = null;
+    this.erroPlano = false;
+    this.erroCotas = false;
+    this.erroAnuncios = false;
 
     this.inicializar();
   }
@@ -18,8 +21,8 @@ class PainelCorretor {
 
   async inicializar() {
     this.anexarEventos();
-    await this.carregarDados();
-    this.mostrarDashboard();
+    const perfilCarregado = await this.carregarDados();
+    if (perfilCarregado) this.mostrarDashboard();
   }
 
   anexarEventos() {
@@ -47,34 +50,56 @@ class PainelCorretor {
 
   // ========== Carregamento de dados ==========
 
+  // Retorna true se o perfil (dado crítico, sem o qual o dashboard não
+  // pode ser montado) carregou com sucesso. Plano, cotas e anúncios são
+  // isolados entre si logo abaixo — a falha de um não deve abortar os
+  // outros nem disparar um alerta genérico (ver renderizarDashboard/
+  // renderizarPortais/renderizarAnuncios para o tratamento por seção).
   async carregarDados() {
     try {
-      // Busca perfil
       const resPerfil = await fetch("/api/painel-corretor/perfil");
       if (!resPerfil.ok) throw new Error("Erro ao buscar perfil");
       this.perfilData = await resPerfil.json();
-
-      // Busca plano
-      const resPlano = await fetch("/api/painel-corretor/plano");
-      if (!resPlano.ok) throw new Error("Erro ao buscar plano");
-      this.planoData = await resPlano.json();
-
-      // Busca cotas
-      const resCotas = await fetch("/api/painel-corretor/cotas-portal");
-      if (!resCotas.ok) throw new Error("Erro ao buscar cotas");
-      this.cotasData = await resCotas.json();
-
-      // Busca anúncios
-      const resAnuncios = await fetch("/api/painel-corretor/anuncios?pagina=1");
-      if (!resAnuncios.ok) throw new Error("Erro ao buscar anúncios");
-      this.anunciosData = await resAnuncios.json();
-
-      // Atualiza UI com dados do perfil
-      this.atualizarHeaderPerfil();
-      this.atualizarStatusOffline();
     } catch (erro) {
-      console.error("Erro ao carregar dados:", erro);
+      console.error("Erro ao carregar perfil:", erro);
       alert("Erro ao carregar dados do painel. Tente recarregar a página.");
+      return false;
+    }
+
+    await Promise.all([
+      this.carregarPlano(),
+      this.carregarCotas(),
+      this.carregarPaginaAnuncios(1),
+    ]);
+
+    this.atualizarHeaderPerfil();
+    this.atualizarStatusOffline();
+    return true;
+  }
+
+  async carregarPlano() {
+    try {
+      const res = await fetch("/api/painel-corretor/plano");
+      if (!res.ok) throw new Error("Erro ao buscar plano");
+      this.planoData = await res.json();
+      this.erroPlano = false;
+    } catch (erro) {
+      console.error("Erro ao carregar plano:", erro);
+      this.planoData = null;
+      this.erroPlano = true;
+    }
+  }
+
+  async carregarCotas() {
+    try {
+      const res = await fetch("/api/painel-corretor/cotas-portal");
+      if (!res.ok) throw new Error("Erro ao buscar cotas");
+      this.cotasData = await res.json();
+      this.erroCotas = false;
+    } catch (erro) {
+      console.error("Erro ao carregar cotas de portais:", erro);
+      this.cotasData = null;
+      this.erroCotas = true;
     }
   }
 
@@ -155,12 +180,25 @@ class PainelCorretor {
 
     document.getElementById("status-text").textContent = statusTexto;
     document.getElementById("status-subtext").textContent = statusSubtexto;
-    document.getElementById("anuncios-count").textContent = this.planoData.anuncios_usados;
-    document.getElementById("anuncios-limit").textContent = `de ${this.planoData.max_anuncios} permitidos`;
-    document.getElementById("max-fotos").textContent = this.planoData.max_fotos_por_anuncio;
+
+    if (this.erroPlano) {
+      document.getElementById("anuncios-count").textContent = "—";
+      document.getElementById("anuncios-limit").textContent = "Erro ao carregar plano";
+      document.getElementById("max-fotos").textContent = "—";
+    } else if (!this.planoData.plano) {
+      document.getElementById("anuncios-count").textContent = this.planoData.anuncios_usados;
+      document.getElementById("anuncios-limit").textContent = "Sem plano atribuído";
+      document.getElementById("max-fotos").textContent = "—";
+    } else {
+      document.getElementById("anuncios-count").textContent = this.planoData.anuncios_usados;
+      document.getElementById("anuncios-limit").textContent = `de ${this.planoData.plano.max_anuncios} permitidos`;
+      document.getElementById("max-fotos").textContent = this.planoData.plano.max_fotos_por_anuncio;
+    }
 
     const preview = document.getElementById("dashboard-anuncios-preview");
-    if (this.anunciosData.anuncios && this.anunciosData.anuncios.length > 0) {
+    if (this.erroAnuncios) {
+      preview.innerHTML = '<p class="text-red-600">Não foi possível carregar seus anúncios agora.</p>';
+    } else if (this.anunciosData.anuncios && this.anunciosData.anuncios.length > 0) {
       preview.innerHTML = this.anunciosData.anuncios.slice(0, 5).map((a) => `
         <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
           <div>
@@ -179,6 +217,12 @@ class PainelCorretor {
 
   renderizarAnuncios() {
     const lista = document.getElementById("anuncios-list");
+
+    if (this.erroAnuncios) {
+      lista.innerHTML = '<p class="text-red-600 py-8">Não foi possível carregar seus anúncios agora.</p>';
+      document.getElementById("anuncios-pagination").innerHTML = "";
+      return;
+    }
 
     if (!this.anunciosData.anuncios || this.anunciosData.anuncios.length === 0) {
       lista.innerHTML = '<p class="text-gray-600 py-8">Nenhum anúncio cadastrado. <a href="#" class="text-blue-600 hover:underline">Criar novo</a></p>';
@@ -221,11 +265,13 @@ class PainelCorretor {
       if (!res.ok) throw new Error("Erro ao buscar anúncios");
       this.anunciosData = await res.json();
       this.paginaAnuncios = pagina;
-      this.renderizarAnuncios();
+      this.erroAnuncios = false;
     } catch (erro) {
-      console.error("Erro ao carregar página:", erro);
-      alert("Erro ao carregar página de anúncios.");
+      console.error("Erro ao carregar anúncios:", erro);
+      this.anunciosData = { anuncios: [], total: 0, pagina, per_page: 10 };
+      this.erroAnuncios = true;
     }
+    this.renderizarAnuncios();
   }
 
   editarAnuncio(id) {
@@ -269,6 +315,11 @@ class PainelCorretor {
 
   renderizarPortais() {
     const lista = document.getElementById("portais-list");
+
+    if (this.erroCotas || !this.cotasData) {
+      lista.innerHTML = '<p class="text-red-600 py-8">Não foi possível carregar seus portais agora.</p>';
+      return;
+    }
 
     if (!this.cotasData.cotas || this.cotasData.cotas.length === 0) {
       lista.innerHTML = '<p class="text-gray-600 py-8">Nenhum portal integrado configurado.</p>';

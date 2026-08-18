@@ -85,7 +85,14 @@ const CacheBuster = (() => {
 
         // Verificar se é uma rota de cidade (não /painel, /api, etc.)
         if (!['painel', 'api', 'assets', 'icons'].includes(potentialCity)) {
-          const indexUrl = `/cidades/${potentialCity}/_index.json`;
+          // Os JSONs de dados são servidos direto do bucket R2 público
+          // (bypass do Worker nas leituras — ver app-dados.js), nunca por
+          // uma rota própria em imobiliarista.net. Sem CONFIG.r2DadosUrl
+          // essa URL cairia no fallback de SPA do Worker e voltaria HTML
+          // em vez de JSON.
+          const r2DadosUrl = (typeof CONFIG !== 'undefined' && CONFIG.r2DadosUrl) || '';
+          if (!r2DadosUrl) return;
+          const indexUrl = `${r2DadosUrl}/cidades/${potentialCity}/${INDEX_SUFFIX}`;
           await checkAndInvalidate(potentialCity, indexUrl);
         }
       }
@@ -100,13 +107,28 @@ const CacheBuster = (() => {
    */
   async function validateCurrentBroker() {
     try {
+      const pathname = window.location.pathname;
+      const primeiroSegmento = pathname.split('/').filter(Boolean)[0];
+
+      // Páginas do painel do corretor são servidas também no próprio
+      // subdomínio dele (ex.: aranda.imobiliarista.net/painel/), mas não
+      // são conteúdo de minisite — não há JSON de listagem pra validar
+      // aqui, e o hostname sozinho não distingue os dois casos.
+      if (primeiroSegmento === 'painel' || primeiroSegmento === 'painel-admin') return;
+
       const hostname = window.location.hostname;
       const parts = hostname.split('.');
 
       // Se é um subdomínio (minisite)
       if (parts.length > 2 || (parts.length === 2 && !['com', 'net', 'org', 'imobiliarista'].includes(parts[0]))) {
         const brokerSlug = parts[0];
-        const indexUrl = `/corretores/${brokerSlug}/_index.json`;
+        // Mesmo motivo do CONFIG.r2DadosUrl acima — igual app-dados.js.
+        // Corretor não tem arquivo-índice próprio, só o JSON único
+        // (corretores/{slug}.json); sem campo `last_updated` nele hoje,
+        // esta checagem é um no-op silencioso até esse campo existir.
+        const r2DadosUrl = (typeof CONFIG !== 'undefined' && CONFIG.r2DadosUrl) || '';
+        if (!r2DadosUrl) return;
+        const indexUrl = `${r2DadosUrl}/corretores/${brokerSlug}.json`;
         await checkAndInvalidate(brokerSlug, indexUrl);
       }
     } catch (error) {
@@ -115,17 +137,25 @@ const CacheBuster = (() => {
   }
 
   /**
-   * Registrar Service Worker se não estiver já registrado
+   * Registrar Service Worker se não estiver já registrado — só quando o
+   * tenant atual é elegível a PWA. /sw.js 404 por design quando não é
+   * (ver src/modulos/pwa/rota.ts); reaproveita a mesma checagem que
+   * pwa-instalador.js já usa (GET /manifest.json só responde OK quando
+   * elegível) em vez de bater direto em /sw.js e receber 404 sempre que
+   * o corretor/portal não tem o módulo PWA liberado.
    */
   async function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        console.log('[CacheBuster] Service Worker registrado:', registration);
-        return registration;
-      } catch (error) {
-        console.warn('[CacheBuster] Erro ao registrar Service Worker:', error);
-      }
+    if (!('serviceWorker' in navigator)) return;
+
+    try {
+      const elegibilidade = await fetch('/manifest.json', { method: 'GET', cache: 'no-cache' });
+      if (!elegibilidade.ok) return;
+
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      console.log('[CacheBuster] Service Worker registrado:', registration);
+      return registration;
+    } catch (error) {
+      console.warn('[CacheBuster] Erro ao registrar Service Worker:', error);
     }
   }
 
