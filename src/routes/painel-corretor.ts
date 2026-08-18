@@ -142,20 +142,25 @@ async function rotaPainelPlano(request: Request, env: Env): Promise<Response> {
 
   try {
     const plano = await buscarPlanoDoCorretor(env.DB, corretor_id);
-    if (!plano) return respostaErro("Plano não encontrado", 404);
-
     const configUpload = await buscarConfigUploadDoCorretor(env.DB, corretor_id);
 
     // Conta uso atual
     const anuncios_ativos = await contarAnunciosAtivosDoCorretor(env.DB, corretor_id);
 
+    // Corretor sem plano_id atribuído (ex.: cadastro anterior ao Sistema
+    // de Planos, migration 0010) é um estado válido, não um erro — mesmo
+    // tratamento de "ausência de dado" já usado em rotaPainelPerfil acima.
+    // Nunca 404 por isso: o front-end precisa distinguir "sem plano" de
+    // "rota não encontrada".
     return respostaSucesso({
-      nome: plano.nome,
-      max_anuncios: plano.max_anuncios,
+      plano: plano ? {
+        nome: plano.nome,
+        max_anuncios: plano.max_anuncios,
+        max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
+        permite_pwa: plano.permite_pwa,
+        permite_publicacoes: plano.permite_publicacoes,
+      } : null,
       anuncios_usados: anuncios_ativos,
-      max_fotos_por_anuncio: plano.max_fotos_por_anuncio,
-      permite_pwa: plano.permite_pwa,
-      permite_publicacoes: plano.permite_publicacoes,
       google_maps_key_configurada: !!configUpload?.google_maps_api_key,
     });
   } catch (erro) {
