@@ -11,6 +11,7 @@ import { Env } from "../index";
 import { buscarCorretorPorId, atualizarPerfilEditavelDoCorretor, buscarPlanoDoCorretor, buscarConfigUploadDoCorretor, buscarMinisiteDoCorretor } from "../db/queries-perfil";
 import { listarAnunciosDoCorretor, contarAnunciosAtivosDoCorretor } from "../db/queries-anuncios";
 import { listarCotasPortalDoCorretor, atualizarCotaPortal, contarAnunciosElegiveisParaPortal } from "../db/queries-cotas-portal";
+import { buscarTaxonomiaCompleta } from "../db/queries-taxonomia";
 import { rotaAgendamentoVisita } from "../modulos/agendamento-visita/rota";
 import { estaModuloAtivo } from "../db/queries-modulos";
 import {
@@ -190,6 +191,26 @@ async function rotaPainelAnuncios(request: Request, env: Env): Promise<Response>
   }
 }
 
+// ========== Rota: GET /api/painel-corretor/taxonomia ==========
+// Tipos de negócio, categorias→tipos de imóvel e cidades pro formulário
+// de anúncio — antes disso, o formulário só tinha 4 opções de tipo de
+// imóvel e 3 cidades hardcoded em painel.js, sem relação com o banco.
+
+async function rotaPainelTaxonomia(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return respostaErro("Método não permitido", 405);
+
+  const corretor_id = await obterCorretorIdDaSessao(request, env);
+  if (!corretor_id) return respostaErro("Não autenticado", 401);
+
+  try {
+    const taxonomia = await buscarTaxonomiaCompleta(env.DB);
+    return respostaSucesso(taxonomia);
+  } catch (erro) {
+    console.error("Erro ao buscar taxonomia:", erro);
+    return respostaErro("Erro ao buscar taxonomia", 500);
+  }
+}
+
 // ========== Rota: GET /api/painel-corretor/cotas-portal ==========
 
 async function rotaPainelCotasPortal(request: Request, env: Env): Promise<Response> {
@@ -354,6 +375,10 @@ export async function rotasPainelCorretor(request: Request, env: Env): Promise<R
 
   if (pathname === "/api/painel-corretor/anuncios" && request.method === "GET") {
     return rotaPainelAnuncios(request, env);
+  }
+
+  if (pathname === "/api/painel-corretor/taxonomia" && request.method === "GET") {
+    return rotaPainelTaxonomia(request, env);
   }
 
   if (pathname === "/api/painel-corretor/cotas-portal" && request.method === "GET") {
