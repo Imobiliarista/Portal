@@ -51,6 +51,9 @@
         <button id="nav-publicacoes" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
           📰 Publicações
         </button>
+        <button id="nav-minisite" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
+          🔗 Meu Minisite
+        </button>
         <button id="nav-perfil" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 transition font-medium">
           👤 Meu Perfil
         </button>
@@ -368,6 +371,34 @@
                 💾 Salvar Configuração
               </button>
             </form>
+          </div>
+        </section>
+
+        <!-- Meu Minisite View -->
+        <section id="minisite-view" class="hidden">
+          <h2 class="text-2xl font-bold text-slate-900 mb-6">Meu Minisite</h2>
+
+          <div class="bg-white p-6 rounded-lg card-shadow max-w-xl space-y-6">
+            <div>
+              <label class="block text-gray-600 text-sm mb-1">Endereço do seu site</label>
+              <p id="minisite-url" class="px-3 py-2 bg-gray-100 rounded-lg text-gray-800 font-medium break-all">Carregando...</p>
+            </div>
+
+            <div>
+              <span id="minisite-status-badge" class="inline-block px-4 py-2 rounded-lg font-semibold"></span>
+            </div>
+
+            <div id="minisite-online-conteudo" class="hidden">
+              <a id="minisite-link-visualizar" href="#" target="_blank" rel="noopener noreferrer" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                🔗 Visualizar meu site
+              </a>
+            </div>
+
+            <div id="minisite-offline-conteudo" class="hidden">
+              <p class="text-gray-600 text-sm">
+                Seu site fica no ar automaticamente assim que o seu CRECI for aprovado pelo superadmin. A verificação é feita manualmente, então não temos um prazo fixo pra informar — mas assim que a aprovação acontecer, o site é liberado sem nenhuma ação extra da sua parte.
+              </p>
+            </div>
           </div>
         </section>
 
