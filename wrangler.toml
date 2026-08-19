@@ -102,11 +102,21 @@ max_batch_timeout = 30
 # Esgotado o limite, a mensagem vai pra `dead_letter_queue` em vez de
 # sumir ou loopar. A fila "imob-queue-dlq" já existe na conta Cloudflare
 # (confirmado direto no painel em 2026-08-19) — não precisa ser criada.
-# PENDÊNCIA REAL: nenhum consumer está vinculado a ela hoje. Mensagens
-# que caem lá não são processadas nem geram alerta automático — ficam
-# só acumulando, silenciosamente, até alguém checar o painel na mão.
 max_retries = 5
 dead_letter_queue = "imob-queue-dlq"
+
+# Consumer da dead letter queue (Lote 23) — separado do consumer da
+# imob-queue acima. Workers só permite um consumer POR FILA, não um por
+# Worker script; como "imob-queue-dlq" não tinha nenhum consumer
+# vinculado antes disso, este bloco não colide com o de cima (filas
+# diferentes). O runtime despacha ambos pro mesmo export `queue()` em
+# src/index.ts, que usa `batch.queue` pra rotear pro handler certo —
+# só log + alerta por e-mail aqui, sem reprocessamento automático nem
+# retry manual (escopo fechado de propósito). Ver src/queue-dlq.ts.
+[[queues.consumers]]
+queue = "imob-queue-dlq"
+max_batch_size = 10
+max_batch_timeout = 30
 
 # Rotas — DECISÃO FECHADA (seção 4.3): duas rotas, não uma. O wildcard
 # não cobre o domínio raiz puro.
@@ -128,3 +138,8 @@ crons = ["0 0 1 * *"]
 # pela URL real do blog institucional do Blogspot quando ele for criado.
 [vars]
 FEED_PADRAO_REDE_URL = "https://exemplo-substituir.blogspot.com/feeds/posts/default"
+
+# Destinatário do alerta operacional de mensagens na dead letter queue
+# (Lote 23, src/queue-dlq.ts). Substituir pelo e-mail real da equipe
+# responsável por monitorar a imob-queue-dlq.
+EMAIL_ALERTA_OPERACIONAL = "operacional@imobiliarista.net"

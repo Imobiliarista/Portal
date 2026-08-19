@@ -12,6 +12,7 @@ import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { rotaPwa } from "./modulos/pwa/rota";
 import { rotasAnuncios } from "./routes/api-anuncios";
 import { processarFilaAlteracoes, MensagemFila } from "./queue";
+import { processarFilaMorta } from "./queue-dlq";
 import { handleScheduled } from "./scheduled";
 import type { StatusMinisiteJSON } from "./jobs/gerar-status-minisite";
 
@@ -30,6 +31,9 @@ export interface Env {
   // URL do Feed Padrão da Rede (Blogspot institucional, módulo Publicações
   // — seção 4.19). Nunca hardcoded no código; ver src/modulos/publicacoes/logica.ts.
   FEED_PADRAO_REDE_URL?: string;
+  // Destinatário do alerta operacional de mensagens na dead letter queue
+  // (Lote 23). Ver src/queue-dlq.ts.
+  EMAIL_ALERTA_OPERACIONAL?: string;
 }
 
 function ehDominioRaiz(hostname: string): boolean {
@@ -247,8 +251,15 @@ export default {
     });
   },
 
-  // Handler da Queue (Lote 6, seção 4.4)
+  // Handler da Queue (Lote 6, seção 4.4). Um único export `queue()` por
+  // Worker (limitação da plataforma) atende os dois consumers declarados
+  // em wrangler.toml — `batch.queue` diz de qual fila veio o lote, e cada
+  // uma roteia pro seu próprio handler (Lote 23: imob-queue-dlq é só
+  // log + alerta, nunca processa a mensagem original de novo).
   async queue(batch: MessageBatch<MensagemFila>, env: Env): Promise<void> {
+    if (batch.queue === "imob-queue-dlq") {
+      return processarFilaMorta(batch, env);
+    }
     return processarFilaAlteracoes(batch, env);
   },
 
