@@ -139,4 +139,33 @@ export async function processarGerarJsonCorretor(
   }
 }
 
+// Helper de conveniência pra chamar dos pontos que precisam materializar
+// corretores/{slug}.json sem duplicar o `.send()` em cada call site — mesmo
+// padrão de jobs/gerar-status-minisite.ts::enfileirarStatusMinisite.
+//
+// Antes desta função, o único gatilho existente pra este job era mutação de
+// anúncio (jobs/revalidacao-cruzada.ts, disparado por
+// routes/api-anuncios-crud.ts / api-anuncios-backup.ts) — a aprovação do
+// corretor em si nunca enfileirava a geração deste artefato. Um corretor
+// aprovado sem nenhum anúncio ainda cadastrado ficava permanentemente sem
+// corretores/{slug}.json (gap estrutural desde a introdução do job, não
+// regressão — ver Histórico de Decisões em project.md). Corrigido chamando
+// esta função também em routes/painel-superadmin.ts (aprovação de
+// pré-cadastro e criação direta pelo Superadmin).
+//
+// IMPORTANTE: não engolir o erro aqui — mesmo princípio de
+// enfileirarStatusMinisite/enfileirarRevalidacaoDoAnuncio. Quem chama
+// precisa saber que a materialização falhou pra decidir o que informar.
+export async function enfileirarGeracaoJsonCorretor(
+  env: Env,
+  corretor_slug: string,
+): Promise<void> {
+  try {
+    await env.FILA_ALTERACOES.send({ tipo: "gerar-json-corretor", corretor_slug });
+  } catch (erroFila) {
+    console.error(`Falha ao enfileirar geração do JSON do corretor "${corretor_slug}":`, erroFila);
+    throw erroFila;
+  }
+}
+
 export type { MensagemGerarJsonCorretor };

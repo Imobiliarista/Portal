@@ -275,6 +275,47 @@ describe("Funil completo do corretor (Lote 19)", () => {
         .first()) as { offline: number };
       expect(minisite.offline).toBe(0);
     });
+
+    it("enfileira gerar-json-corretor na aprovação e materializa corretores/{slug}.json mesmo sem nenhum anúncio", async () => {
+      const fixture = await seedPreCadastro({ senha: "senhasemanuncio123" });
+
+      const mensagensEnfileiradas: Record<string, unknown>[] = [];
+      const espiao = vi.spyOn(env.FILA_ALTERACOES, "send").mockImplementation(async (msg: unknown) => {
+        mensagensEnfileiradas.push(msg as Record<string, unknown>);
+      });
+
+      const resposta = await chamar(`/api/painel-admin/pre-cadastro/${fixture.preCadastroId}/aprovar`, {
+        method: "POST",
+        headers: { cookie: cookieSuperadmin, "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(resposta.status).toBe(200);
+
+      espiao.mockRestore();
+
+      // Regressão travada: rotaAprovarPreCadastro só enfileirava
+      // gerar-status-minisite — um corretor aprovado sem nenhum anúncio
+      // nunca ganhava corretores/{slug}.json, porque o único outro gatilho
+      // do job era mutação de anúncio (jobs/revalidacao-cruzada.ts). Ver
+      // Histórico de Decisões em project.md.
+      const mensagemJsonCorretor = mensagensEnfileiradas.find((m) => m.tipo === "gerar-json-corretor");
+      expect(mensagemJsonCorretor).toBeDefined();
+      expect(mensagemJsonCorretor?.corretor_slug).toBe(fixture.slug);
+
+      // Materializa de verdade (bypassando o transporte da Queue, mesma
+      // abordagem já usada nos demais testes deste arquivo) e confirma que
+      // o job lida bem com zero anúncios — array vazio, não falha.
+      await processarGerarJsonCorretor({ tipo: "gerar-json-corretor", corretor_slug: fixture.slug }, env as any);
+
+      const objetoR2 = await env.DADOS_CACHE.get(`corretores/${fixture.slug}.json`);
+      expect(objetoR2).not.toBeNull();
+      const jsonCorretor = (await objetoR2!.json()) as {
+        listings: unknown[];
+        modulosAtivos: Record<string, boolean>;
+      };
+      expect(jsonCorretor.listings).toEqual([]);
+      expect(jsonCorretor.modulosAtivos).toBeDefined();
+    });
   });
 
   // ============================================================
