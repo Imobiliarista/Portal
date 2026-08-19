@@ -13,8 +13,8 @@ export async function listarPlanos(db: D1Database, incluirInativos = false): Pro
       ? "SELECT * FROM planos ORDER BY preco_mensalidade ASC"
       : "SELECT * FROM planos WHERE ativo = 1 ORDER BY preco_mensalidade ASC";
 
-    const resultados = await db.prepare(sql).all();
-    return (resultados.results || []) as Plano[];
+    const resultados = await db.prepare(sql).all<Plano>();
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar planos:", erro);
     return [];

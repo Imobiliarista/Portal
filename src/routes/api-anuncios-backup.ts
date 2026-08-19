@@ -37,8 +37,8 @@ async function buscarPlanoDoCorretor(db: D1Database, corretorId: number): Promis
   const plano = await db
     .prepare(`SELECT p.* FROM planos p JOIN corretores c ON c.plano_id = p.id WHERE c.id = ?`)
     .bind(corretorId)
-    .first();
-  return (plano as Plano) || undefined;
+    .first<Plano>();
+  return plano || undefined;
 }
 
 // Valida os campos mínimos exigidos pelo schema da tabela `anuncios` (NOT NULL)

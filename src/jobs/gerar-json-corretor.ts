@@ -139,4 +139,4 @@ export async function processarGerarJsonCorretor(
   }
 }
 
-export { MensagemGerarJsonCorretor };
+export type { MensagemGerarJsonCorretor };

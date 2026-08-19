@@ -199,4 +199,4 @@ function slugificar(texto: string): string {
     .trim();
 }
 
-export { MensagemGerarJsonCidade, IndiceCidade };
+export type { MensagemGerarJsonCidade, IndiceCidade };

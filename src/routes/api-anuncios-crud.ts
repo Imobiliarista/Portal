@@ -189,7 +189,7 @@ async function handleCriarAnuncio(request: Request, env: Env): Promise<Response>
     const bairro = dados.bairro ? sanitizarBairroRegiao(dados.bairro) : undefined;
 
     // Extrai YouTube ID se fornecido (módulo video-youtube, Lote 12.4)
-    const videoYouTubeId = dados.video_youtube_url ? getYouTubeId(dados.video_youtube_url) : undefined;
+    const videoYouTubeId = dados.video_youtube_url ? (getYouTubeId(dados.video_youtube_url) ?? undefined) : undefined;
 
     // Sanitiza URL do tour 360° se fornecido (módulo tour-360, Lote 12.5)
     const tour360Url = dados.tour_360_url ? sanitizarTour360Url(dados.tour_360_url) : undefined;

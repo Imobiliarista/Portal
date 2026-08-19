@@ -3,10 +3,39 @@
 
 import { Corretor, Minisite } from "../types/modelos";
 
+// A query abaixo faz JOIN com `minisites` e seleciona só um subconjunto de
+// colunas de `corretores` — nunca o registro completo (`papel`,
+// `promocao_lancamento`, `isento`, `config_modulos` não entram na SELECT).
+// Por isso o retorno usa este tipo mais estreito em vez de `Corretor`
+// completo; os dois únicos chamadores (gerar-json-corretor.ts,
+// feed-portais-independentes/gerador.ts) só leem `.corretor.id`.
+type CorretorResumoParaMinisite = Pick<
+  Corretor,
+  | "id"
+  | "nome_completo"
+  | "cpf"
+  | "creci"
+  | "email"
+  | "whatsapp"
+  | "telefone"
+  | "endereco_residencial"
+  | "status"
+  | "criado_em"
+  | "atualizado_em"
+  | "senha_hash"
+>;
+
+type LinhaCorretorMinisite = Omit<CorretorResumoParaMinisite, "senha_hash"> & {
+  minisite_id: number;
+  corretor_id: number;
+  slug: string;
+  offline: boolean;
+};
+
 export async function buscarCorrelorPorSlug(
   db: D1Database,
   slug: string
-): Promise<{ corretor: Corretor; minisite: Minisite } | null> {
+): Promise<{ corretor: CorretorResumoParaMinisite; minisite: Minisite } | null> {
   try {
     const resultado = await db
       .prepare(
@@ -23,13 +52,13 @@ export async function buscarCorrelorPorSlug(
       `
       )
       .bind(slug)
-      .first();
+      .first<LinhaCorretorMinisite>();
 
     if (!resultado) {
       return null;
     }
 
-    const corretor: Corretor = {
+    const corretor: CorretorResumoParaMinisite = {
       id: resultado.id,
       nome_completo: resultado.nome_completo,
       cpf: resultado.cpf,
@@ -75,7 +104,7 @@ export async function estaMinisiteLiberado(
       `
       )
       .bind(slug)
-      .first();
+      .first<{ offline: boolean }>();
 
     if (!resultado) {
       return false; // Minisite não existe

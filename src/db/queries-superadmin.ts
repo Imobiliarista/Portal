@@ -31,9 +31,9 @@ export async function listarPreCadastrosPendentes(db: D1Database, limite = 50, o
          LIMIT ? OFFSET ?`
       )
       .bind(limite, offset)
-      .all();
+      .all<PreCadastro>();
 
-    return (resultados.results || []) as PreCadastro[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar pré-cadastros pendentes:", erro);
     return [];
@@ -564,9 +564,9 @@ export async function listarCidades(db: D1Database, limite = 100, offset = 0): P
          LIMIT ? OFFSET ?`
       )
       .bind(limite, offset)
-      .all();
+      .all<Cidade>();
 
-    return (resultados.results || []) as Cidade[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar cidades:", erro);
     return [];
@@ -625,9 +625,9 @@ export async function listarModulos(db: D1Database): Promise<ModuloAtivo[]> {
   try {
     const resultados = await db
       .prepare("SELECT * FROM modulos_ativos ORDER BY nome ASC")
-      .all();
+      .all<ModuloAtivo>();
 
-    return (resultados.results || []) as ModuloAtivo[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar módulos:", erro);
     return [];
@@ -716,9 +716,9 @@ export async function listarPortaisIndependentes(db: D1Database): Promise<Portal
   try {
     const resultados = await db
       .prepare("SELECT * FROM portais_independentes ORDER BY nome ASC")
-      .all();
+      .all<PortalIndependente>();
 
-    return (resultados.results || []) as PortalIndependente[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar portais independentes:", erro);
     return [];

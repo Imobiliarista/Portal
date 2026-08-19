@@ -71,7 +71,7 @@ export async function limparPrefixo(
         arquivosParaDeletar.push(objeto.key);
       }
 
-      cursor = listagem.cursor;
+      cursor = listagem.truncated ? listagem.cursor : undefined;
     } while (cursor);
 
     for (let i = 0; i < arquivosParaDeletar.length; i += 100) {

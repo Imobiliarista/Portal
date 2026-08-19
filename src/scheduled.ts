@@ -131,7 +131,7 @@ export async function handleScheduled(
 
     // Enviar para R2
     await env.DADOS_CACHE.put(caminhoR2, blob, {
-      contentType: "text/plain;charset=utf-8",
+      httpMetadata: { contentType: "text/plain;charset=utf-8" },
       customMetadata: {
         exportedAt: new Date().toISOString(),
         exportType: "d1-backup",

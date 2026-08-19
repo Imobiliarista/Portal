@@ -87,7 +87,13 @@ export async function rotaAgendamentoVisita(
 
 async function tratarSolicitar(request: Request, env: Env): Promise<Response> {
   try {
-    const corpo = await request.json();
+    const corpo = await request.json() as {
+      anuncio_id: number;
+      nome_visitante: string;
+      telefone_visitante: string;
+      email_visitante: string;
+      data_horario_sugerido: string;
+    };
     const { anuncio_id, nome_visitante, telefone_visitante, email_visitante, data_horario_sugerido } =
       corpo;
 
@@ -132,7 +138,7 @@ async function tratarSolicitar(request: Request, env: Env): Promise<Response> {
       "SELECT id, corretor_id, titulo, endereco_completo FROM anuncios WHERE id = ? LIMIT 1"
     )
       .bind(anuncio_id)
-      .first();
+      .first<{ id: number; corretor_id: number; titulo: string; endereco_completo: string | null }>();
 
     if (!anuncio) {
       return new Response(
@@ -164,7 +170,7 @@ async function tratarSolicitar(request: Request, env: Env): Promise<Response> {
       "SELECT nome_completo, email FROM corretores WHERE id = ? LIMIT 1"
     )
       .bind(anuncio.corretor_id)
-      .first();
+      .first<{ nome_completo: string; email: string }>();
 
     if (corretor) {
       // Envia e-mail ao corretor
@@ -252,13 +258,13 @@ async function tratarConfirmar(
       "SELECT titulo FROM anuncios WHERE id = ? LIMIT 1"
     )
       .bind(agendamento.anuncio_id)
-      .first();
+      .first<{ titulo: string }>();
 
     const corretor = await env.DB.prepare(
       "SELECT nome_completo FROM corretores WHERE id = ? LIMIT 1"
     )
       .bind(sessaoCorretorId)
-      .first();
+      .first<{ nome_completo: string }>();
 
     if (anuncio && corretor) {
       await enviarEmailConfirmacaoVisitante(
@@ -292,7 +298,7 @@ async function tratarRecusar(
   sessaoCorretorId: number
 ): Promise<Response> {
   try {
-    const corpo = await request.json();
+    const corpo = await request.json() as { motivo_recusa?: string };
     const { motivo_recusa } = corpo;
 
     const agendamento = await obterAgendamentoPorId(env.DB, agendamentoId);
@@ -325,13 +331,13 @@ async function tratarRecusar(
       "SELECT titulo FROM anuncios WHERE id = ? LIMIT 1"
     )
       .bind(agendamento.anuncio_id)
-      .first();
+      .first<{ titulo: string }>();
 
     const corretor = await env.DB.prepare(
       "SELECT nome_completo FROM corretores WHERE id = ? LIMIT 1"
     )
       .bind(sessaoCorretorId)
-      .first();
+      .first<{ nome_completo: string }>();
 
     if (anuncio && corretor) {
       await enviarEmailRecusaVisitante(atualizado, anuncio.titulo, corretor.nome_completo);

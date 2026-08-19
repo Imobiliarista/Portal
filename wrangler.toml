@@ -100,8 +100,11 @@ max_batch_timeout = 30
 # consegue processar (payload inconsistente, bug no handler) fica
 # retentando pra sempre, consumindo cota sem necessidade (seção 4.9/4.10).
 # Esgotado o limite, a mensagem vai pra `dead_letter_queue` em vez de
-# sumir ou loopar. A fila "imob-queue-dlq" precisa existir antes do
-# deploy: `wrangler queues create imob-queue-dlq`.
+# sumir ou loopar. A fila "imob-queue-dlq" já existe na conta Cloudflare
+# (confirmado direto no painel em 2026-08-19) — não precisa ser criada.
+# PENDÊNCIA REAL: nenhum consumer está vinculado a ela hoje. Mensagens
+# que caem lá não são processadas nem geram alerta automático — ficam
+# só acumulando, silenciosamente, até alguém checar o painel na mão.
 max_retries = 5
 dead_letter_queue = "imob-queue-dlq"
 

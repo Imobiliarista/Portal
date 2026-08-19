@@ -94,7 +94,7 @@ export async function buscarAnuncioPorId(db: D1Database, id: number): Promise<An
     const resultado = await db
       .prepare("SELECT * FROM anuncios WHERE id = ? LIMIT 1")
       .bind(id)
-      .first();
+      .first<Anuncio>();
 
     return resultado || null;
   } catch (erro) {
@@ -123,9 +123,9 @@ export async function listarAnunciosDoCorretor(
     const resultado = await db
       .prepare("SELECT * FROM anuncios WHERE corretor_id = ? ORDER BY criado_em DESC LIMIT ? OFFSET ?")
       .bind(corretor_id, limite, offset)
-      .all();
+      .all<Anuncio>();
 
-    const anuncios = (resultado.results || []) as Anuncio[];
+    const anuncios = resultado.results || [];
 
     return {
       anuncios,
