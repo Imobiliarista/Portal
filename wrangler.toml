@@ -143,3 +143,12 @@ FEED_PADRAO_REDE_URL = "https://exemplo-substituir.blogspot.com/feeds/posts/defa
 # (Lote 23, src/queue-dlq.ts). Substituir pelo e-mail real da equipe
 # responsável por monitorar a imob-queue-dlq.
 EMAIL_ALERTA_OPERACIONAL = "alertas@imobiliarista.net"
+
+# Flag mestra do módulo Asaas (src/services/asaas.ts,
+# src/routes/webhooks/asaas.ts) — infraestrutura da Fase 3, isolada do
+# fluxo real de cobrança dos planos. Precisa ser exatamente "true" pra
+# qualquer chamada real à API do Asaas ou processamento de webhook
+# acontecer; enquanto "false" (padrão), o módulo só loga. Não mudar pra
+# "true" sem antes configurar ASAAS_SANDBOX_API_KEY e
+# ASAAS_WEBHOOK_TOKEN via `wrangler secret put` — ver .env.example.
+ASAAS_ATIVO = "false"

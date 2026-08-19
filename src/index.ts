@@ -11,6 +11,7 @@ import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { rotaPwa } from "./modulos/pwa/rota";
 import { rotasAnuncios } from "./routes/api-anuncios";
+import { rotaWebhookAsaas } from "./routes/webhooks/asaas";
 import { processarFilaAlteracoes, MensagemFila } from "./queue";
 import { processarFilaMorta } from "./queue-dlq";
 import { handleScheduled } from "./scheduled";
@@ -34,6 +35,13 @@ export interface Env {
   // Destinatário do alerta operacional de mensagens na dead letter queue
   // (Lote 23). Ver src/queue-dlq.ts.
   EMAIL_ALERTA_OPERACIONAL?: string;
+  // Módulo Asaas (infraestrutura da Fase 3, isolada e desativada por
+  // padrão — ver src/services/asaas.ts, src/routes/webhooks/asaas.ts e
+  // project.md seção 2.3/3). ASAAS_ATIVO precisa ser exatamente "true"
+  // pra qualquer chamada real sair; nunca ligado por padrão.
+  ASAAS_ATIVO?: string;
+  ASAAS_SANDBOX_API_KEY?: string;
+  ASAAS_WEBHOOK_TOKEN?: string;
 }
 
 function ehDominioRaiz(hostname: string): boolean {
@@ -148,6 +156,13 @@ export default {
     // pré-existente: esta rota nunca havia sido montada aqui (Lote 5).
     if (url.pathname.startsWith("/api/anuncios")) {
       return rotasAnuncios(request, env);
+    }
+
+    // Webhook do Asaas — infraestrutura isolada da Fase 3 (desativada
+    // por padrão, ASAAS_ATIVO). Nunca toca no fluxo de troca de plano;
+    // ver src/routes/webhooks/asaas.ts e src/services/asaas.ts.
+    if (url.pathname === "/api/webhooks/asaas") {
+      return rotaWebhookAsaas(request, env);
     }
 
     // Roteador do painel do corretor — independente do hostname
