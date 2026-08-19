@@ -35,6 +35,7 @@ class PainelCorretor {
     document.getElementById("novo-anuncio-btn-header").addEventListener("click", () => this.mostrarFormAnuncio());
     document.getElementById("nav-portais").addEventListener("click", () => this.mostrarPortais());
     document.getElementById("nav-publicacoes").addEventListener("click", () => this.mostrarPublicacoes());
+    document.getElementById("nav-minisite").addEventListener("click", () => this.mostrarMinisite());
     document.getElementById("nav-perfil").addEventListener("click", () => this.mostrarPerfil());
     document.getElementById("logout-btn").addEventListener("click", () => this.logout());
 
@@ -133,6 +134,7 @@ class PainelCorretor {
       "form-anuncio-view": "nav-novo-anuncio",
       "portais-view": "nav-portais",
       "publicacoes-view": "nav-publicacoes",
+      "minisite-view": "nav-minisite",
       "perfil-view": "nav-perfil",
     };
     const navId = navMapping[viewId];
@@ -178,6 +180,12 @@ class PainelCorretor {
     document.getElementById("page-title").textContent = "Publicações";
     await this.carregarPublicacoes();
     this.renderizarPublicacoes();
+  }
+
+  mostrarMinisite() {
+    this.mostrarView("minisite-view");
+    document.getElementById("page-title").textContent = "Meu Minisite";
+    this.renderizarMinisite();
   }
 
   // ========== Dashboard ==========
@@ -620,6 +628,30 @@ class PainelCorretor {
     } catch (erro) {
       console.error("Erro:", erro);
       alert("Erro ao atualizar portal.");
+    }
+  }
+
+  // ========== Meu Minisite (Lote 21) ==========
+
+  renderizarMinisite() {
+    const url = `https://${this.perfilData.minisite_slug}.imobiliarista.net`;
+    document.getElementById("minisite-url").textContent = url;
+    document.getElementById("minisite-link-visualizar").href = url;
+
+    // Mesmo critério usado pelo badge do header (atualizarStatusOffline).
+    const offline = this.perfilData.status === "pre-cadastro" || this.perfilData.minisite_offline;
+    const badge = document.getElementById("minisite-status-badge");
+
+    if (offline) {
+      badge.textContent = "⏳ Aguardando aprovação";
+      badge.className = "inline-block px-4 py-2 rounded-lg font-semibold badge-status-pendente";
+      document.getElementById("minisite-online-conteudo").classList.add("hidden");
+      document.getElementById("minisite-offline-conteudo").classList.remove("hidden");
+    } else {
+      badge.textContent = "✅ Site no ar";
+      badge.className = "inline-block px-4 py-2 rounded-lg font-semibold badge-status-aprovado";
+      document.getElementById("minisite-online-conteudo").classList.remove("hidden");
+      document.getElementById("minisite-offline-conteudo").classList.add("hidden");
     }
   }
 
