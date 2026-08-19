@@ -25,6 +25,10 @@ bucket_name = "imob-dados-test"
 binding = "MIDIAS"
 bucket_name = "imob-midias-test"
 
+[[r2_buckets]]
+binding = "BACKUP_PRIVADO"
+bucket_name = "imob-backup-privado-test"
+
 [[queues.producers]]
 binding = "FILA_ALTERACOES"
 queue = "imob-queue-test"

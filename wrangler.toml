@@ -72,6 +72,12 @@ database_id = "46c7f8d4-ef47-47f4-8c62-ebe63516f6a6"
 # R2 — JSONs por cidade/corretor (dados) e imagens dos anúncios (mídias),
 # em buckets separados, servidos via domínio público próprio (bypass do
 # Worker nas leituras). Ver seção 4.3.
+#
+# IMPORTANTE: Custom Domain público e r2.dev são intencionais e
+# obrigatórios nestes dois buckets (servem conteúdo direto ao
+# navegador/parceiro, sem tocar o Worker). NUNCA guardar aqui nada que não
+# possa ser público — em particular, o export do D1 (senha_hash, CPF,
+# tokens de sessão) vai pro bucket BACKUP_PRIVADO abaixo, não pra estes.
 [[r2_buckets]]
 binding = "DADOS_CACHE"
 bucket_name = "imob-dados"
@@ -79,6 +85,26 @@ bucket_name = "imob-dados"
 [[r2_buckets]]
 binding = "MIDIAS"
 bucket_name = "imob-midias"
+
+# R2 — bucket dedicado e privado do export mensal do D1 (backup, seção
+# 4.13). NUNCA habilitar Custom Domain nem r2.dev neste bucket — ele
+# contém dados sensíveis (senha_hash, CPF, tokens de sessão de
+# `sessoes`). Diferente de DADOS_CACHE/MIDIAS acima, este bucket não tem
+# nenhum motivo legítimo pra ser acessível publicamente; qualquer domínio
+# custom ou r2.dev habilitado aqui é sempre um erro de configuração.
+# Verificação automatizada: scripts/ci/verificar-bucket-backup-privado.js
+# (ver o próprio script para a tarefa manual de configurar o CI).
+#
+# INCIDENTE (2026-08-19): antes desta correção, o export mensal do D1 era
+# gravado em DADOS_CACHE/imob-dados — o mesmo bucket público acima — que
+# teve Custom Domain e r2.dev habilitados, expondo o backup publicamente.
+# Mitigação imediata: desabilitados manualmente no painel Cloudflare.
+# Correção definitiva: bucket dedicado e privado, nunca reaproveitando um
+# bucket que serve conteúdo público. Ver project.md, Histórico de
+# Decisões.
+[[r2_buckets]]
+binding = "BACKUP_PRIVADO"
+bucket_name = "imob-backup-privado"
 
 # AI (Cloudflare Workers AI) — assistente de busca em linguagem natural
 # Free tier: 10.000 Neurons/dia, sem cartão de crédito. Ver seção 4.12.
