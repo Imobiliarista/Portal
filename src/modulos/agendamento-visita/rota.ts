@@ -26,7 +26,7 @@ function validarEmail(email: string): boolean {
 
 function validarTelefone(telefone: string): boolean {
   // Aceita apenas números, hífen e espaço
-  return /^[\d\s\-\(\)]+$/.test(telefone) && telefone.replace(/\D/g, "").length >= 10;
+  return /^[\d\s\-()]+$/.test(telefone) && telefone.replace(/\D/g, "").length >= 10;
 }
 
 export async function rotaAgendamentoVisita(

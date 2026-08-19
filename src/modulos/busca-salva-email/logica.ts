@@ -7,7 +7,6 @@ import {
   obterBuscasAtivas,
   verificarJaNotificado,
   adicionarNotificacaoEnviada,
-  BuscaSalva,
 } from "../../db/queries-buscas-salvas";
 import { estaModuloAtivo } from "../../db/queries-modulos";
 

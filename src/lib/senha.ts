@@ -5,7 +5,6 @@
 // Configuração PBKDF2 (balanceado entre segurança e performance)
 const ITERATIONS = 100_000; // Padrão NIST 2024 mínimo
 const HASH_LENGTH = 32; // 256 bits
-const ALGORITHM = "PBKDF2";
 const HASH_ALGORITHM = "SHA-256";
 
 // Gera um salt aleatório (16 bytes = 128 bits)

@@ -58,7 +58,7 @@ export function calcularSAC(
   }
 
   let totalJuros = 0;
-  let amortizacaoMensal = valorFinanciado / numeroParcelas;
+  const amortizacaoMensal = valorFinanciado / numeroParcelas;
   let saldoDevedor = valorFinanciado;
 
   // Calcula total de juros do período

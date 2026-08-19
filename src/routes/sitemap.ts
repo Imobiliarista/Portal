@@ -2,16 +2,6 @@
 // Seções 4.16 (sitemap.xml e robots.txt dinâmicos por hostname), 4.17 (HTTP 410 para bots)
 
 import { Env } from "../index";
-import { lerJSON } from "../lib/r2";
-
-interface IndiceCidade {
-  last_updated: string;
-  total_anuncios: number;
-  particoes?: {
-    nivel: string;
-    arquivos: string[];
-  };
-}
 
 function ehDominioRaiz(hostname: string): boolean {
   return hostname === "imobiliarista.net";
