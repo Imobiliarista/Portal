@@ -59,6 +59,76 @@ function ehSubdominio(hostname: string): boolean {
   return hostname.endsWith(".imobiliarista.net") && !ehDominioRaiz(hostname);
 }
 
+// Bypass R2 público — dados.imobiliarista.net e midias.imobiliarista.net
+// (Histórico de Decisões, incidente 2026-08-19). Workers Routes tem
+// precedência sobre R2 Custom Domain no mesmo hostname (comportamento
+// padrão da Cloudflare, não configurável pelo painel), então mesmo com
+// Custom Domain de R2 configurado nesses dois hostnames, toda requisição
+// continua caindo aqui no Worker. Em vez de brigar com a infraestrutura,
+// o Worker serve o objeto direto do bucket R2 correspondente. Mapa fixo
+// dos dois únicos hostnames que nunca devem ser tratados como slug de
+// corretor — checagem por igualdade exata, não por sufixo, então não
+// colide com ehSubdominio/extrairSlugDoSubdominio abaixo.
+const BUCKETS_R2_PUBLICO: Record<string, "DADOS_CACHE" | "MIDIAS"> = {
+  "dados.imobiliarista.net": "DADOS_CACHE",
+  "midias.imobiliarista.net": "MIDIAS",
+};
+
+// Origem liberada pro CORS do R2 público: qualquer subdomínio de
+// corretor (cada minisite tem o seu) ou o domínio raiz. Nunca "*" sem
+// checagem — eco apenas quando a origem realmente é nossa.
+function origemPermitidaR2Publico(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    return ehDominioRaiz(hostname) || ehSubdominio(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function headersCorsR2Publico(request: Request): Headers {
+  const headers = new Headers({
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    // Resposta varia por Origin (cada minisite recebe um valor diferente
+    // de Access-Control-Allow-Origin) — necessário pra cache de borda não
+    // servir a origem errada pra outro tenant.
+    Vary: "Origin",
+  });
+  const origin = request.headers.get("Origin");
+  if (origin && origemPermitidaR2Publico(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+  return headers;
+}
+
+// Serve o objeto direto do bucket R2 (dados.imobiliarista.net ou
+// midias.imobiliarista.net), sempre com os headers de CORS — inclusive no
+// 404, senão o navegador reporta erro de CORS em vez do 404 real (é
+// exatamente isso que causou o incidente de hoje).
+async function servirR2Publico(request: Request, bucket: R2Bucket, url: URL): Promise<Response> {
+  const headersCors = headersCorsR2Publico(request);
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: headersCors });
+  }
+
+  const chave = url.pathname.replace(/^\//, "");
+  const objeto =
+    request.method === "HEAD" ? await bucket.head(chave) : await bucket.get(chave);
+
+  if (!objeto) {
+    return new Response(null, { status: 404, headers: headersCors });
+  }
+
+  const headers = new Headers(headersCors);
+  objeto.writeHttpMetadata(headers);
+  headers.set("etag", objeto.httpEtag);
+
+  return new Response(request.method === "HEAD" ? null : (objeto as R2ObjectBody).body, {
+    headers,
+  });
+}
+
 // Migrado de routes/minisite.ts (v11.4, seção 40): a extração de slug é
 // responsabilidade única do Gateway agora — é ele quem transforma
 // hostname em ctx.props.tenant antes de repassar a chamada via
@@ -91,6 +161,16 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+
+    // Bypass R2 público — dados.imobiliarista.net e midias.imobiliarista.net
+    // (ver BUCKETS_R2_PUBLICO acima). Precisa vir ANTES de qualquer lógica
+    // que trate hostname como slug de tenant (ehSubdominio/
+    // extrairSlugDoSubdominio mais abaixo): estes dois hostnames fixos
+    // nunca são subdomínio de corretor.
+    const bindingR2Publico = BUCKETS_R2_PUBLICO[url.hostname];
+    if (bindingR2Publico) {
+      return servirR2Publico(request, env[bindingR2Publico], url);
+    }
 
     // Middleware 1: Remoção de "www" — sempre primeira etapa
     // Ver project.md, seção 4.5.
