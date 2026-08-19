@@ -1,0 +1,127 @@
+name: Guarda de PR empilhada
+
+# Detecta o padrão exato que perdeu a PR #56 em 2026-08-18: uma PR cuja
+# base não é `main` (uma PR "empilhada" sobre outra) mergeada DEPOIS que
+# a branch-base já tinha sido mesclada em `main` separadamente. Nesse
+# caso a PR empilhada nunca chega em `main` de verdade — fica presa
+# numa branch que não é mais base de nada, sem erro nenhum no processo
+# de merge (o GitHub deixa mesclar normalmente).
+#
+# Dois jobs cobrem os dois momentos em que isso pode passar despercebido:
+#   1. verificar-pr-aberta   — roda quando a própria PR empilhada é
+#      aberta/atualizada. Pega o caso comum (base já mesclada antes da
+#      pessoa nem abrir a PR).
+#   2. revalidar-prs-abertas — roda a cada push em `main`. Sem isso, uma
+#      PR empilhada que já tinha passado no check #1 (porque na hora
+#      ainda era segura) nunca seria reavaliada quando a base dela
+#      mergeasse depois — exatamente o que aconteceu com a #56, mesclada
+#      20s depois da sua própria base virar `main`, sem nenhum push novo
+#      que disparasse o check de novo.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verificar-pr-aberta:
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checa se a branch-base já foi mesclada em main
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+
+          if git merge-base --is-ancestor "$BASE_SHA" origin/main; then
+            echo "::error::A branch-base desta PR ('$BASE_REF') já foi mesclada em main. Se esta PR for mesclada nela em vez de main, ela fica órfã — foi exatamente isso que perdeu a PR #56 em 2026-08-18. Retargete esta PR para main (ou pra uma branch-base que ainda não tenha sido mesclada) antes de prosseguir."
+            exit 1
+          fi
+
+          echo "Base '$BASE_REF' ainda não foi mesclada em main — OK, PR empilhada válida."
+
+  revalidar-prs-abertas:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Revalida toda PR empilhada aberta contra o novo main
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require("child_process");
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              base: undefined,
+              per_page: 100,
+            });
+
+            const empilhadas = prs.filter((pr) => pr.base.ref !== "main");
+            if (empilhadas.length === 0) {
+              console.log("Nenhuma PR empilhada aberta no momento.");
+              return;
+            }
+
+            execSync("git fetch origin main --quiet", { stdio: "inherit" });
+
+            let algumaOrfa = false;
+
+            for (const pr of empilhadas) {
+              const baseSha = pr.base.sha;
+              let jaAncestral = false;
+              try {
+                execSync(`git merge-base --is-ancestor ${baseSha} origin/main`);
+                jaAncestral = true;
+              } catch {
+                jaAncestral = false;
+              }
+
+              if (!jaAncestral) continue;
+
+              algumaOrfa = true;
+              console.log(`PR #${pr.number}: base '${pr.base.ref}' já foi mesclada em main — órfã se mesclada como está.`);
+
+              const marcador = "<!-- guarda-pr-empilhada:aviso-base-mesclada -->";
+              const comentarios = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                per_page: 100,
+              });
+              const jaAvisado = comentarios.some((c) => c.body?.includes(marcador));
+              if (jaAvisado) continue;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body:
+                  `${marcador}\n` +
+                  `⚠️ **A branch-base desta PR (\`${pr.base.ref}\`) acabou de ser mesclada em \`main\`.**\n\n` +
+                  `Se esta PR for mesclada como está (contra \`${pr.base.ref}\`), o trabalho dela fica órfão — ` +
+                  `nunca chega em \`main\` de verdade, mesmo aparecendo como "Merged" no GitHub. ` +
+                  `Foi exatamente esse padrão que perdeu a PR #56 em 2026-08-18.\n\n` +
+                  `Retargete a base desta PR para \`main\` antes de mesclar.`,
+              });
+            }
+
+            if (algumaOrfa) {
+              core.setFailed("Existe(m) PR(s) empilhada(s) com base já mesclada em main — ver comentário(s) postado(s).");
+            }
