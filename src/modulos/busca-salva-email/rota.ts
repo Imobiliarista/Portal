@@ -63,7 +63,7 @@ export async function rotaBuscaSalva(
 
 async function tratarSalvarBusca(request: Request, env: Env): Promise<Response> {
   try {
-    const corpo = await request.json();
+    const corpo = await request.json() as { email: string; criterios: Record<string, unknown> };
 
     // Validações
     const { email, criterios } = corpo;

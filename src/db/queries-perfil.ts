@@ -9,7 +9,7 @@ export async function buscarCorretorPorId(db: D1Database, id: number): Promise<C
     const resultado = await db
       .prepare("SELECT * FROM corretores WHERE id = ? LIMIT 1")
       .bind(id)
-      .first();
+      .first<Corretor>();
 
     if (!resultado) return null;
 
@@ -110,7 +110,7 @@ export async function buscarMinisiteDoCorretor(db: D1Database, corretor_id: numb
     const resultado = await db
       .prepare("SELECT slug, offline FROM minisites WHERE corretor_id = ? LIMIT 1")
       .bind(corretor_id)
-      .first();
+      .first<{ slug: string; offline: boolean }>();
 
     return resultado || null;
   } catch (erro) {

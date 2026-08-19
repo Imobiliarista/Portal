@@ -25,9 +25,9 @@ export async function listarCorretoresParaIsencao(db: D1Database, limite = 50, o
          LIMIT ? OFFSET ?`
       )
       .bind(limite, offset)
-      .all();
+      .all<CorretorIsencao>();
 
-    return (resultados.results || []) as CorretorIsencao[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar corretores para isenção:", erro);
     return [];
@@ -132,9 +132,9 @@ export async function listarLogIsencaoDoCorretor(db: D1Database, corretor_id: nu
     const resultados = await db
       .prepare("SELECT * FROM log_isencao WHERE corretor_id = ? ORDER BY criado_em DESC")
       .bind(corretor_id)
-      .all();
+      .all<LogIsencao>();
 
-    return (resultados.results || []) as LogIsencao[];
+    return resultados.results || [];
   } catch (erro) {
     console.error("Erro ao listar log de isenção:", erro);
     return [];

@@ -22,25 +22,12 @@ jobs:
 
       - run: npm ci
 
-      # Typecheck — não bloqueante acima do zero, bloqueante acima da
-      # baseline. O repositório tem uma dívida técnica pré-existente de
-      # erros de tsc (documentada no Histórico de Decisões, seção 11,
-      # confirmada rodando `tsc --noEmit` no `main` puro na recuperação da
-      # PR #56/#59). Travar em zero faria o CI nascer vermelho sem
-      # relação com este PR; não travar em nada deixaria a dívida crescer
-      # sem ninguém perceber. BASELINE_TYPECHECK_ERRORS só sobe quando
-      # alguém reduzir a dívida de propósito (e atualizar este número no
-      # mesmo PR) — nunca pra "silenciar" um erro novo.
-      - name: Typecheck (baseline de dívida técnica pré-existente)
-        env:
-          BASELINE_TYPECHECK_ERRORS: 51
-        run: |
-          CONTAGEM=$(npm run typecheck 2>&1 | grep -c "error TS") || true
-          echo "Erros de typecheck: $CONTAGEM (baseline: $BASELINE_TYPECHECK_ERRORS)"
-          if [ "$CONTAGEM" -gt "$BASELINE_TYPECHECK_ERRORS" ]; then
-            echo "::error::Este PR introduz novo(s) erro(s) de typecheck — baseline é $BASELINE_TYPECHECK_ERRORS, encontrado $CONTAGEM. Rode 'npm run typecheck' localmente e corrija o que este PR adicionou (dívida pré-existente não precisa ser resolvida aqui)."
-            exit 1
-          fi
+      # Typecheck — bloqueante de verdade. A dívida técnica pré-existente de
+      # 51 erros de tsc (baseline tolerada desde a PR #61) foi zerada no
+      # Lote 22 (project.md, seção 11): qualquer erro novo agora quebra o
+      # CI, sem baseline pra folgar.
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint

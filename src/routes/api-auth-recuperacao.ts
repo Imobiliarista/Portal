@@ -144,7 +144,7 @@ async function handleRecuperacaoSenha(request: Request, env: Env): Promise<Respo
 
     const corretor = await env.DB.prepare(
       "SELECT id, email, nome_completo FROM corretores WHERE email = ?"
-    ).bind(dados.email.toLowerCase()).first();
+    ).bind(dados.email.toLowerCase()).first<{ id: number; email: string; nome_completo: string }>();
 
     if (!corretor) {
       registrarTentativaRecuperacao(ip);
@@ -223,7 +223,7 @@ async function handleRedefinirSenha(request: Request, env: Env): Promise<Respons
       `SELECT id, corretor_id, token, expira_em, usado
        FROM reset_tokens_senha
        WHERE token = ?`
-    ).bind(dados.token.trim()).first();
+    ).bind(dados.token.trim()).first<{ id: number; corretor_id: number; token: string; expira_em: string; usado: number | boolean }>();
 
     if (!tokenRecord) {
       return new Response(JSON.stringify({ erro: "Token inválido" }), {

@@ -31,9 +31,9 @@ export async function listarModulos(db: D1Database): Promise<ModuloAtivo[]> {
   try {
     const resultado = await db
       .prepare("SELECT * FROM modulos_ativos ORDER BY nome ASC")
-      .all();
+      .all<ModuloAtivo>();
 
-    return (resultado.results || []) as ModuloAtivo[];
+    return resultado.results || [];
   } catch (erro) {
     console.error("Erro ao listar módulos:", erro);
     return [];

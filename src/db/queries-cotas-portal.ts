@@ -12,9 +12,9 @@ export async function listarCotasPortalDoCorretor(
     const resultado = await db
       .prepare("SELECT * FROM cotas_portal WHERE corretor_id = ? ORDER BY portal_nome ASC")
       .bind(corretor_id)
-      .all();
+      .all<CotaPortal>();
 
-    return (resultado.results || []) as CotaPortal[];
+    return resultado.results || [];
   } catch (erro) {
     console.error("Erro ao listar cotas de portal:", erro);
     return [];
@@ -31,7 +31,7 @@ export async function buscarCotaPortal(
     const resultado = await db
       .prepare("SELECT * FROM cotas_portal WHERE corretor_id = ? AND portal_nome = ? LIMIT 1")
       .bind(corretor_id, portal_nome)
-      .first();
+      .first<CotaPortal>();
 
     return resultado || null;
   } catch (erro) {

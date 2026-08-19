@@ -11,7 +11,7 @@ import { rotaBuscaSalva } from "./modulos/busca-salva-email/rota";
 import { rotaAgendamentoVisita } from "./modulos/agendamento-visita/rota";
 import { rotaPwa } from "./modulos/pwa/rota";
 import { rotasAnuncios } from "./routes/api-anuncios";
-import { processarFilaAlteracoes } from "./queue";
+import { processarFilaAlteracoes, MensagemFila } from "./queue";
 import { handleScheduled } from "./scheduled";
 import type { StatusMinisiteJSON } from "./jobs/gerar-status-minisite";
 
@@ -248,7 +248,7 @@ export default {
   },
 
   // Handler da Queue (Lote 6, seção 4.4)
-  async queue(batch: MessageBatch, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<MensagemFila>, env: Env): Promise<void> {
     return processarFilaAlteracoes(batch, env);
   },
 
