@@ -10,6 +10,7 @@
 
 import { Env } from "../index";
 import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
+import { enfileirarGeracaoJsonCorretor } from "../jobs/gerar-json-corretor";
 import { sincronizarElegibilidadePortal } from "../modulos/pwa/logica";
 import {
   listarPreCadastrosPendentes,
@@ -54,6 +55,24 @@ async function tentarMaterializarStatus(env: Env, slug: string | undefined): Pro
     const detalhe = erroFila instanceof Error ? erroFila.message : String(erroFila);
     console.error(`Ação persistida em D1, mas falhou ao materializar status do minisite "${slug}" em R2:`, erroFila);
     return `A ação foi salva, mas a publicação/atualização pública do site pode estar atrasada (falha ao enfileirar: ${detalhe}). Tente novamente em instantes usando o botão Suspender/Reativar na tela de Minisites.`;
+  }
+}
+
+// Mesmo gate de tolerância a falha de tentarMaterializarStatus acima, mas
+// pra corretores/{slug}.json (índice de anúncios do minisite) — sem isso,
+// um corretor aprovado sem nenhum anúncio ainda cadastrado nunca ganha esse
+// artefato: o único outro gatilho existente é mutação de anúncio (ver
+// jobs/gerar-json-corretor.ts::enfileirarGeracaoJsonCorretor).
+async function tentarMaterializarJsonCorretor(env: Env, slug: string | undefined): Promise<string | undefined> {
+  if (!slug) return undefined;
+
+  try {
+    await enfileirarGeracaoJsonCorretor(env, slug);
+    return undefined;
+  } catch (erroFila) {
+    const detalhe = erroFila instanceof Error ? erroFila.message : String(erroFila);
+    console.error(`Ação persistida em D1, mas falhou ao enfileirar geração do JSON do corretor "${slug}" em R2:`, erroFila);
+    return `A ação foi salva, mas a listagem pública de anúncios do site (corretores/${slug}.json) pode estar atrasada (falha ao enfileirar: ${detalhe}).`;
   }
 }
 
@@ -123,9 +142,21 @@ async function rotaAprovarPreCadastro(request: Request, env: Env, id: number): P
     // falhar aqui, não faz sentido reverter isso. Avisa o Superadmin que a
     // publicação pública pode estar atrasada em vez de mentir dizendo que
     // tudo funcionou (ou, pior, engolir o erro em silêncio).
-    const aviso = await tentarMaterializarStatus(env, slugAprovado);
+    //
+    // Também materializa corretores/{slug}.json (índice de anúncios do
+    // minisite, vazio na aprovação — o corretor ainda não cadastrou nenhum
+    // anúncio) — sem isso, o único outro gatilho é uma mutação de anúncio,
+    // e um corretor aprovado sem anúncio nenhum ficava permanentemente sem
+    // este artefato (ver Histórico de Decisões em project.md).
+    const avisos = [
+      await tentarMaterializarStatus(env, slugAprovado),
+      await tentarMaterializarJsonCorretor(env, slugAprovado),
+    ].filter((a): a is string => !!a);
 
-    return respostaSucesso({ mensagem: "Pré-cadastro aprovado com sucesso", ...(aviso ? { aviso } : {}) });
+    return respostaSucesso({
+      mensagem: "Pré-cadastro aprovado com sucesso",
+      ...(avisos.length > 0 ? { aviso: avisos.join(" ") } : {}),
+    });
   } catch {
     return respostaErro("Erro ao processar aprovação", 500);
   }
@@ -214,8 +245,13 @@ async function rotaCriarMinisite(request: Request, env: Env): Promise<Response> 
     // minisite (pendente ou já aprovado) precisa de
     // tenants/{slug}/status.json em R2 assim que existe — mesmo
     // comportamento do pré-cadastro público (routes/api-auth-cadastro.ts),
-    // que enfileira mesmo quando offline=true (liberado=false).
-    const aviso = await tentarMaterializarStatus(env, resultado.slug);
+    // que enfileira mesmo quando offline=true (liberado=false). Mesma coisa
+    // pra corretores/{slug}.json — ver comentário equivalente em
+    // rotaAprovarPreCadastro acima.
+    const avisos = [
+      await tentarMaterializarStatus(env, resultado.slug),
+      await tentarMaterializarJsonCorretor(env, resultado.slug),
+    ].filter((a): a is string => !!a);
 
     return respostaSucesso({
       mensagem: "Corretor criado com sucesso",
@@ -223,7 +259,7 @@ async function rotaCriarMinisite(request: Request, env: Env): Promise<Response> 
       slug: resultado.slug,
       nome_usuario: resultado.nome_usuario,
       senha_gerada: resultado.senha_gerada,
-      ...(aviso ? { aviso } : {}),
+      ...(avisos.length > 0 ? { aviso: avisos.join(" ") } : {}),
     });
   } catch {
     return respostaErro("Erro ao processar criação", 500);
