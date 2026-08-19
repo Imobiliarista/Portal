@@ -6,7 +6,8 @@
 function removerEmojisEspeciais(texto: string): string {
   return texto
     .replace(/\p{Extended_Pictographic}/gu, "") // Remove emojis
-    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, ""); // Remove caracteres de controle (inválidos em XML)
+    // eslint-disable-next-line no-control-regex -- intencional: remove caracteres de controle (inválidos em XML)
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, "");
 }
 
 // Capitaliza a primeira letra e resto minúsculo

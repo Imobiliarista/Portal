@@ -8,7 +8,7 @@
 // HTML (src/modulos/pwa/rota.ts), não pertencem ao conteúdo indexável.
 
 import { Env } from "../index";
-import { escreverJSON, deletarArquivo } from "../lib/r2";
+import { deletarArquivo } from "../lib/r2";
 import {
   buscarPostsDoFeed,
   obterFeedPadraoRedeUrl,
@@ -28,7 +28,6 @@ interface MensagemGerarSitemapCorretor {
 }
 
 const URLS_POR_ARQUIVO = 50000;
-const LIMITE_TAMANHO_MB = 50;
 
 function escaparXml(texto: string): string {
   return texto

@@ -1,0 +1,54 @@
+name: CI
+
+# Lote 19 (project.md, seção 10) — primeiro workflow de verificação de
+# código do repositório (o outro workflow existente, guarda-pr-empilhada.yml
+# da PR #60, cuida só do processo de merge, não do conteúdo do código).
+# Roda em todo PR contra main.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Typecheck — não bloqueante acima do zero, bloqueante acima da
+      # baseline. O repositório tem uma dívida técnica pré-existente de
+      # erros de tsc (documentada no Histórico de Decisões, seção 11,
+      # confirmada rodando `tsc --noEmit` no `main` puro na recuperação da
+      # PR #56/#59). Travar em zero faria o CI nascer vermelho sem
+      # relação com este PR; não travar em nada deixaria a dívida crescer
+      # sem ninguém perceber. BASELINE_TYPECHECK_ERRORS só sobe quando
+      # alguém reduzir a dívida de propósito (e atualizar este número no
+      # mesmo PR) — nunca pra "silenciar" um erro novo.
+      - name: Typecheck (baseline de dívida técnica pré-existente)
+        env:
+          BASELINE_TYPECHECK_ERRORS: 51
+        run: |
+          CONTAGEM=$(npm run typecheck 2>&1 | grep -c "error TS") || true
+          echo "Erros de typecheck: $CONTAGEM (baseline: $BASELINE_TYPECHECK_ERRORS)"
+          if [ "$CONTAGEM" -gt "$BASELINE_TYPECHECK_ERRORS" ]; then
+            echo "::error::Este PR introduz novo(s) erro(s) de typecheck — baseline é $BASELINE_TYPECHECK_ERRORS, encontrado $CONTAGEM. Rode 'npm run typecheck' localmente e corrija o que este PR adicionou (dívida pré-existente não precisa ser resolvida aqui)."
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Smoke test de integração (Lote 19 — funil completo do corretor)
+        run: npm run test
+
+      - name: Build do CSS + dry-run do bundle do Worker
+        run: |
+          npm run build:css
+          npx wrangler deploy --dry-run

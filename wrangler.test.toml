@@ -1,0 +1,36 @@
+# Configuração dedicada pro vitest-pool-workers (Lote 19, project.md
+# seção 10) — deliberadamente reduzida em relação ao wrangler.toml real:
+# omite [ai] (Workers AI não tem emulação local no pool de testes; sem
+# isso o pool exige CLOUDFLARE_API_TOKEN pra abrir uma sessão remota, o
+# que quebraria o CI) e [[routes]]/[triggers] (conceitos só de produção,
+# sem efeito em teste local). Os bindings usados pelo smoke test (D1, R2,
+# Queue, vars) espelham exatamente os nomes/binding do wrangler.toml —
+# se um binding novo passar a ser exercitado pelos testes, adicione aqui
+# também.
+name = "imobiliarista-portal-test"
+main = "src/index.ts"
+compatibility_date = "2026-08-05"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "imob-bd-test"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[r2_buckets]]
+binding = "DADOS_CACHE"
+bucket_name = "imob-dados-test"
+
+[[r2_buckets]]
+binding = "MIDIAS"
+bucket_name = "imob-midias-test"
+
+[[queues.producers]]
+binding = "FILA_ALTERACOES"
+queue = "imob-queue-test"
+
+[[queues.consumers]]
+queue = "imob-queue-test"
+
+[vars]
+FEED_PADRAO_REDE_URL = "https://exemplo-substituir.blogspot.com/feeds/posts/default"
