@@ -24,6 +24,11 @@ export interface Env {
   DB: D1Database;
   DADOS_CACHE: R2Bucket;
   MIDIAS: R2Bucket;
+  // Bucket privado exclusivo do export mensal do D1 (src/scheduled.ts) —
+  // NUNCA o mesmo bucket de DADOS_CACHE, que tem Custom Domain público
+  // por desenho (seção 4.3). Ver project.md, Histórico de Decisões
+  // (incidente de segurança R2, 2026-08-19).
+  BACKUP_PRIVADO: R2Bucket;
   FILA_ALTERACOES: Queue;
   AI: any; // Cloudflare Workers AI binding
   // Static Assets (shell da SPA, seção 4.6) — fallback pra visitante humano

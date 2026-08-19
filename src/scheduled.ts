@@ -2,6 +2,12 @@
 // Executa todo dia 1º de cada mês às 00:00 UTC
 // Export em SQL dump, armazenado em /backups/d1-export-{ano}-{mes}.sql
 // Ver project.md, seção 4.13
+//
+// Grava em env.BACKUP_PRIVADO (bucket "imob-backup-privado"), nunca em
+// env.DADOS_CACHE — este último tem Custom Domain público por desenho
+// (serve JSON/XML direto ao visitante, seção 4.3), e o dump contém dado
+// sensível (senha_hash, CPF, tokens de sessão). Ver Histórico de
+// Decisões, incidente de segurança R2 (2026-08-19).
 
 import { Env } from "./index";
 
@@ -129,8 +135,8 @@ export async function handleScheduled(
     // Converter para Blob
     const blob = new Blob([sqlDump], { type: "text/plain;charset=utf-8" });
 
-    // Enviar para R2
-    await env.DADOS_CACHE.put(caminhoR2, blob, {
+    // Enviar para R2 (bucket privado, nunca DADOS_CACHE — ver comentário no topo do arquivo)
+    await env.BACKUP_PRIVADO.put(caminhoR2, blob, {
       httpMetadata: { contentType: "text/plain;charset=utf-8" },
       customMetadata: {
         exportedAt: new Date().toISOString(),

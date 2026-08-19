@@ -39,3 +39,19 @@ jobs:
         run: |
           npm run build:css
           npx wrangler deploy --dry-run
+
+      # Guardrail — incidente de segurança R2 (2026-08-19, ver project.md,
+      # Histórico de Decisões): falha o PR se o bucket privado do backup
+      # mensal do D1 (BACKUP_PRIVADO/imob-backup-privado, sensível —
+      # senha_hash/CPF/tokens de sessão) tiver Custom Domain ou r2.dev
+      # habilitado na conta Cloudflare real. Só roda se os Secrets
+      # CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID estiverem configurados
+      # no repositório (ver scripts/ci/verificar-bucket-backup-privado.js
+      # para o passo manual de configurá-los) — sem eles, este passo é
+      # pulado, nunca finge que passou.
+      - name: Verificar bucket de backup privado (Cloudflare R2)
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/ci/verificar-bucket-backup-privado.js

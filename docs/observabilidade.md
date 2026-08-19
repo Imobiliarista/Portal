@@ -50,21 +50,23 @@ Um **Cron Trigger** executa automaticamente todo dia **1º de cada mês** às **
 - Salva em R2 em `/backups/d1-export-{ano}-{mes}.sql`
 
 #### Localização dos backups no R2:
-- Bucket: `imobiliarista-jsons` (mesmo bucket dos JSONs de cidade/corretor)
+- Bucket: `imob-backup-privado` (binding `BACKUP_PRIVADO`, **dedicado e privado** — nunca o bucket `imob-dados` dos JSONs de cidade/corretor, que tem Custom Domain público por desenho)
 - Pasta: `/backups/`
 - Padrão: `d1-export-2026-08.sql`, `d1-export-2026-09.sql`, ...
+
+**Este bucket nunca deve ter Custom Domain nem r2.dev habilitado** — contém `senha_hash`, CPF e tokens de sessão de todos os corretores. Ver incidente de segurança registrado em `project.md`, Histórico de Decisões (2026-08-19), e a checagem automatizada em `scripts/ci/verificar-bucket-backup-privado.js`.
 
 #### Como acessar:
 ```bash
 # Listar todos os backups
-wrangler r2 object list imobiliarista-jsons --prefix=backups/
+wrangler r2 object list imob-backup-privado --prefix=backups/
 
 # Baixar um backup específico
-wrangler r2 object download imobiliarista-jsons backups/d1-export-2026-08.sql
+wrangler r2 object download imob-backup-privado backups/d1-export-2026-08.sql
 ```
 
 Ou via dashboard Cloudflare:
-1. Dashboard > R2 > imobiliarista-jsons
+1. Dashboard > R2 > imob-backup-privado
 2. Pasta `/backups/`
 3. Clique no arquivo para visualizar ou baixar
 
