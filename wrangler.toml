@@ -142,4 +142,4 @@ FEED_PADRAO_REDE_URL = "https://exemplo-substituir.blogspot.com/feeds/posts/defa
 # Destinatário do alerta operacional de mensagens na dead letter queue
 # (Lote 23, src/queue-dlq.ts). Substituir pelo e-mail real da equipe
 # responsável por monitorar a imob-queue-dlq.
-EMAIL_ALERTA_OPERACIONAL = "operacional@imobiliarista.net"
+EMAIL_ALERTA_OPERACIONAL = "alertas@imobiliarista.net"
