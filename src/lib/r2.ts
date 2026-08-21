@@ -11,9 +11,9 @@ export async function escreverJSON(
 
   try {
     await bucket.put(caminho, conteudo, {
-      customMetadata: {
-        "content-type": "application/json",
-        "cache-control": "public, max-age=3600",
+      httpMetadata: {
+        contentType: "application/json",
+        cacheControl: "public, max-age=3600",
       },
     });
   } catch (erro) {
