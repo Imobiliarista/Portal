@@ -17,11 +17,22 @@ async function fetchCityListings(citySlug) {
 
     const index = await indexResponse.json();
     appState.modulosAtivos = index.modulosAtivos || {};
-    const files = index.files || [`${citySlug}.json`];
+
+    if (!index.total_anuncios) {
+      appState.allListings = [];
+      CONFIG.cityCache[citySlug] = [];
+      return;
+    }
+
+    // Sem partição (jobs/gerar-json-cidade.ts): arquivo único e plano em
+    // /cidades/{cidade}.json (nunca dentro de /cidades/{cidade}/). Com
+    // partição, `particoes.arquivos` já traz o caminho completo de cada
+    // arquivo (ex.: cidades/{cidade}/{bairro}.json), sem prefixo a somar.
+    const arquivos = index.particoes ? index.particoes.arquivos : [`cidades/${citySlug}.json`];
 
     let allListings = [];
-    for (const file of files) {
-      const url = `${CONFIG.r2DadosUrl}/cidades/${citySlug}/${file}`;
+    for (const arquivo of arquivos) {
+      const url = `${CONFIG.r2DadosUrl}/${arquivo}`;
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
