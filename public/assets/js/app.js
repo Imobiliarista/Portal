@@ -35,7 +35,6 @@ let appState = {
 async function initializeApp() {
   updateFavoritesCount();
   setupEventListeners();
-  await detectLocation();
   const path = window.location.pathname.split('/').filter(Boolean);
 
   if (path.length === 0) {
@@ -78,6 +77,11 @@ function setupEventListeners() {
   if (toggleFiltersBtn) toggleFiltersBtn.addEventListener('click', () => {
     const panel = document.getElementById('filters-panel');
     panel.classList.toggle('hidden');
+  });
+
+  const toggleMapBtn = document.getElementById('toggle-map-view');
+  if (toggleMapBtn) toggleMapBtn.addEventListener('click', () => {
+    if (typeof toggleMapView === 'function') toggleMapView();
   });
 
   document.querySelectorAll('.filter-radio, .filter-select, .filter-input').forEach((el) => {

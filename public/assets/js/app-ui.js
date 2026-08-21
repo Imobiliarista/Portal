@@ -18,6 +18,12 @@ function renderListings() {
 
   countEl.textContent = `${appState.filteredListings.length} imóvel(is) encontrado(s)`;
 
+  // Atualiza os pins do mapa (se estiver aberto) com o resultado já
+  // filtrado/ordenado, sem fechar/reabrir o mapa a cada mudança de filtro.
+  if (typeof refreshListingMapIfVisible === 'function') {
+    refreshListingMapIfVisible();
+  }
+
   if (pageListings.length === 0) {
     grid.innerHTML = '';
     noResults.classList.remove('hidden');
@@ -114,6 +120,17 @@ function showDetail(listingId) {
   document.getElementById('detail-title').textContent = listing.titulo;
   document.getElementById('detail-location').textContent = `${listing.endereco}, ${listing.bairro} - ${listing.cidade}`;
   document.getElementById('detail-description').textContent = listing.descricao || 'Sem descrição disponível.';
+
+  // Mapa de localização (Leaflet/OSM, mapa.js) — chamado direto aqui, não por
+  // MutationObserver, porque este é o único ponto que sabe com certeza que os
+  // dados do anúncio já estão carregados.
+  const mapContainer = document.getElementById('map-container');
+  if (listing.latitude && listing.longitude && typeof initDetailMap === 'function') {
+    mapContainer?.classList.remove('hidden');
+    initDetailMap(listing, 'map');
+  } else {
+    mapContainer?.classList.add('hidden');
+  }
   document.getElementById('detail-price').textContent =
     listing.tipo_negocio === 'venda'
       ? `R$ ${(listing.preco_venda || 0).toLocaleString('pt-BR')}`

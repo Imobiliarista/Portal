@@ -16,55 +16,12 @@ function getBrokerSlugFromHost() {
   return parts[0];
 }
 
-// ============================================================
-// GEOLOCALIZAÇÃO
-// ============================================================
-async function detectLocation() {
-  if (!navigator.geolocation) return;
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const { latitude, longitude } = position.coords;
-      suggestNearestCity(latitude, longitude);
-    },
-    (error) => console.log('Geolocalização não autorizada:', error.code)
-  );
-}
-
-function suggestNearestCity(lat, lng) {
-  const brazilianCities = [
-    { name: 'londrina', lat: -23.31, lng: -51.16 },
-    { name: 'sao-paulo', lat: -23.55, lng: -46.63 },
-    { name: 'rio-de-janeiro', lat: -22.9, lng: -43.18 },
-    { name: 'belo-horizonte', lat: -19.92, lng: -43.94 },
-  ];
-
-  let nearest = brazilianCities[0];
-  let minDist = Infinity;
-
-  brazilianCities.forEach((city) => {
-    const dist = Math.sqrt(Math.pow(city.lat - lat, 2) + Math.pow(city.lng - lng, 2));
-    if (dist < minDist) {
-      minDist = dist;
-      nearest = city;
-    }
-  });
-
-  displayCitySuggestion(nearest.name);
-}
-
-function displayCitySuggestion(cityName) {
-  const suggestionsDiv = document.getElementById('city-suggestions');
-  if (suggestionsDiv) {
-    suggestionsDiv.innerHTML = `
-      <p class="text-sm text-gray-300">Sugestão próxima a você:</p>
-      <button class="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium"
-        onclick="navigateToCity('${cityName}')">
-        📍 ${cityName.replace('-', ' ').toUpperCase()}
-      </button>
-    `;
-  }
-}
+// Geolocalização/sugestão de cidade: única implementação vive em mapa.js
+// (detectLocationAndSuggestCity, 10 cidades + Haversine) — esta função
+// duplicava a mesma feature com menos cobertura e cálculo de distância
+// menos preciso; as duas rodavam sempre, em toda página, gerando dois
+// pedidos de geolocalização (e dois logs de erro) independentes por
+// carregamento. Removida aqui, ver Histórico de Decisões (project.md).
 
 // ============================================================
 // NAVEGAÇÃO
@@ -86,6 +43,7 @@ async function loadCity(citySlug) {
   document.getElementById('home-view').classList.add('hidden');
   document.getElementById('listing-view').classList.remove('hidden');
   document.getElementById('detail-view').classList.add('hidden');
+  if (typeof resetListingMapView === 'function') resetListingMapView();
 
   document.getElementById('breadcrumb-city').textContent = citySlug.replace('-', ' ').toUpperCase();
 
@@ -101,6 +59,7 @@ async function loadBroker(city, brokerSlug) {
   document.getElementById('home-view').classList.add('hidden');
   document.getElementById('listing-view').classList.remove('hidden');
   document.getElementById('detail-view').classList.add('hidden');
+  if (typeof resetListingMapView === 'function') resetListingMapView();
 
   document.getElementById('breadcrumb-city').textContent = `${brokerSlug} - ${city.replace('-', ' ')}`;
 
