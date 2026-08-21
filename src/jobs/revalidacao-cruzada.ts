@@ -8,6 +8,14 @@
 // dispararGeracaoXMLGrupoOLX, nunca era chamada de lugar nenhum), então o
 // XML nunca era atualizado depois da criação/edição/exclusão de um
 // anúncio.
+//
+// Mesmo achado se repetiu com o sitemap (auditoria de 2026-08-20, ver
+// Histórico de Decisões em project.md): jobs/gerar-sitemap.ts e o
+// consumer da fila (queue.ts, tipos "gerar-sitemap-portal" e
+// "gerar-sitemap-corretor") sempre existiram corretos, mas nenhum ponto
+// do código jamais enviava essas mensagens — a seção 4.16 já previa
+// gerar o sitemap "no mesmo processo em lote que já gera os
+// JSONs/XMLs", isto é, aqui, junto com gerar-json-cidade/gerar-json-corretor.
 
 import { Env } from "../index";
 import { listarCotasPortalDoCorretor } from "../db/queries-cotas-portal";
@@ -48,6 +56,20 @@ export async function processarRevalidacaoCruzada(
         // jobs/gerar-json-anuncio.ts.
         tipo: "gerar-json-anuncio",
         anuncio_id,
+      },
+      {
+        // sitemap-cidades.xml + sitemap-anuncios-{n}.xml (seção 4.16) —
+        // regenerado no mesmo lote que os JSONs, nunca por cron nem por
+        // requisição.
+        tipo: "gerar-sitemap-portal",
+      },
+      {
+        // sitemap.xml do minisite (seção 4.16) — mesmo lote que
+        // corretores/{slug}.json.
+        tipo: "gerar-sitemap-corretor",
+        corretor_id,
+        corretor_slug,
+        cidade_slug,
       },
     ];
 

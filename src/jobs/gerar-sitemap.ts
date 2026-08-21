@@ -138,7 +138,7 @@ export async function processarGerarSitemapPortal(
       const offset = (pagina - 1) * URLS_POR_ARQUIVO;
 
       const anuncios = await env.DB.prepare(
-        `SELECT a.id, a.slug, a.atualizado_em, c.nome as cidade_nome,
+        `SELECT a.id, a.slug, a.atualizado_em, c.id as cidade_id, c.nome as cidade_nome,
                 tn.slug as tipo_negocio, ci.slug as categoria, ti.slug as tipo_imovel
          FROM anuncios a
          JOIN cidades c ON a.cidade_id = c.id
