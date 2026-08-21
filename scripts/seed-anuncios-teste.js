@@ -40,8 +40,21 @@
 //   node scripts/seed-anuncios-teste.js
 //   node scripts/seed-anuncios-teste.js --confirmar
 //
-// Idempotente NÃO — rodar de novo com --confirmar insere outros 10
-// registros (títulos iguais, IDs diferentes). Rodar uma vez só.
+// Modo alternativo --sql-only (sem wrangler, sem CLOUDFLARE_API_TOKEN) —
+// pra quando não há token disponível: gera os mesmos 10 INSERTs pra colar
+// manualmente no D1 Console (painel Cloudflare, roda no navegador):
+//   1. node scripts/seed-anuncios-teste.js --sql-only
+//      → imprime os SELECTs pra descobrir corretor_id e cidade_id.
+//   2. node scripts/seed-anuncios-teste.js --sql-only --corretor-id=X --cidade-id=Y
+//      → imprime os INSERTs finais prontos (taxonomia resolvida via
+//        subquery, sem precisar descobrir mais nenhum ID).
+// Este modo NÃO enfileira gerar-json-corretor/gerar-json-cidade (precisa de
+// token) — a instrução impressa no final explica como disparar isso sem
+// token, editando um anúncio existente do corretor pelo painel.
+//
+// Idempotente NÃO — rodar de novo com --confirmar (ou colar os INSERTs do
+// --sql-only de novo) insere outros 10 registros (títulos iguais, IDs
+// diferentes). Rodar uma vez só.
 //
 // COMO REMOVER DEPOIS (todo título começa com "[TESTE] " de propósito):
 //   wrangler d1 execute imob-bd --remote --command "DELETE FROM anuncios WHERE titulo LIKE '[TESTE]%'"
@@ -62,6 +75,16 @@ const QUEUE_NOME = "imob-queue";
 const API_BASE = "https://api.cloudflare.com/client/v4";
 
 const CONFIRMAR = process.argv.includes("--confirmar");
+const SQL_ONLY = process.argv.includes("--sql-only");
+
+function obterArgValor(nomeFlag) {
+  const prefixo = `${nomeFlag}=`;
+  const arg = process.argv.find((a) => a.startsWith(prefixo));
+  return arg ? arg.slice(prefixo.length) : undefined;
+}
+
+const ARG_CORRETOR_ID = obterArgValor("--corretor-id");
+const ARG_CIDADE_ID = obterArgValor("--cidade-id");
 
 function erroFatal(mensagem) {
   console.error(`❌ ${mensagem}`);
@@ -90,8 +113,8 @@ function rodarD1Arquivo(sql) {
 
 // Mesma regra de src/lib/slug.ts::gerarSlug — duplicada aqui porque este
 // script roda fora do Worker (sem acesso ao bundle TS).
-function gerarSlug(titulo, id) {
-  const slugBase = titulo
+function gerarSlugBase(titulo) {
+  return titulo
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
@@ -100,7 +123,10 @@ function gerarSlug(titulo, id) {
     .replace(/[^\w-]/g, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-  return `${slugBase}-${id}`;
+}
+
+function gerarSlug(titulo, id) {
+  return `${gerarSlugBase(titulo)}-${id}`;
 }
 
 // Mesma regra de src/jobs/gerar-json-cidade.ts::slugificar (usada pro
@@ -267,8 +293,18 @@ const REGISTROS_TESTE = [
 const DESCRICAO_PADRAO =
   "[TESTE] Anúncio de teste gerado por scripts/seed-anuncios-teste.js — não é um imóvel real.";
 
+// Reaproveitadas tanto pelo modo wrangler (consultarD1) quanto pelo modo
+// --sql-only (impressas pro usuário rodar manualmente no D1 Console).
+const SQL_CONSULTA_CIDADE = "SELECT id, nome FROM cidades WHERE nome = 'Londrina' AND uf = 'PR' LIMIT 1";
+const SQL_CONSULTA_CORRETOR = `SELECT c.id AS corretor_id, c.nome_usuario, m.slug AS minisite_slug
+FROM corretores c
+JOIN minisites m ON m.corretor_id = c.id
+WHERE c.status = 'aprovado'
+ORDER BY CASE WHEN UPPER(c.nome_usuario) IN ('ARANDA', 'TESTE') THEN 0 ELSE 1 END, c.id
+LIMIT 1`;
+
 function buscarCidadeLondrina() {
-  const linhas = consultarD1("SELECT id, nome FROM cidades WHERE nome = 'Londrina' AND uf = 'PR' LIMIT 1");
+  const linhas = consultarD1(SQL_CONSULTA_CIDADE);
   if (linhas.length === 0) {
     erroFatal(
       "Cidade 'Londrina' (UF 'PR') não encontrada em `cidades`. Confira migrations/0003_cidades_ibge.sql — este script não inventa cidade_id.",
@@ -278,14 +314,7 @@ function buscarCidadeLondrina() {
 }
 
 function buscarCorretorAprovado() {
-  const linhas = consultarD1(
-    `SELECT c.id AS corretor_id, c.nome_usuario, m.slug AS minisite_slug
-     FROM corretores c
-     JOIN minisites m ON m.corretor_id = c.id
-     WHERE c.status = 'aprovado'
-     ORDER BY CASE WHEN UPPER(c.nome_usuario) IN ('ARANDA', 'TESTE') THEN 0 ELSE 1 END, c.id
-     LIMIT 1`,
-  );
+  const linhas = consultarD1(SQL_CONSULTA_CORRETOR);
   if (linhas.length === 0) {
     erroFatal(
       "Nenhum corretor aprovado com minisite encontrado. Este script NÃO cria corretor novo — aprove um corretor (ex.: rodando scripts/db-seed/seed-superadmin-teste.sql) antes de rodar de novo.",
@@ -320,33 +349,36 @@ function buscarTaxonomia() {
   return { categoriaId, negocioPorSlug, tipoPorSlug };
 }
 
+// Mesma ordem de colunas usada pelos dois modos (wrangler e --sql-only).
+const COLUNAS_ANUNCIO = [
+  "corretor_id",
+  "titulo",
+  "descricao",
+  "preco_venda",
+  "preco_aluguel",
+  "tipo_negocio_id",
+  "categoria_imovel_id",
+  "tipo_imovel_id",
+  "cidade_id",
+  "bairro",
+  "endereco_completo",
+  "exibir_endereco_completo",
+  "area_total",
+  "area_util",
+  "quartos",
+  "banheiros",
+  "postar_na_rede",
+  "vendido_removido",
+  "publicar_grupo_olx",
+  "slug",
+  "latitude",
+  "longitude",
+  "criado_em",
+  "atualizado_em",
+];
+
 function montarInsert(registro, corretorId, cidadeId, taxonomia) {
-  const colunas = [
-    "corretor_id",
-    "titulo",
-    "descricao",
-    "preco_venda",
-    "preco_aluguel",
-    "tipo_negocio_id",
-    "categoria_imovel_id",
-    "tipo_imovel_id",
-    "cidade_id",
-    "bairro",
-    "endereco_completo",
-    "exibir_endereco_completo",
-    "area_total",
-    "area_util",
-    "quartos",
-    "banheiros",
-    "postar_na_rede",
-    "vendido_removido",
-    "publicar_grupo_olx",
-    "slug",
-    "latitude",
-    "longitude",
-    "criado_em",
-    "atualizado_em",
-  ];
+  const colunas = COLUNAS_ANUNCIO;
 
   const tituloCompleto = `[TESTE] ${registro.titulo}`;
   const valores = [
@@ -378,6 +410,51 @@ function montarInsert(registro, corretorId, cidadeId, taxonomia) {
 
   const valoresSql = valores.map((v) => (v === "datetime('now')" ? v : escaparSql(v)));
   return `INSERT INTO anuncios (${colunas.join(", ")}) VALUES (${valoresSql.join(", ")});`;
+}
+
+// Variante do INSERT acima pro modo --sql-only: corretor_id/cidade_id são
+// literais (informados via flag), e tipo_negocio_id/categoria_imovel_id/
+// tipo_imovel_id viram subqueries por slug — assim não precisamos de
+// wrangler pra resolver a taxonomia, ela é resolvida pelo próprio D1 no
+// momento do INSERT. Retorna também um UPDATE que usa last_insert_rowid()
+// pra gravar o slug definitivo (mesmo formato de gerarSlug), dispensando a
+// etapa de reler os IDs inseridos.
+function montarInsertSql(registro, corretorId, cidadeId) {
+  const colunas = COLUNAS_ANUNCIO;
+  const tituloCompleto = `[TESTE] ${registro.titulo}`;
+
+  const valoresSql = [
+    String(corretorId),
+    escaparSql(tituloCompleto),
+    escaparSql(DESCRICAO_PADRAO),
+    escaparSql(registro.precoVenda ?? null),
+    escaparSql(registro.precoAluguel ?? null),
+    `(SELECT id FROM tipos_negocio WHERE slug = ${escaparSql(registro.tipoNegocio)})`,
+    `(SELECT id FROM categorias_imovel WHERE slug = 'residencial')`,
+    `(SELECT id FROM tipos_imovel WHERE slug = ${escaparSql(registro.tipoImovel)} AND categoria_id = (SELECT id FROM categorias_imovel WHERE slug = 'residencial'))`,
+    String(cidadeId),
+    escaparSql(registro.bairro),
+    escaparSql(registro.endereco ?? null),
+    "0",
+    escaparSql(registro.areaTotal ?? null),
+    escaparSql(registro.areaUtil ?? null),
+    escaparSql(registro.quartos ?? null),
+    escaparSql(registro.banheiros ?? null),
+    "1", // postar_na_rede — visível na busca
+    "0", // vendido_removido
+    "0", // publicar_grupo_olx
+    escaparSql("teste-temp"), // placeholder — substituído pelo UPDATE logo abaixo
+    escaparSql(registro.lat ?? null),
+    escaparSql(registro.lng ?? null),
+    "datetime('now')",
+    "datetime('now')",
+  ];
+
+  const insertSql = `INSERT INTO anuncios (${colunas.join(", ")}) VALUES (${valoresSql.join(", ")});`;
+  const slugBase = gerarSlugBase(tituloCompleto);
+  const updateSql = `UPDATE anuncios SET slug = ${escaparSql(slugBase)} || '-' || last_insert_rowid() WHERE id = last_insert_rowid();`;
+
+  return `${insertSql}\n${updateSql}`;
 }
 
 function formatarPreco(registro) {
@@ -424,7 +501,55 @@ async function enfileirar(accountId, token, queueId, corpo) {
   });
 }
 
+// Modo --sql-only: não usa wrangler nem CLOUDFLARE_API_TOKEN. Gera os
+// mesmos REGISTROS_TESTE de sempre, mas em vez de gravar direto no D1 só
+// imprime os comandos SQL pra colar no D1 Console (painel Cloudflare).
+function rodarModoSqlOnly() {
+  console.log("Modo: SQL-ONLY (gera SQL pra colar manualmente no D1 Console — não usa wrangler nem token)\n");
+
+  const corretorId = ARG_CORRETOR_ID !== undefined ? Number(ARG_CORRETOR_ID) : null;
+  const cidadeId = ARG_CIDADE_ID !== undefined ? Number(ARG_CIDADE_ID) : null;
+  const idsValidos =
+    Number.isInteger(corretorId) && corretorId > 0 && Number.isInteger(cidadeId) && cidadeId > 0;
+
+  if (!idsValidos) {
+    console.log(
+      "Passo 1 — descubra corretor_id e cidade_id rodando estas consultas no D1 Console\n" +
+        `(Cloudflare Dashboard > Workers & Pages > D1 > ${DB} > Console):\n`,
+    );
+    console.log(`-- cidade (Londrina/PR)\n${SQL_CONSULTA_CIDADE};\n`);
+    console.log(`-- corretor aprovado (prioriza nome_usuario ARANDA/TESTE)\n${SQL_CONSULTA_CORRETOR};\n`);
+    console.log(
+      "Passo 2 — rode este script de novo com os IDs encontrados pra gerar os INSERTs finais:\n" +
+        "  node scripts/seed-anuncios-teste.js --sql-only --corretor-id=<ID> --cidade-id=<ID>",
+    );
+    return;
+  }
+
+  console.log(`Usando corretor_id=${corretorId} e cidade_id=${cidadeId} (informados via flag).`);
+  console.log(
+    `\n${REGISTROS_TESTE.length} anúncio(s) de teste — cole tudo abaixo no D1 Console ` +
+      `(Cloudflare Dashboard > Workers & Pages > D1 > ${DB} > Console) e rode de uma vez:\n`,
+  );
+
+  for (const registro of REGISTROS_TESTE) {
+    console.log(montarInsertSql(registro, corretorId, cidadeId));
+    console.log("");
+  }
+
+  console.log(
+    "Depois de rodar os INSERTs acima no D1 Console, edite e salve novamente qualquer anúncio " +
+      "existente do corretor pelo painel do corretor (mesmo uma mudança pequena) — isso vai " +
+      "disparar a regeneração do JSON automaticamente pela aplicação, sem precisar de token.",
+  );
+}
+
 async function main() {
+  if (SQL_ONLY) {
+    rodarModoSqlOnly();
+    return;
+  }
+
   console.log(`Modo: ${CONFIRMAR ? "EXECUÇÃO (vai inserir de verdade e enfileirar)" : "DRY-RUN (só mostra, não grava — use --confirmar pra aplicar)"}`);
 
   console.log(`\nLendo cidade Londrina/PR em ${DB} (--remote)...`);
