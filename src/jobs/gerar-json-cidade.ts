@@ -24,6 +24,8 @@ interface AnuncioCidadeItem {
   criado_em: string;
   video_youtube_id?: string;
   tour_360_url?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface IndiceCidade {
@@ -64,7 +66,7 @@ export async function processarGerarJsonCidade(
 
     let sqlSelect = `SELECT a.id, a.titulo, a.preco_venda, a.preco_aluguel,
                 a.quartos, a.banheiros, a.area_util, a.bairro,
-                a.fotos_json, a.slug, a.criado_em`;
+                a.fotos_json, a.slug, a.criado_em, a.latitude, a.longitude`;
 
     if (moduloVideoAtivo) sqlSelect += ", a.video_youtube_id";
     if (moduloTour360Ativo) sqlSelect += ", a.tour_360_url";
@@ -103,6 +105,8 @@ export async function processarGerarJsonCidade(
         bairro: a.bairro,
         slug: a.slug,
         criado_em: a.criado_em,
+        latitude: a.latitude ?? undefined,
+        longitude: a.longitude ?? undefined,
       };
 
       if (moduloVideoAtivo && a.video_youtube_id) {
