@@ -121,7 +121,10 @@ export async function dispararRevalidacaoCruzada(
   console.log(`→ Revalidação cruzada enfileirada para anúncio ${anuncio_id}`);
 }
 
-function slugificarCidade(nome: string): string {
+// Exportado: também usado por routes/painel-superadmin.ts (regeneração
+// manual de cidade pelo Superadmin) pra computar o mesmo cidade_slug que
+// esse fluxo de edição normal usaria — sem duplicar a regra de slug.
+export function slugificarCidade(nome: string): string {
   return nome
     .toLowerCase()
     .normalize("NFD")

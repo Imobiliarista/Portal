@@ -11,6 +11,8 @@
 import { Env } from "../index";
 import { enfileirarStatusMinisite } from "../jobs/gerar-status-minisite";
 import { enfileirarGeracaoJsonCorretor } from "../jobs/gerar-json-corretor";
+import { enfileirarGeracaoJsonCidade } from "../jobs/gerar-json-cidade";
+import { slugificarCidade } from "../jobs/revalidacao-cruzada";
 import { sincronizarElegibilidadePortal } from "../modulos/pwa/logica";
 import {
   listarPreCadastrosPendentes,
@@ -555,9 +557,37 @@ async function rotaVisaoGeral(request: Request, env: Env): Promise<Response> {
     const visao = await obterVisaoGeralRede(env.DB);
     if (!visao) return respostaErro("Erro ao obter visão geral", 500);
 
-    return respostaSucesso(visao);
+    return respostaSucesso({ dados: visao });
   } catch {
     return respostaErro("Erro ao buscar visão geral", 500);
+  }
+}
+
+// ========== Rotas: Regeneração manual de cidade ==========
+
+// POST /api/painel-admin/regenerar-cidade/:id — enfileira gerar-json-cidade
+// diretamente pro cidade_id informado, sem depender de mutação de anúncio.
+// Necessário pra casos como seed/UPDATE feitos direto no D1 (fora do fluxo
+// normal da aplicação), onde nenhuma edição pelo painel do corretor
+// necessariamente toca a cidade certa — o fan-out normal
+// (jobs/revalidacao-cruzada.ts) sempre revalida a cidade do anúncio editado,
+// nunca uma cidade arbitrária.
+async function rotaRegenerarCidade(request: Request, env: Env, cidadeId: number): Promise<Response> {
+  const superadminId = await obterSuperadminIdDaSessao(request, env);
+  if (!superadminId) return respostaErro("Não autorizado", 401);
+
+  try {
+    const cidade = await buscarCidade(env.DB, cidadeId);
+    if (!cidade) return respostaErro("Cidade não encontrada", 404);
+
+    const cidadeSlug = slugificarCidade(cidade.nome);
+    await enfileirarGeracaoJsonCidade(env, cidadeId, cidadeSlug);
+
+    return respostaSucesso({
+      mensagem: `Regeneração de "${cidade.nome}" enfileirada com sucesso`,
+    });
+  } catch {
+    return respostaErro("Erro ao enfileirar regeneração da cidade", 500);
   }
 }
 
@@ -671,6 +701,12 @@ export async function rotasPainelSuperadmin(request: Request, env: Env): Promise
   // GET /api/painel-admin/visao-geral
   if (pathname === "/visao-geral" && request.method === "GET") {
     return rotaVisaoGeral(request, env);
+  }
+
+  // POST /api/painel-admin/regenerar-cidade/:id
+  const matchRegenerarCidade = pathname.match(/^\/regenerar-cidade\/(\d+)$/);
+  if (matchRegenerarCidade && request.method === "POST") {
+    return rotaRegenerarCidade(request, env, parseInt(matchRegenerarCidade[1]));
   }
 
   // ========== Rotas: Planos (Lote 14 — ver painel-superadmin-planos.ts) ==========

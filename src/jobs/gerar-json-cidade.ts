@@ -203,4 +203,23 @@ function slugificar(texto: string): string {
     .trim();
 }
 
+// Único ponto de disparo direto de "gerar-json-cidade" fora do fan-out de
+// jobs/revalidacao-cruzada.ts (que roda por mutação de anúncio). Usado por
+// routes/painel-superadmin.ts pra regenerar uma cidade manualmente — ex.:
+// depois de um seed/UPDATE feito direto no D1, sem passar por nenhuma
+// mutação de anúncio que dispararia a revalidação normalmente. Mesmo
+// padrão/tratamento de erro de jobs/gerar-json-corretor.ts::enfileirarGeracaoJsonCorretor.
+export async function enfileirarGeracaoJsonCidade(
+  env: Env,
+  cidade_id: number,
+  cidade_slug: string,
+): Promise<void> {
+  try {
+    await env.FILA_ALTERACOES.send({ tipo: "gerar-json-cidade", cidade_id, cidade_slug });
+  } catch (erroFila) {
+    console.error(`Falha ao enfileirar geração do JSON da cidade "${cidade_slug}":`, erroFila);
+    throw erroFila;
+  }
+}
+
 export type { MensagemGerarJsonCidade, IndiceCidade };
