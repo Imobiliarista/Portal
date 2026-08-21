@@ -34,17 +34,20 @@ export async function obterSessaoCompleta(request: Request, env: Env): Promise<S
     if (!sessionIdMatch || !sessionIdMatch[1]) return null;
 
     const resultado = await env.DB.prepare(
-      `SELECT c.id as corretor_id, c.papel, m.slug as minisite_slug, m.offline as minisite_offline
+      `SELECT c.id as corretor_id, c.papel, m.slug as minisite_slug, m.offline as minisite_offline, s.expira_em
        FROM sessoes s
        JOIN corretores c ON c.id = s.corretor_id
        LEFT JOIN minisites m ON m.corretor_id = c.id
-       WHERE s.session_id = ? AND s.expira_em > datetime('now')
+       WHERE s.session_id = ?
        LIMIT 1`
     ).bind(sessionIdMatch[1]).first() as
-      | { corretor_id: number; papel: string; minisite_slug: string | null; minisite_offline: number | null }
+      | { corretor_id: number; papel: string; minisite_slug: string | null; minisite_offline: number | null; expira_em: string }
       | null;
 
-    if (!resultado) return null;
+    // Comparação como Date (epoch ms), nunca como string — ver
+    // src/lib/sessao.ts::obterCorretorAutenticado e o Histórico de Decisões
+    // em project.md pro bug original (~24h de graça além do TTL).
+    if (!resultado || new Date(resultado.expira_em) <= new Date()) return null;
 
     return {
       corretor_id: resultado.corretor_id,
