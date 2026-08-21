@@ -32,11 +32,18 @@ async function obterCorretorIdDaSessao(request: Request, env: Env): Promise<numb
   const sessionId = sessionIdMatch[1];
 
   try {
-    const sessao = await env.DB.prepare("SELECT corretor_id FROM sessoes WHERE session_id = ? AND expira_em > datetime('now') LIMIT 1")
+    const sessao = await env.DB.prepare("SELECT corretor_id, expira_em FROM sessoes WHERE session_id = ? LIMIT 1")
       .bind(sessionId)
-      .first() as { corretor_id: number } | null;
+      .first() as { corretor_id: number; expira_em: string } | null;
 
-    return sessao?.corretor_id || null;
+    // Comparação como Date (epoch ms), nunca como string — ver
+    // src/lib/sessao.ts::obterCorretorAutenticado e o Histórico de Decisões
+    // em project.md pro bug original (~24h de graça além do TTL).
+    if (!sessao || new Date(sessao.expira_em) <= new Date()) {
+      return null;
+    }
+
+    return sessao.corretor_id;
   } catch {
     return null;
   }
