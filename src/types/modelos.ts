@@ -172,6 +172,8 @@ export interface Anuncio {
   endereco_completo?: string;
   exibir_endereco_completo: boolean;
   cep?: string; // exigido só quando publicar_grupo_olx = true (seção 4.11)
+  latitude?: number; // geocodificação p/ mapa de listagem/detalhe (Leaflet+OSM)
+  longitude?: number;
 
   // Especificações
   area_total?: number;

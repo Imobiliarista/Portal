@@ -31,6 +31,8 @@ interface AnuncioCorretorItem {
   criado_em: string;
   video_youtube_id?: string;
   tour_360_url?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export async function processarGerarJsonCorretor(
@@ -82,6 +84,8 @@ export async function processarGerarJsonCorretor(
           bairro: a.bairro,
           slug: a.slug,
           criado_em: a.criado_em,
+          latitude: a.latitude ?? undefined,
+          longitude: a.longitude ?? undefined,
         };
 
         if (moduloVideoAtivo && a.video_youtube_id) {
