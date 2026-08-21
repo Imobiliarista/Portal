@@ -130,22 +130,52 @@ async function initDetailMap(listing, containerId = 'map') {
 // ============================================================
 // TOGGLE ENTRE MAPA E LISTAGEM
 // ============================================================
+// Container/id próprios da listagem (map-container/map já são usados pelo
+// mapa de localização da página de detalhe — ids não podem se repetir no
+// mesmo documento).
 function toggleMapView() {
   const grid = document.getElementById('listings-grid');
-  const mapContainer = document.getElementById('map-container');
-  const mapEl = document.getElementById('map');
+  const noResults = document.getElementById('no-results');
+  const mapContainer = document.getElementById('map-container-listagem');
+  const toggleBtn = document.getElementById('toggle-map-view');
+  if (!mapContainer || !grid) return;
 
   if (mapContainer.classList.contains('hidden')) {
     mapContainer.classList.remove('hidden');
     grid.classList.add('hidden');
+    noResults?.classList.add('hidden');
+    if (toggleBtn) toggleBtn.textContent = '📋 Ver lista';
 
     setTimeout(() => {
-      initListingMap(appState.filteredListings, 'map');
+      initListingMap(appState.filteredListings, 'map-listagem');
     }, 100);
   } else {
     mapContainer.classList.add('hidden');
     grid.classList.remove('hidden');
+    if (toggleBtn) toggleBtn.textContent = '🗺️ Ver no mapa';
   }
+}
+
+function isListingMapVisible() {
+  const mapContainer = document.getElementById('map-container-listagem');
+  return !!mapContainer && !mapContainer.classList.contains('hidden');
+}
+
+// Chamado por renderListings() (app-ui.js) a cada mudança de filtro/ordenação
+// — atualiza os pins sem fechar/reabrir o mapa.
+function refreshListingMapIfVisible() {
+  if (isListingMapVisible()) {
+    initListingMap(appState.filteredListings, 'map-listagem');
+  }
+}
+
+function resetListingMapView() {
+  const mapContainer = document.getElementById('map-container-listagem');
+  const grid = document.getElementById('listings-grid');
+  const toggleBtn = document.getElementById('toggle-map-view');
+  mapContainer?.classList.add('hidden');
+  grid?.classList.remove('hidden');
+  if (toggleBtn) toggleBtn.textContent = '🗺️ Ver no mapa';
 }
 
 // ============================================================
@@ -276,27 +306,14 @@ function createGoogleMapInstance(listing, containerId) {
 // ============================================================
 // INICIALIZAÇÃO
 // ============================================================
+// Único gatilho de geolocalização da home (substituiu o de
+// app-roteamento.js::detectLocation, que fazia a mesma coisa em duplicidade
+// com menos cidades/precisão — ver Histórico de Decisões, project.md).
+// O mapa de detalhe é iniciado direto por showDetail() (app-ui.js), não por
+// observer — showDetail() já sabe exatamente quando os dados do anúncio
+// terminaram de carregar.
 document.addEventListener('DOMContentLoaded', () => {
   detectLocationAndSuggestCity();
-
-  // Mostrar mapa no detalhe se houver coordenadas
-  const detailView = document.getElementById('detail-view');
-  if (detailView) {
-    const observer = new MutationObserver(() => {
-      const mapContainer = document.getElementById('map-container');
-      if (mapContainer && !mapContainer.classList.contains('hidden')) {
-        const listing = appState.allListings.find((l) =>
-          document.getElementById('detail-title')?.textContent.includes(l.titulo)
-        );
-        if (listing && listing.latitude && listing.longitude) {
-          setTimeout(() => {
-            initDetailMap(listing, 'map');
-          }, 100);
-        }
-      }
-    });
-    observer.observe(detailView, { attributes: true, attributeFilter: ['class'] });
-  }
 });
 
 // Resize map quando muda de visibilidade

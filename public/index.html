@@ -205,14 +205,27 @@
           <div class="lg:col-span-3">
             <div class="flex justify-between items-center mb-6">
               <h2 id="listing-count" class="text-xl font-semibold">Anúncios encontrados</h2>
-              <select id="sort-by" class="px-3 py-2 border border-gray-300 rounded-lg">
-                <option value="recent">Mais Recentes</option>
-                <option value="price-low">Menor Preço</option>
-                <option value="price-high">Maior Preço</option>
-              </select>
+              <div class="flex items-center gap-3">
+                <button
+                  id="toggle-map-view"
+                  class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition"
+                >
+                  🗺️ Ver no mapa
+                </button>
+                <select id="sort-by" class="px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="recent">Mais Recentes</option>
+                  <option value="price-low">Menor Preço</option>
+                  <option value="price-high">Maior Preço</option>
+                </select>
+              </div>
             </div>
 
             <div id="listings-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+
+            <!-- Mapa de listagem (alternância lista <-> mapa, project.md §9.2) -->
+            <div id="map-container-listagem" class="hidden bg-white p-6 rounded-lg card-shadow">
+              <div id="map-listagem" class="w-full h-96 rounded-lg bg-gray-200"></div>
+            </div>
 
             <div id="no-results" class="text-center py-12 hidden">
               <p class="text-gray-600 text-lg">Nenhum imóvel encontrado com os filtros selecionados.</p>
