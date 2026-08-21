@@ -79,17 +79,51 @@ export async function processarFilaMorta(
   );
 
   for (const message of mensagens.messages) {
-    const msg = message.body;
+    const msgBruta: unknown = message.body;
 
-    console.error("Mensagem original na DLQ:", JSON.stringify(msg));
+    try {
+      // A DLQ é o tratador de último nível — precisa ser mais defensiva
+      // que a fila principal, não menos: nenhuma falha aqui (formato
+      // inesperado, erro ao serializar, erro dentro de enviarAlertaDlq)
+      // pode escapar sem log nem impedir o ack() abaixo. Antes desta
+      // correção não havia try/catch nenhum ao redor do processamento de
+      // cada mensagem — um payload malformado (ex: corpo nulo, sem campo
+      // "tipo") derrubava o loop inteiro, deixando a própria mensagem sem
+      // ack (retentando dentro da DLQ, que não tem outra
+      // dead_letter_queue configurada atrás dela) e as mensagens
+      // seguintes do batch sem processar — exatamente o achado da
+      // auditoria de 2026-08-20 ("morre em silêncio, sem log nem alerta").
+      console.error("Mensagem original na DLQ:", JSON.stringify(msgBruta));
 
-    await enviarAlertaDlq(msg, env);
+      if (
+        !msgBruta ||
+        typeof msgBruta !== "object" ||
+        typeof (msgBruta as Record<string, unknown>).tipo !== "string"
+      ) {
+        console.error(
+          `❌ Mensagem malformada na dead letter queue (corpo inválido ou sem campo "tipo" em string) — sem alerta por e-mail; conteúdo bruto já logado acima.`,
+        );
+      } else {
+        await enviarAlertaDlq(msgBruta as MensagemFila, env);
+      }
+    } catch (erro) {
+      // Não usa JSON.stringify aqui de propósito: se o body malformado
+      // foi exatamente o que quebrou o JSON.stringify acima (ex:
+      // referência circular), serializar de novo lançaria outra vez.
+      // console.error aceita o valor bruto direto e não lança nessas
+      // situações.
+      console.error(
+        "❌ Erro ao processar mensagem na dead letter queue — conteúdo bruto:",
+        msgBruta,
+        erro,
+      );
+    }
 
-    // Ack depois de logar e tentar alertar — sem isso a mensagem
-    // ficaria retentando indefinidamente dentro da própria DLQ (que não
-    // tem outra dead_letter_queue configurada atrás dela). Reprocessar o
-    // payload original ou reenfileirar na imob-queue está fora do
-    // escopo desta tarefa (Lote 23).
+    // Ack sempre, mesmo em erro — reprocessar aqui está fora do escopo do
+    // Lote 23; o objetivo é só log + alerta best-effort, nunca deixar a
+    // mensagem sem ack (ela ficaria retentando indefinidamente dentro da
+    // própria DLQ, que não tem outra dead_letter_queue configurada atrás
+    // dela).
     message.ack();
   }
 }

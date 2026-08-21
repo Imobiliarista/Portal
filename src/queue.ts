@@ -27,7 +27,30 @@ export async function processarFilaAlteracoes(
   );
 
   for (const message of mensagens.messages) {
-    const msg = message.body;
+    const msgBruta: unknown = message.body;
+
+    // Payload sem o formato mínimo esperado (corpo nulo/indefinido, não é
+    // objeto, ou sem um campo "tipo" em string) nunca fica bem-formado
+    // tentando de novo — descarta (ack) sem retry, só loga o conteúdo
+    // bruto pra investigação. Corrige o crash da auditoria de 2026-08-20:
+    // acessar msg.tipo sem validar o formato lançava TypeError não
+    // capturado quando o body era null/undefined, e esse throw escapava
+    // de novo dentro do próprio catch (que também lia msg.tipo pro log),
+    // derrubando o processamento do resto do batch.
+    if (
+      !msgBruta ||
+      typeof msgBruta !== "object" ||
+      typeof (msgBruta as Record<string, unknown>).tipo !== "string"
+    ) {
+      console.error(
+        `❌ Mensagem malformada na fila (corpo inválido ou sem campo "tipo" em string) — descartada sem retry. Conteúdo bruto:`,
+        msgBruta,
+      );
+      message.ack();
+      continue;
+    }
+
+    const msg = msgBruta as MensagemFila;
 
     try {
       if (msg.tipo === "gerar-json-corretor") {
@@ -66,7 +89,10 @@ export async function processarFilaAlteracoes(
       // Retry explícito até `max_retries` (wrangler.toml); esgotado o
       // limite, a Queue move a mensagem pra `dead_letter_queue` em vez de
       // retentar pra sempre (seção 4.9/4.10 — não consumir cota à toa com
-      // uma mensagem que nunca vai processar).
+      // uma mensagem que nunca vai processar). Só chega aqui com `msg` já
+      // validado (tem "tipo" em string) — erro é de processamento
+      // (D1/R2/fila etc), não de formato, então retry ainda faz sentido;
+      // payload malformado é tratado antes, sem passar por aqui.
       message.retry();
     }
   }
