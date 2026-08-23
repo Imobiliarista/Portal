@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/taxonomy.schema.json",
+  "title": "Taxonomy",
+  "description": "portal/taxonomy.json — §65. Consumed by the frontend without any API call.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "types", "purposes", "features", "priceRanges"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "types": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/labeledOption" }
+    },
+    "purposes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/labeledOption" }
+    },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/labeledOption" }
+    },
+    "priceRanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "min", "max"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "min": { "type": "number", "minimum": 0 },
+          "max": { "type": ["number", "null"], "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "labeledOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

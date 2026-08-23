@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/city-manifest.schema.json",
+  "title": "CityManifest",
+  "description": "cities/{city}/manifest.json — §12",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "city",
+    "publicationVersion",
+    "totalListings",
+    "pageSize",
+    "shards",
+    "lastUpdated"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "city": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "name", "uf"],
+      "properties": {
+        "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "uf": { "type": "string", "pattern": "^[A-Z]{2}$" }
+      }
+    },
+    "publicationVersion": { "type": "integer", "minimum": 0 },
+    "totalListings": { "type": "integer", "minimum": 0 },
+    "pageSize": { "type": "integer", "minimum": 1 },
+    "shards": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9]{3}\\.json$" }
+    },
+    "lastUpdated": { "type": "string", "format": "date-time" }
+  }
+}

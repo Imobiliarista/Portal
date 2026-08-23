@@ -1,0 +1,65 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  loginIdentifierHash,
+  resolveLogin,
+  setLoginIndex,
+  resolveSlug,
+  setSlugIndex,
+  getBrokerListingIds,
+  addBrokerListingId,
+  removeBrokerListingId,
+} from "../../storage/indexes.js";
+import { FakeR2Bucket } from "./fake-r2-bucket.js";
+
+function makeEnv() {
+  return { IMOB_PRIVATE: new FakeR2Bucket() };
+}
+
+test("loginIdentifierHash normalizes case and is deterministic", async () => {
+  const a = await loginIdentifierHash("Joao@Imobiliarista.net");
+  const b = await loginIdentifierHash("joao@imobiliarista.net");
+  assert.equal(a, b);
+  assert.match(a, /^[0-9a-f]{64}$/);
+});
+
+test("login index resolves without ever scanning the bucket (§26)", async () => {
+  const env = makeEnv();
+  await setLoginIndex(env, "joao@imobiliarista.net", "user_000789");
+  const resolved = await resolveLogin(env, "JOAO@imobiliarista.net");
+  assert.deepEqual(resolved, { userId: "user_000789" });
+});
+
+test("resolveLogin returns null for an unknown identifier", async () => {
+  const env = makeEnv();
+  assert.equal(await resolveLogin(env, "ninguem@imobiliarista.net"), null);
+});
+
+test("slug index stores type alongside id so brokers and listings can share one prefix", async () => {
+  const env = makeEnv();
+  await setSlugIndex(env, "joao", "broker", "broker_000123");
+  await setSlugIndex(env, "apartamento-centro-123", "listing", "listing_000456");
+
+  assert.deepEqual(await resolveSlug(env, "joao"), { type: "broker", id: "broker_000123" });
+  assert.deepEqual(await resolveSlug(env, "apartamento-centro-123"), {
+    type: "listing",
+    id: "listing_000456",
+  });
+});
+
+test("broker listing index add/remove stays deduplicated", async () => {
+  const env = makeEnv();
+  await addBrokerListingId(env, "broker_1", "listing_1");
+  await addBrokerListingId(env, "broker_1", "listing_2");
+  await addBrokerListingId(env, "broker_1", "listing_1"); // duplicate, no-op
+
+  assert.deepEqual(await getBrokerListingIds(env, "broker_1"), ["listing_1", "listing_2"]);
+
+  await removeBrokerListingId(env, "broker_1", "listing_1");
+  assert.deepEqual(await getBrokerListingIds(env, "broker_1"), ["listing_2"]);
+});
+
+test("getBrokerListingIds returns an empty array for a broker with no index yet", async () => {
+  const env = makeEnv();
+  assert.deepEqual(await getBrokerListingIds(env, "broker_never_published"), []);
+});

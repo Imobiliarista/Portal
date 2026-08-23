@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/city-shard.schema.json",
+  "title": "CityShard",
+  "description": "cities/{city}/{NNN}.json — §9, §13, §14. Array of listing cards only — no gallery, long description, video, tour360, or private data (§14).",
+  "type": "array",
+  "maxItems": 300,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "slug",
+      "title",
+      "purpose",
+      "type",
+      "price",
+      "district",
+      "bedrooms",
+      "bathrooms",
+      "parkingSpaces",
+      "area",
+      "brokerSlug",
+      "featured",
+      "priority"
+    ],
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "slug": { "type": "string", "minLength": 1 },
+      "title": { "type": "string", "minLength": 1 },
+      "purpose": { "type": "string", "enum": ["venda", "aluguel"] },
+      "type": { "type": "string", "minLength": 1 },
+      "price": { "type": "number", "minimum": 0 },
+      "district": { "type": "string", "minLength": 1 },
+      "bedrooms": { "type": "integer", "minimum": 0 },
+      "bathrooms": { "type": "integer", "minimum": 0 },
+      "parkingSpaces": { "type": "integer", "minimum": 0 },
+      "area": { "type": "number", "minimum": 0 },
+      "cover": { "type": ["string", "null"], "format": "uri" },
+      "brokerSlug": { "type": "string", "minLength": 1 },
+      "featured": { "type": "boolean" },
+      "priority": { "type": "integer" }
+    }
+  }
+}

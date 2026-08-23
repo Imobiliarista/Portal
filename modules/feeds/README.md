@@ -1,0 +1,5 @@
+# Módulo: feeds
+
+Placeholder — módulo feed-portais (§46), Etapa 9. Formatters (olx.js, zap.js, ...) em feeds/formatters/.
+
+Ver `IMOBILIARISTA_ARQUITETURA_TECNICA_OFICIAL_JSON_R2.md` para a especificação completa. Fora do escopo da Etapa 1 (Fundação, §90) deste lote.
