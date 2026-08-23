@@ -1,0 +1,7 @@
+// business/taxonomy.js
+//
+// Placeholder — lógica de domínio implementada nas etapas 2-9 (§70), conforme o business precisar.
+// Ver IMOBILIARISTA_ARQUITETURA_TECNICA_OFICIAL_JSON_R2.md. Fora do
+// escopo da Etapa 1 (Fundação, §90) deste lote.
+
+export {};

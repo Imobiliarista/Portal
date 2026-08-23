@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/broker-public.schema.json",
+  "title": "BrokerPublic",
+  "description": "brokers/{slug}/profile.json — §16, §76. Minisite projection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "slug", "status", "name"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "slug": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["active", "suspended"] },
+    "name": { "type": "string", "minLength": 1 },
+    "creciPublic": { "type": "string" },
+    "phone": { "type": "string" },
+    "whatsapp": { "type": "string" },
+    "city": { "type": "string" },
+    "about": { "type": "string" },
+    "logo": { "type": ["string", "null"], "format": "uri" },
+    "cover": { "type": ["string", "null"], "format": "uri" },
+    "modules": {
+      "type": "object",
+      "description": "Per-module public config (§16, §38). Shape owned by each module, not by core.",
+      "additionalProperties": true
+    }
+  }
+}

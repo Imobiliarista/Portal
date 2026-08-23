@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/export.schema.json",
+  "title": "Export",
+  "description": "exports/brokers/{slug}.json, exports/listings/{slug}.json, exports/cities/{city}.json — §62. Versioned contract envelope; payload shape depends on exportType.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "exportType", "slug", "generatedAt", "data"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "exportType": { "type": "string", "enum": ["broker", "listing", "city"] },
+    "slug": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "data": {
+      "type": "object",
+      "description": "Payload shape owned by business/exports.js per exportType.",
+      "additionalProperties": true
+    }
+  }
+}

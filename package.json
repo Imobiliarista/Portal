@@ -1,0 +1,20 @@
+{
+  "name": "imobiliarista-net",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "imobiliarista.net — portal imobiliário + minisites de corretores (arquitetura JSON/R2)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "versions:upload": "wrangler versions upload",
+    "deploy": "wrangler deploy",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "validate:schemas": "node scripts/validate-json.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.125.0"
+  }
+}

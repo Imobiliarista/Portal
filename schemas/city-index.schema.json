@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/city-index.schema.json",
+  "title": "CityIndex",
+  "description": "cities/{city}/index.json — §21. Compact filter/location index, one entry per listing.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "slug", "shard", "purpose", "type", "district", "price"],
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "slug": { "type": "string", "minLength": 1 },
+      "shard": { "type": "integer", "minimum": 1 },
+      "purpose": { "type": "string", "enum": ["venda", "aluguel"] },
+      "type": { "type": "string", "minLength": 1 },
+      "district": { "type": "string", "minLength": 1 },
+      "price": { "type": "number", "minimum": 0 },
+      "bedrooms": { "type": "integer", "minimum": 0 },
+      "bathrooms": { "type": "integer", "minimum": 0 },
+      "parkingSpaces": { "type": "integer", "minimum": 0 },
+      "area": { "type": "number", "minimum": 0 }
+    }
+  }
+}
