@@ -69,6 +69,22 @@ export const privateKeys = {
   brokerListingsIndex(brokerId) {
     return `indexes/listings/${assertSafeSegment(brokerId, "brokerId")}.json`;
   },
+  /**
+   * List of listingIds ever published under a city, for `rebuildCity` (§33)
+   * to reconstruct a city's public projection without scanning all of
+   * `listings/` in R2 PRIVATE (§26 "não varrer objetos"). Maintained by the
+   * publisher (business/publishing.js), not business/listings.js.
+   */
+  cityListingsIndex(citySlug) {
+    return `indexes/cities/${assertSafeSegment(citySlug, "citySlug")}/listings.json`;
+  },
+  /**
+   * Registry of every city slug that has ever had a listing published, for
+   * `rebuildAll` (§34) to enumerate cities without scanning `indexes/cities/`.
+   */
+  cityRegistry() {
+    return "indexes/cities.json";
+  },
   job(kind, id) {
     assertSafeSegment(kind, "kind");
     return `jobs/${kind}/${assertSafeSegment(id, "id")}.json`;

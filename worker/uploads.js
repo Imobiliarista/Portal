@@ -7,9 +7,16 @@
 // comment) — a listing's `video` field is a YouTube URL, validated by
 // business/listings.js, not a file this module ever sees.
 //
-// §58: uploading here does NOT touch any public projection (R2 DATA) — the
-// resulting URL is only written into the private draft's gallery/profile
-// field. Making it show up publicly is the publisher's job (Etapa 6).
+// §58: uploading itself never writes a public projection directly (R2
+// DATA) — the resulting URL is written into the private draft's
+// gallery/profile field first, same as before Etapa 6. What's new this
+// etapa: every mutation here also calls into business/publishing.js
+// afterward, same as worker/api.js's listing/profile routes — a cover
+// photo is explicitly one of §32's publish triggers ("mudou capa... →
+// shard afetado"). Both publish calls are no-ops for a listing/broker that
+// was never live (draft/pending) — see business/publishing.js's
+// `shouldPublish`/status-mapping — so this is safe even for media attached
+// to a not-yet-published draft.
 
 import { requireTenant } from "./auth.js";
 import { can } from "../core/permissions.js";
@@ -24,6 +31,7 @@ import {
   PROVISIONAL_MAX_GALLERY_ITEMS,
 } from "../business/listings.js";
 import { updateBrokerProfile } from "../business/brokers.js";
+import { publishListing, publishBroker } from "../business/publishing.js";
 import { success, badRequest, notFound, conflict } from "../core/response.js";
 
 // Hardcoded per the architecture doc's fixed domain map (§1) and matching
@@ -123,6 +131,7 @@ export async function handleUploadMedia(request, env) {
 
     try {
       await updateListing(env, listing.brokerId, listingId, { gallery: [...currentGallery, url] });
+      await publishListing(env, listingId);
     } catch (error) {
       if (error instanceof ListingNotFoundError) return notFound(error.message);
       throw error;
@@ -143,6 +152,7 @@ export async function handleUploadMedia(request, env) {
 
   const field = target === "broker-logo" ? "logo" : "cover";
   await updateBrokerProfile(env, brokerId, { [field]: url });
+  await publishBroker(env, brokerId);
 
   return success({ id: encodeMediaId(key), url, target }, { status: 201 });
 }
@@ -175,6 +185,7 @@ export async function handleDeleteMedia(request, env, ctx, params) {
     const nextGallery = (listing.gallery ?? []).filter((item) => item !== url);
     await deleteMedia(env, key);
     await updateListing(env, listing.brokerId, listingId, { gallery: nextGallery });
+    await publishListing(env, listingId);
     return success({ deleted: true });
   }
 
@@ -187,6 +198,7 @@ export async function handleDeleteMedia(request, env, ctx, params) {
 
     await deleteMedia(env, key);
     await updateBrokerProfile(env, brokerId, { [logoMatch ? "logo" : "cover"]: null });
+    await publishBroker(env, brokerId);
     return success({ deleted: true });
   }
 
