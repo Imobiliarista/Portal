@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, parseCityQuery, buildCityUrl, buildListingUrl } from "../../../frontend/portal/router.js";
+import { parseRoute, parseCityQuery, buildCityUrl, buildListingUrl, buildComparisonUrl } from "../../../frontend/portal/router.js";
 
 test("parseRoute recognizes home", () => {
   assert.deepEqual(parseRoute("/"), { name: "home" });
@@ -30,6 +30,11 @@ test("parseRoute parses city filters from the querystring (§20)", () => {
 
 test("parseRoute falls back to not-found for unknown multi-segment paths", () => {
   assert.deepEqual(parseRoute("/a/b/c"), { name: "not-found" });
+});
+
+test("parseRoute recognizes comparação (§45)", () => {
+  assert.deepEqual(parseRoute("/comparar"), { name: "comparison" });
+  assert.equal(buildComparisonUrl(), "/comparar");
 });
 
 test("parseCityQuery ignores blank/invalid numeric values", () => {
