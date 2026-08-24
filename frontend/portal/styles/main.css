@@ -1,0 +1,158 @@
+/* frontend/portal/styles/main.css — minimal, framework-free (§94) */
+
+:root {
+  color-scheme: light;
+  --imob-fg: #1a1a1a;
+  --imob-muted: #6b7280;
+  --imob-border: #e5e7eb;
+  --imob-accent: #0f766e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--imob-fg);
+  background: #fff;
+}
+
+#app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+a {
+  color: inherit;
+}
+
+.imob-loading,
+.imob-message {
+  color: var(--imob-muted);
+}
+
+.imob-city-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.imob-city-list a {
+  display: block;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--imob-border);
+  border-radius: 0.5rem;
+  text-decoration: none;
+}
+
+.imob-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.imob-card {
+  display: block;
+  border: 1px solid var(--imob-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+
+.imob-card__cover {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  background: var(--imob-border);
+}
+
+.imob-card__title,
+.imob-card__price,
+.imob-card__meta {
+  margin: 0.25rem 0.75rem;
+}
+
+.imob-card__title {
+  font-size: 1rem;
+}
+
+.imob-card__price {
+  font-weight: 700;
+  color: var(--imob-accent);
+}
+
+.imob-card__meta {
+  font-size: 0.85rem;
+  color: var(--imob-muted);
+  margin-bottom: 0.75rem;
+}
+
+.imob-load-more {
+  display: block;
+  margin: 1.5rem auto;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--imob-accent);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--imob-accent);
+  cursor: pointer;
+}
+
+.imob-empty,
+.imob-not-found {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--imob-muted);
+}
+
+.imob-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--imob-accent);
+}
+
+.imob-unavailable {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.imob-description {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.imob-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+}
+
+.imob-gallery img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.5rem;
+}
+
+.imob-video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: none;
+  border-radius: 0.5rem;
+}
+
+.imob-broker {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--imob-border);
+}
