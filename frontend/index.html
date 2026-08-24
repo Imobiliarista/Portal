@@ -6,20 +6,35 @@
     <title>imobiliarista.net</title>
   </head>
   <body>
-    <!--
-      Etapa 1 (Fundação) placeholder shell.
+    <div id="app"></div>
+    <script type="module">
+      // Etapa 2 (§90, §74) — uma única Static Assets deployment atende o
+      // domínio raiz e o wildcard *.imobiliarista.net (mesma zona/rota,
+      // §1). Não existe roteamento por hostname no servidor (§73 mantém o
+      // Worker fora da navegação pública) — a decisão "portal vs minisite"
+      // é só do Browser, lendo location.hostname, exatamente como §74
+      // descreve para o slug do corretor.
+      const APEX = "imobiliarista.net";
+      const RESERVED_HOSTS = new Set([
+        APEX,
+        `www.${APEX}`,
+        `painel.${APEX}`,
+        `admin.${APEX}`,
+        `dados.${APEX}`,
+        `media.${APEX}`,
+        "localhost",
+        "127.0.0.1",
+      ]);
 
-      Static Assets serves this directly (no Worker invocation — §3.2,
-      §73), with not_found_handling = "single-page-application" so any
-      unmatched path falls back here. The real portal SPA (routing,
-      cidade, manifest/shards, filtros, imóvel completo) is built in
-      Etapa 2 per §90; the minisite, painel and admin SPAs already have
-      their own placeholder folders under frontend/ waiting for Etapas
-      2, 5 and 8 respectively.
-    -->
-    <main>
-      <h1>imobiliarista.net</h1>
-      <p>Fundação em construção — Etapa 1 (§90).</p>
-    </main>
+      const host = location.hostname;
+      const isMinisite = host.endsWith(`.${APEX}`) && !RESERVED_HOSTS.has(host);
+      // Absolute path — this same index.html is served (SPA fallback) for
+      // every route (e.g. /imovel/{slug}, /{citySlug}), so a path relative
+      // to the current URL would resolve wrong on any route but "/".
+      const modulePath = isMinisite ? "/minisite/app.js" : "/portal/app.js";
+
+      const { mount } = await import(modulePath);
+      mount(document.getElementById("app"));
+    </script>
   </body>
 </html>
