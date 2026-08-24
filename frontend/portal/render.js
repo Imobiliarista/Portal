@@ -9,6 +9,7 @@
 
 import { buildListingUrl } from "./router.js";
 import { buildEmbedUrl } from "../shared/video-youtube.generated.js";
+import { buildTour360LinkProps } from "../shared/tour-360.generated.js";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -234,8 +235,15 @@ export function renderListingDetail(container, listing) {
     );
   }
 
-  if (vm.tour360?.url) {
-    children.push(el("a", { className: "imob-tour360", attrs: { href: vm.tour360.url, target: "_blank", rel: "noreferrer" }, text: "Ver tour 360°" }));
+  const tour360Link = buildTour360LinkProps(vm.tour360);
+  if (tour360Link) {
+    children.push(
+      el("a", {
+        className: "imob-tour360",
+        attrs: { href: tour360Link.href, target: tour360Link.target, rel: tour360Link.rel },
+        text: tour360Link.text,
+      }),
+    );
   }
 
   if (vm.brokerName) {
