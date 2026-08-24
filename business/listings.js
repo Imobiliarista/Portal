@@ -54,6 +54,13 @@ export class ListingConflictError extends Error {
 const LISTING_STATUSES = ["draft", "active", "paused", "sold", "removed"];
 const PURPOSES = ["venda", "aluguel"];
 
+// Etapa 5 (§56-57) decision: the architecture doc never sets a per-listing
+// media quantity limit — that belongs to the plans system (§52, Etapa 10),
+// which doesn't exist yet. Until then this is a provisional technical
+// safety cap only, meant to be replaced by a plan-derived limit later, not
+// a product decision about how many photos a broker "should" have.
+export const PROVISIONAL_MAX_GALLERY_ITEMS = 50;
+
 function isValidFeatures(value) {
   if (typeof value !== "object" || value === null) return false;
   const { bedrooms, bathrooms, parkingSpaces, area } = value;
@@ -69,7 +76,11 @@ function isValidFeatures(value) {
 }
 
 function isValidGallery(value) {
-  return Array.isArray(value) && value.every((item) => isUrl(item));
+  return (
+    Array.isArray(value) &&
+    value.length <= PROVISIONAL_MAX_GALLERY_ITEMS &&
+    value.every((item) => isUrl(item))
+  );
 }
 
 function isValidVideo(value) {

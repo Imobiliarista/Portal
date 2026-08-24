@@ -1,5 +1,66 @@
 # Changelog
 
+## Etapa 5 — Painel (§90, §54, §56-57)
+
+- `worker/api.js` (novo, era placeholder): `/api/me/profile` (GET/PUT),
+  `/api/me/listings` (GET/POST), `/api/me/listings/:id` (GET/PUT/DELETE).
+  Toda rota chama `requireTenant` primeiro e nunca reimplementa CRUD — só
+  costura `business/brokers.js`/`business/listings.js` (Etapa 3) a
+  respostas HTTP. `DELETE` é soft-delete: `updateListing(..., {status:
+  "removed"})`, reaproveitando o enum de status já existente — nenhuma
+  função nova em `business/listings.js`. Acesso cross-tenant (leitura ou
+  escrita) é bloqueado do mesmo jeito em toda rota: `TenantMismatchError`
+  → 403, tratado centralmente por `core/app.js` (mesmo mecanismo já usado
+  nas Etapas 3-4), não um 404 disfarçado.
+- `worker/uploads.js` (novo, era placeholder): `POST /api/me/media` e
+  `DELETE /api/me/media/:id`. Aceita três `target`: `listing-gallery`
+  (exige `listingId`, valida posse via `assertTenantMatch`, escreve a URL
+  resultante no `gallery` do draft via `updateListing`), `broker-logo` e
+  `broker-cover` (slot único, sobrescrito a cada upload, grava direto em
+  `business/brokers.js#updateBrokerProfile`). O `id` devolvido para
+  DELETE é a própria chave do R2 MEDIA, codificada em base64url — não foi
+  criado nenhum índice novo só para mapear id→chave (§93).
+- `storage/media.js`: **decisão retroativa sobre a Etapa 1** — removido o
+  suporte a `video/mp4`/`video/webm`. Vídeo nunca foi um upload: é sempre
+  um link do YouTube (§50, campo `video` do draft, já validado em
+  `business/listings.js` desde a Etapa 3). Manter os tipos de vídeo no
+  validador deixaria uma porta de upload funcional de até 200MB que nunca
+  deveria existir. `storage/keys.js#mediaKeys.listingVideoItem` (só usado
+  por esse caminho) também foi removido.
+- `business/listings.js`: novo `PROVISIONAL_MAX_GALLERY_ITEMS = 50`,
+  aplicado em `isValidGallery`. A arquitetura não define quantidade
+  máxima de mídia por anúncio — isso é derivado do plano do corretor
+  (§52, Etapa 10/Financeiro, que ainda não existe). Este é só um teto
+  técnico provisório até o sistema de planos existir, não uma decisão de
+  produto.
+- `frontend/painel/` (era placeholder desde a Etapa 1): SPA completa —
+  login, editar perfil (+ upload de logo/capa), listar/criar/editar/
+  excluir anúncio, upload/remoção de fotos da galeria, tratamento de
+  sessão expirada (401 em qualquer chamada → volta pro login). Mesma
+  convenção de `frontend/portal/`/`frontend/minisite/` (JS puro, sem
+  framework, `mount(container)`, `el()` helper) mas falando com
+  `/api/me/*` via `fetch(..., {credentials:"same-origin"})` em vez de ler
+  R2 DATA direto — é o lado privado do fluxo do §2, não o público.
+  `frontend/index.html` ganhou o roteamento por hostname para
+  `painel.imobiliarista.net` (o host já estava reservado desde a Etapa 2)
+  mais um escape hatch `?app=painel` em localhost para dev, mesmo padrão
+  do `window.__IMOB_DATA_BASE_URL__` do portal. `frontend/painel/index.html`
+  (placeholder morto — nunca era servido; nem `portal/` nem `minisite/`
+  têm um `index.html` próprio, só o `frontend/index.html` raiz) foi
+  removido.
+- Sem campo de slug no formulário de criação de anúncio: é derivado do
+  título automaticamente (§30, imutável após criar). Pendência conhecida
+  — ver PR.
+- 18 novos testes de API (`tests/security/painel-api.test.js`, mesmo
+  padrão ponta a ponta de `tests/security/auth-flow.test.js`: handler
+  chamado direto contra `FakeR2Bucket` + cookie de sessão real) cobrindo
+  sucesso, 401 sem sessão, e bloqueio cross-tenant em leitura/escrita de
+  listing e em upload/delete de mídia. Mais testes ajustados para a
+  remoção de vídeo (`tests/storage/media.test.js`) e para o teto de
+  galeria (`tests/business/listings.test.js`). Fluxo completo (login →
+  editar perfil → criar anúncio → upload de foto → excluir → sessão
+  expirada) verificado manualmente via `wrangler dev` + Playwright.
+
 ## Etapa 4 — Auth (§90)
 
 - `business/auth.js` (novo): identidade de credencial em

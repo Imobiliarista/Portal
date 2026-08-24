@@ -7,6 +7,7 @@ import {
   listListingsByBroker,
   ListingNotFoundError,
   ListingConflictError,
+  PROVISIONAL_MAX_GALLERY_ITEMS,
 } from "../../business/listings.js";
 import { ValidationError } from "../../core/validation.js";
 import { TenantMismatchError } from "../../core/tenant.js";
@@ -161,6 +162,34 @@ test("updateListing throws ListingNotFoundError for an unknown listingId", async
     () => updateListing(env, "broker_1", "listing_ghost", { price: 1 }),
     ListingNotFoundError,
   );
+});
+
+test("updateListing rejects a gallery beyond the provisional per-listing cap (§56-57, Etapa 5)", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput());
+
+  const tooMany = Array.from(
+    { length: PROVISIONAL_MAX_GALLERY_ITEMS + 1 },
+    (_, i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`,
+  );
+
+  await assert.rejects(
+    () => updateListing(env, "broker_1", draft.listingId, { gallery: tooMany }),
+    ValidationError,
+  );
+});
+
+test("updateListing accepts a gallery exactly at the provisional cap", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput());
+
+  const atCap = Array.from(
+    { length: PROVISIONAL_MAX_GALLERY_ITEMS },
+    (_, i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`,
+  );
+
+  const updated = await updateListing(env, "broker_1", draft.listingId, { gallery: atCap });
+  assert.equal(updated.gallery.length, PROVISIONAL_MAX_GALLERY_ITEMS);
 });
 
 test("updateListing ignores brokerId/slug present in the patch body", async () => {
