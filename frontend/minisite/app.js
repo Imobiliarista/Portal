@@ -13,6 +13,11 @@ import { renderListingDetail, renderNotFound } from "../portal/render.js";
 // frontend/shared/publications.generated.js. Consumo 100% client-side,
 // sem rota de Worker (mesma filosofia de video-youtube/tour-360).
 import { readPublicationsConfig, parseAtomFeed } from "../shared/publications.generated.js";
+// modules/financing-calculator (§44): mesmo componente reaproveitado do
+// portal — a página de imóvel completo é idêntica nos dois sites (ver
+// header de ../portal/render.js) e o comprador de um minisite também se
+// beneficia da simulação. Ver frontend/portal/components/financing-calculator.js.
+import { mountFinancingCalculator } from "../portal/components/financing-calculator.js";
 
 function injectStylesheet() {
   if (document.querySelector("link[data-imob-minisite-styles]")) return;
@@ -106,6 +111,8 @@ export async function mount(container) {
         return;
       }
       renderListingDetail(container, listing);
+      // §44 — appended after the fact, same reasoning as the portal's app.js.
+      mountFinancingCalculator(container, { propertyValue: listing.price });
       return;
     }
 
