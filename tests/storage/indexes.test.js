@@ -12,6 +12,9 @@ import {
   getBrokerListingIds,
   addBrokerListingId,
   removeBrokerListingId,
+  getKnownPlanIds,
+  registerPlanId,
+  deregisterPlanId,
 } from "../../storage/indexes.js";
 import { FakeR2Bucket } from "./fake-r2-bucket.js";
 
@@ -87,4 +90,23 @@ test("broker listing index add/remove stays deduplicated", async () => {
 test("getBrokerListingIds returns an empty array for a broker with no index yet", async () => {
   const env = makeEnv();
   assert.deepEqual(await getBrokerListingIds(env, "broker_never_published"), []);
+});
+
+// --- plan registry (Etapa 8b, §52/§53) ------------------------------------
+
+test("plan registry add/dedupe/remove", async () => {
+  const env = makeEnv();
+  await registerPlanId(env, "premium");
+  await registerPlanId(env, "basico");
+  await registerPlanId(env, "premium"); // duplicate, no-op
+
+  assert.deepEqual(await getKnownPlanIds(env), ["basico", "premium"]);
+
+  await deregisterPlanId(env, "premium");
+  assert.deepEqual(await getKnownPlanIds(env), ["basico"]);
+});
+
+test("getKnownPlanIds returns an empty array when no plan was ever registered", async () => {
+  const env = makeEnv();
+  assert.deepEqual(await getKnownPlanIds(env), []);
 });

@@ -94,6 +94,21 @@ export const privateKeys = {
   brokerRegistry() {
     return "indexes/brokers.json";
   },
+  /**
+   * Plan catalog entry (§52/§53, Etapa 8b) — a flat record, not a
+   * per-entity folder like brokers/listings, since a plan has no
+   * draft/manifest split of its own (no publisher touches it).
+   */
+  plan(planId) {
+    return `plans/${assertSafeSegment(planId, "planId")}.json`;
+  },
+  /**
+   * Registry of every planId ever created, mirrors `brokerRegistry()` above
+   * — SuperAdmin's plan catalog listing without scanning `plans/` (§26).
+   */
+  planRegistry() {
+    return "indexes/plans.json";
+  },
   job(kind, id) {
     assertSafeSegment(kind, "kind");
     return `jobs/${kind}/${assertSafeSegment(id, "id")}.json`;

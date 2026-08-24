@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imobiliarista.net/schemas/plan.schema.json",
+  "title": "Plan",
+  "description": "plans/{planId}.json in R2 PRIVATE — §52, §53, Etapa 8b. SuperAdmin-managed plan catalog entry. No public projection exists for this object (§53 'gerenciar planos' is an admin-only concern in this lot; billing/Asaas is Etapa 10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "planId", "name", "maxGalleryItems", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "planId": { "type": "string", "minLength": 1, "description": "Slug-shaped id, e.g. \"free\", \"premium\". Immutable once created." },
+    "name": { "type": "string", "minLength": 1 },
+    "maxGalleryItems": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Replaces the old PROVISIONAL_MAX_GALLERY_ITEMS fixed constant (business/listings.js, Etapa 5) — the per-listing gallery photo cap enforced for every broker on this plan."
+    },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

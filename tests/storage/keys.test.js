@@ -33,6 +33,8 @@ test("privateKeys build the §23 layout", () => {
   assert.equal(privateKeys.slugIndex("joao"), "indexes/slugs/joao.json");
   assert.equal(privateKeys.brokerEmailIndex("abc123"), "indexes/broker-emails/abc123.json");
   assert.equal(privateKeys.job("cities", "londrina"), "jobs/cities/londrina.json");
+  assert.equal(privateKeys.plan("premium"), "plans/premium.json");
+  assert.equal(privateKeys.planRegistry(), "indexes/plans.json");
 });
 
 test("dataKeys build the §24 layout, including city shards (§12)", () => {

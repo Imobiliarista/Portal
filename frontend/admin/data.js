@@ -74,6 +74,30 @@ export function publishBroker(brokerId) {
   return apiFetch(`/api/admin/brokers/${encodeURIComponent(brokerId)}/publish`, { method: "POST" });
 }
 
+export function assignBrokerPlan(brokerId, planId) {
+  return apiFetch(`/api/admin/brokers/${encodeURIComponent(brokerId)}/plan`, {
+    method: "PUT",
+    body: JSON.stringify({ planId }),
+  });
+}
+
+// --- planos (§72, §52, §53, Etapa 8b) -----------------------------------------
+export function listPlans() {
+  return apiFetch("/api/admin/plans");
+}
+
+export function createPlan(input) {
+  return apiFetch("/api/admin/plans", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updatePlan(planId, patch) {
+  return apiFetch(`/api/admin/plans/${encodeURIComponent(planId)}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export function deletePlan(planId) {
+  return apiFetch(`/api/admin/plans/${encodeURIComponent(planId)}`, { method: "DELETE" });
+}
+
 // --- rebuild manual (§72, §53, §33-34, Etapa 8) -------------------------------
 export function rebuildCity(citySlug) {
   return apiFetch(`/api/admin/rebuild/city/${encodeURIComponent(citySlug)}`, { method: "POST" });

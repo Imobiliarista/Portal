@@ -4,8 +4,8 @@
 // "a failed private call bounces to login" convention as
 // frontend/painel/app.js — here there is no single GET /api/admin/me to
 // probe on mount (out of scope for this lot), so the dashboard's own first
-// load (GET /api/admin/brokers, via frontend/admin/brokers.js) doubles as
-// that probe: a 401 from it bounces to the login screen exactly like an
+// loads (GET /api/admin/brokers + GET /api/admin/plans, Etapa 8b) double as
+// that probe: a 401 from either bounces to the login screen exactly like an
 // expired session would mid-use.
 //
 // Client-side role check (login response's `role !== "superadmin"`) is
@@ -19,6 +19,7 @@ import * as api from "./data.js";
 import { isSessionExpired } from "./data.js";
 import { renderLoading, renderLogin, renderAppShell } from "./render.js";
 import { createBrokersSection } from "./brokers.js";
+import { createPlansSection } from "./plans.js";
 import { createRebuildSection } from "./publishing.js";
 
 function injectStylesheet() {
@@ -60,8 +61,10 @@ export function mount(container) {
     renderLoading(container);
 
     let brokers;
+    let plans;
     try {
       brokers = await api.listBrokers();
+      plans = await api.listPlans();
     } catch (error) {
       if (isSessionExpired(error)) return showLogin();
       return showLogin(error.message);
@@ -70,11 +73,17 @@ export function mount(container) {
     const content = renderAppShell(container, { onLogout: handleLogout });
 
     const brokersEl = document.createElement("div");
+    const plansEl = document.createElement("div");
     const rebuildEl = document.createElement("div");
-    content.append(brokersEl, rebuildEl);
+    content.append(brokersEl, plansEl, rebuildEl);
 
     const onSessionExpired = () => showLogin("Sessão expirada. Entre novamente.");
-    createBrokersSection(brokersEl, { onSessionExpired, initialBrokers: brokers });
+    const brokersSection = createBrokersSection(brokersEl, { onSessionExpired, initialBrokers: brokers, initialPlans: plans });
+    // Etapa 8b: a criação/edição/remoção de plano feita na seção de planos
+    // precisa refletir imediatamente no seletor de plano de cada corretor —
+    // frontend/admin/plans.js não conhece frontend/admin/brokers.js, então
+    // é este arquivo (o único que já monta as duas seções) que faz a ponte.
+    createPlansSection(plansEl, { onSessionExpired, initialPlans: plans, onPlansChanged: brokersSection.setPlans });
     createRebuildSection(rebuildEl, { onSessionExpired });
   }
 

@@ -36,6 +36,12 @@ import {
   handlePublishBroker,
   handleRebuildCity,
   handleRebuildAll,
+  handleListPlans,
+  handleCreatePlan,
+  handleGetPlan,
+  handleUpdatePlan,
+  handleDeletePlan,
+  handleAssignBrokerPlan,
 } from "./admin.js";
 
 const router = new Router();
@@ -72,6 +78,14 @@ router.post("/api/admin/brokers/:id/publish", async (request, env, ctx, params) 
 
 router.post("/api/admin/rebuild/city/:city", async (request, env, ctx, params) => handleRebuildCity(request, env, ctx, params));
 router.post("/api/admin/rebuild/all", async (request, env) => handleRebuildAll(request, env));
+
+router.put("/api/admin/brokers/:id/plan", async (request, env, ctx, params) => handleAssignBrokerPlan(request, env, ctx, params));
+
+router.get("/api/admin/plans", async (request, env) => handleListPlans(request, env));
+router.post("/api/admin/plans", async (request, env) => handleCreatePlan(request, env));
+router.get("/api/admin/plans/:id", async (request, env, ctx, params) => handleGetPlan(request, env, ctx, params));
+router.put("/api/admin/plans/:id", async (request, env, ctx, params) => handleUpdatePlan(request, env, ctx, params));
+router.delete("/api/admin/plans/:id", async (request, env, ctx, params) => handleDeletePlan(request, env, ctx, params));
 
 router.get("/api/*", async () => notImplemented());
 router.post("/api/*", async () => notImplemented());

@@ -79,9 +79,20 @@ const STATUS_LABELS = {
   disabled: "Desabilitado",
 };
 
-export function renderBrokersSection(content, { brokers, busyBrokerId, error } = {}, handlers = {}) {
+export function renderBrokersSection(content, { brokers, plans, busyBrokerId, error } = {}, handlers = {}) {
   const rows = (brokers ?? []).map((broker) => {
     const busy = busyBrokerId === broker.brokerId;
+
+    // Etapa 8b (§52/§53): atribuir/trocar plano — dispara na hora
+    // (onChange), sem botão "salvar" separado, mesma imediatidade das
+    // ações de status ao lado.
+    const planOptions = (plans ?? []).map((plan) =>
+      el("option", { text: `${plan.name} (${plan.planId})`, value: plan.planId }),
+    );
+    const planSelect = el("select", { className: "imob-plan-select" }, planOptions);
+    planSelect.value = broker.plan ?? "";
+    planSelect.addEventListener("change", () => handlers.onAssignPlan?.(broker.brokerId, planSelect.value));
+    if (busy || !plans?.length) planSelect.setAttribute("disabled", "true");
 
     const approveButton =
       broker.status === "pending"
@@ -109,7 +120,7 @@ export function renderBrokersSection(content, { brokers, busyBrokerId, error } =
     return el("tr", {}, [
       el("td", { text: broker.name }),
       el("td", { text: broker.slug }),
-      el("td", { text: broker.plan }),
+      el("td", { className: "imob-plan-cell" }, [planSelect]),
       el(
         "td",
         { className: `imob-status imob-status-${broker.status}` },
@@ -137,6 +148,107 @@ export function renderBrokersSection(content, { brokers, busyBrokerId, error } =
       el("h2", { text: "Corretores" }),
       messageBox(error),
       brokers?.length ? table : el("p", { className: "imob-message", text: "Nenhum corretor cadastrado ainda." }),
+    ]),
+  );
+}
+
+// --- planos (§52, §53, Etapa 8b, /api/admin/plans*) -----------------------------
+// Single form, toggling between "criar" and "editar" (`editingPlanId` in
+// state) instead of two separate forms — mirrors the rest of this file's
+// preference for one state-driven draw() over parallel DOM trees.
+export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, error } = {}, handlers = {}) {
+  const editing = (plans ?? []).find((plan) => plan.planId === editingPlanId);
+
+  const planIdInput = el("input", {
+    attrs: { type: "text", name: "planId", placeholder: "id (ex.: premium)", required: "true" },
+  });
+  const nameInput = el("input", {
+    attrs: { type: "text", name: "name", placeholder: "Nome", required: "true" },
+    value: editing?.name,
+  });
+  const maxGalleryInput = el("input", {
+    attrs: { type: "number", name: "maxGalleryItems", placeholder: "Limite de fotos por anúncio", min: "1", required: "true" },
+    value: editing?.maxGalleryItems,
+  });
+
+  if (editing) {
+    planIdInput.value = editing.planId;
+    planIdInput.setAttribute("disabled", "true"); // planId é imutável após criado
+  }
+
+  const cancelButton = editing ? el("button", { className: "imob-danger", text: "Cancelar edição", attrs: { type: "button" } }) : null;
+  cancelButton?.addEventListener("click", () => handlers.onCancelEdit?.());
+
+  const submitButton = el("button", { attrs: { type: "submit" }, text: editing ? "Salvar plano" : "Criar plano" });
+
+  const form = el("form", { className: "imob-plan-form" }, [
+    planIdInput,
+    nameInput,
+    maxGalleryInput,
+    submitButton,
+    cancelButton,
+  ]);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = {
+      name: nameInput.value.trim(),
+      maxGalleryItems: Number(maxGalleryInput.value),
+    };
+    if (editing) {
+      handlers.onUpdate?.(editing.planId, input);
+    } else {
+      handlers.onCreate?.({ ...input, planId: planIdInput.value.trim() });
+    }
+  });
+
+  const rows = (plans ?? []).map((plan) => {
+    const busy = busyPlanId === plan.planId;
+    // "free" mirrors business/plans.js's DEFAULT_PLAN_ID — not imported
+    // (frontend/admin never imports business/*, same boundary every other
+    // frontend/*.js in this repo keeps), just the same literal server-side
+    // deletePlan() already refuses to remove.
+    const isDefault = plan.planId === "free";
+
+    const editButton = el("button", { text: "Editar", attrs: { type: "button" } });
+    editButton.addEventListener("click", () => handlers.onStartEdit?.(plan.planId));
+
+    const deleteButton = el("button", { className: "imob-danger", text: "Remover", attrs: { type: "button" } });
+    deleteButton.addEventListener("click", () => handlers.onDelete?.(plan.planId));
+    if (isDefault) {
+      deleteButton.setAttribute("disabled", "true");
+      deleteButton.title = "O plano padrão não pode ser removido.";
+    }
+
+    for (const button of [editButton, deleteButton]) {
+      if (busy) button.setAttribute("disabled", "true");
+    }
+
+    return el("tr", {}, [
+      el("td", { text: plan.name }),
+      el("td", { text: plan.planId }),
+      el("td", { text: String(plan.maxGalleryItems) }),
+      el("td", { className: "imob-actions" }, [editButton, deleteButton]),
+    ]);
+  });
+
+  const table = el("table", { className: "imob-plans-table" }, [
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "Nome" }),
+        el("th", { text: "ID" }),
+        el("th", { text: "Limite de fotos" }),
+        el("th", { text: "Ações" }),
+      ]),
+    ]),
+    el("tbody", {}, rows),
+  ]);
+
+  content.replaceChildren(
+    el("section", { className: "imob-plans-section" }, [
+      el("h2", { text: "Planos" }),
+      messageBox(error),
+      plans?.length ? table : el("p", { className: "imob-message", text: "Nenhum plano cadastrado ainda." }),
+      form,
     ]),
   );
 }

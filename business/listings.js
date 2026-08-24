@@ -36,6 +36,7 @@ import {
 } from "../core/validation.js";
 import { sanitizeText } from "../core/security.js";
 import { TenantMismatchError } from "../core/tenant.js";
+import { getGalleryLimitForBroker } from "./plans.js";
 
 export class ListingNotFoundError extends Error {
   constructor(listingId) {
@@ -51,15 +52,24 @@ export class ListingConflictError extends Error {
   }
 }
 
+/**
+ * Etapa 8b (§52/§53): the per-listing gallery photo count is no longer a
+ * fixed constant here — it's derived from the owning broker's plan (see
+ * business/plans.js#getGalleryLimitForBroker, which itself falls back to a
+ * seeded default plan for a broker with none assigned). Thrown by
+ * createListing/updateListing below whenever a `gallery` patch would push
+ * the count past that limit; a 409-style conflict (not ValidationError),
+ * matching how worker/uploads.js already treated a full gallery.
+ */
+export class GalleryLimitExceededError extends ListingConflictError {
+  constructor(limit) {
+    super(`Limite de ${limit} fotos por anúncio atingido para o plano deste corretor.`);
+    this.limit = limit;
+  }
+}
+
 const LISTING_STATUSES = ["draft", "active", "paused", "sold", "removed"];
 const PURPOSES = ["venda", "aluguel"];
-
-// Etapa 5 (§56-57) decision: the architecture doc never sets a per-listing
-// media quantity limit — that belongs to the plans system (§52, Etapa 10),
-// which doesn't exist yet. Until then this is a provisional technical
-// safety cap only, meant to be replaced by a plan-derived limit later, not
-// a product decision about how many photos a broker "should" have.
-export const PROVISIONAL_MAX_GALLERY_ITEMS = 50;
 
 function isValidFeatures(value) {
   if (typeof value !== "object" || value === null) return false;
@@ -75,12 +85,12 @@ function isValidFeatures(value) {
   );
 }
 
+// Shape-only: every item must be a URL. The *count* limit is no longer a
+// static rule here — it depends on the broker's plan (§52/§53), checked
+// separately (async) in createListing/updateListing below, after this
+// synchronous field-rule pass.
 function isValidGallery(value) {
-  return (
-    Array.isArray(value) &&
-    value.length <= PROVISIONAL_MAX_GALLERY_ITEMS &&
-    value.every((item) => isUrl(item))
-  );
+  return Array.isArray(value) && value.every((item) => isUrl(item));
 }
 
 function isValidVideo(value) {
@@ -161,6 +171,13 @@ export async function createListing(env, brokerId, input) {
     required: ["city", "slug", "title", "purpose", "type", "price", "features"],
   });
 
+  if (picked.gallery !== undefined) {
+    const limit = await getGalleryLimitForBroker(env, brokerId);
+    if (picked.gallery.length > limit) {
+      throw new GalleryLimitExceededError(limit);
+    }
+  }
+
   const listingId = isNonEmptyString(input?.listingId) ? input.listingId : newListingId();
 
   const existingSlugOwner = await resolveSlug(env, picked.slug);
@@ -234,6 +251,13 @@ export async function updateListing(env, brokerId, listingId, patch) {
   }
 
   const picked = assertValid(patch, UPDATE_ALLOWED_FIELDS, FIELD_RULES);
+
+  if (picked.gallery !== undefined) {
+    const limit = await getGalleryLimitForBroker(env, brokerId);
+    if (picked.gallery.length > limit) {
+      throw new GalleryLimitExceededError(limit);
+    }
+  }
 
   if (picked.title !== undefined) picked.title = sanitizeText(picked.title);
   if (picked.description !== undefined) picked.description = sanitizeText(picked.description);

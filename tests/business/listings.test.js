@@ -7,11 +7,20 @@ import {
   listListingsByBroker,
   ListingNotFoundError,
   ListingConflictError,
-  PROVISIONAL_MAX_GALLERY_ITEMS,
+  GalleryLimitExceededError,
 } from "../../business/listings.js";
+import { createPlan } from "../../business/plans.js";
 import { ValidationError } from "../../core/validation.js";
 import { TenantMismatchError } from "../../core/tenant.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+
+// Etapa 8b (§52/§53): the gallery cap now comes from business/plans.js's
+// seeded default plan (DEFAULT_PLAN_ID, maxGalleryItems 50) whenever the
+// broker referenced by createListing/updateListing has no real broker
+// record — same as a broker with no plan assigned (see
+// business/plans.js#getGalleryLimitForBroker). 50 here mirrors that
+// seeded default, not a constant these tests import anymore.
+const DEFAULT_GALLERY_LIMIT = 50;
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket() };
@@ -164,32 +173,61 @@ test("updateListing throws ListingNotFoundError for an unknown listingId", async
   );
 });
 
-test("updateListing rejects a gallery beyond the provisional per-listing cap (§56-57, Etapa 5)", async () => {
+test("updateListing rejects a gallery beyond the broker's plan limit (§52/§53, Etapa 8b) — falls back to the default plan when the broker has none assigned", async () => {
   const env = makeEnv();
   const draft = await createListing(env, "broker_1", baseInput());
 
   const tooMany = Array.from(
-    { length: PROVISIONAL_MAX_GALLERY_ITEMS + 1 },
+    { length: DEFAULT_GALLERY_LIMIT + 1 },
     (_, i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`,
   );
 
   await assert.rejects(
     () => updateListing(env, "broker_1", draft.listingId, { gallery: tooMany }),
-    ValidationError,
+    GalleryLimitExceededError,
   );
 });
 
-test("updateListing accepts a gallery exactly at the provisional cap", async () => {
+test("updateListing accepts a gallery exactly at the default plan's cap", async () => {
   const env = makeEnv();
   const draft = await createListing(env, "broker_1", baseInput());
 
   const atCap = Array.from(
-    { length: PROVISIONAL_MAX_GALLERY_ITEMS },
+    { length: DEFAULT_GALLERY_LIMIT },
     (_, i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`,
   );
 
   const updated = await updateListing(env, "broker_1", draft.listingId, { gallery: atCap });
-  assert.equal(updated.gallery.length, PROVISIONAL_MAX_GALLERY_ITEMS);
+  assert.equal(updated.gallery.length, DEFAULT_GALLERY_LIMIT);
+});
+
+test("updateListing respects a higher limit from a broker's actual assigned plan", async () => {
+  const env = makeEnv();
+  const { createBroker } = await import("../../business/brokers.js");
+  await createPlan(env, { planId: "premium", name: "Premium", maxGalleryItems: 80 });
+  const broker = await createBroker(env, {
+    userId: "user_1",
+    slug: "joao",
+    name: "João",
+    plan: "premium",
+    email: "joao@imobiliarista.net",
+  });
+
+  const draft = await createListing(env, broker.brokerId, baseInput({ slug: "outro-imovel" }));
+  const galleryUrl = (i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`;
+
+  // Above the default plan's 50 but within this broker's own "premium"
+  // plan (80) — would have been rejected before this lot's plan-derived
+  // limit existed.
+  const above50BelowPlan = Array.from({ length: DEFAULT_GALLERY_LIMIT + 10 }, (_, i) => galleryUrl(i));
+  const updated = await updateListing(env, broker.brokerId, draft.listingId, { gallery: above50BelowPlan });
+  assert.equal(updated.gallery.length, DEFAULT_GALLERY_LIMIT + 10);
+
+  const beyondPlan = Array.from({ length: 81 }, (_, i) => galleryUrl(i));
+  await assert.rejects(
+    () => updateListing(env, broker.brokerId, draft.listingId, { gallery: beyondPlan }),
+    GalleryLimitExceededError,
+  );
 });
 
 test("updateListing ignores brokerId/slug present in the patch body", async () => {

@@ -1,5 +1,112 @@
 # Changelog
 
+## Etapa 8b — SuperAdmin: planos (§90, §52, §53)
+
+Segunda metade da Etapa 8, separada da 8a (aprovação/suspensão/rebuild)
+por decisão do solicitante. Substitui a constante fixa
+`PROVISIONAL_MAX_GALLERY_ITEMS` (Etapa 5) por um limite de fotos derivado
+do plano real do corretor.
+
+Duas decisões de produto que o documento não cobre foram confirmadas com o
+solicitante antes de implementar (ver pendências abertas nesta seção e em
+docs/OPERATIONS.md):
+1. **Limite de anúncios ativos por corretor**: ficou de fora deste lote —
+   não é inventado nem como campo morto no schema. O documento não define
+   esse limite em lugar nenhum.
+2. **Corretor sem plano atribuído**: em vez de cair só num teto técnico
+   solto (que reintroduziria a mesma duplicação de fonte-de-verdade que
+   este lote existe para eliminar), o catálogo de planos ganha um plano
+   `"free"` semeado automaticamente (50 fotos/anúncio — mesmo valor do
+   antigo `PROVISIONAL_MAX_GALLERY_ITEMS`), e todo corretor sem plano
+   resolve para ele. Nome/preço/limite reais desse (ou de qualquer outro)
+   plano são pendência explícita — ver abaixo.
+
+- `business/plans.js` (novo): domínio privado de planos, mesmo padrão de
+  `business/brokers.js` — CRUD (`createPlan`/`updatePlan`/`getPlanById`/
+  `listPlans`/`deletePlan`) sobre `plans/{planId}.json` em R2 PRIVATE, mais
+  um registro (`indexes/plans.json`) para listar sem varrer o bucket
+  (§26). `deletePlan` recusa remover o plano padrão (`DEFAULT_PLAN_ID =
+  "free"`) e recusa remover qualquer plano ainda atribuído a algum
+  corretor. `assignBrokerPlan(env, brokerId, planId)` é a ação de
+  SuperAdmin (§53) que atribui/troca o plano de um corretor — valida que o
+  `planId` existe antes de gravar, ao contrário do `plan` livre que
+  `createBroker` sempre aceitou (Etapa 3, sem validação contra catálogo
+  nenhum — continua assim, ver pendências). `getGalleryLimitForBroker(env,
+  brokerId)` é a função nova que resolve "quantas fotos este corretor pode
+  ter por anúncio agora": plano atribuído → limite desse plano; sem plano,
+  broker não encontrado, ou plano atribuído que não existe mais (deletado,
+  ou texto livre de antes deste lote) → semeia/usa o plano `"free"`. Um
+  plano nunca deixa de resolver para um número.
+- `business/listings.js`: **decisão retroativa sobre a Etapa 5** — removido
+  `PROVISIONAL_MAX_GALLERY_ITEMS` e a checagem estática de tamanho da
+  galeria em `isValidGallery` (que agora só valida forma: array de URLs).
+  `createListing`/`updateListing` chamam
+  `business/plans.js#getGalleryLimitForBroker` de forma assíncrona depois
+  do `assertValid` e rejeitam com o novo `GalleryLimitExceededError`
+  (subclasse de `ListingConflictError`, não mais `ValidationError` — muda
+  o código HTTP de 422 para 409 em `PUT /api/me/listings/:id`, ver
+  `worker/api.js` abaixo) quando o patch de `gallery` excede o limite do
+  plano do corretor dono do anúncio.
+- `worker/uploads.js`: **muda um arquivo da Etapa 5 já mesclado** — o
+  check de "galeria cheia" em `POST /api/me/media` não lê mais
+  `PROVISIONAL_MAX_GALLERY_ITEMS` (removida); consulta
+  `getGalleryLimitForBroker(env, listing.brokerId)` antes de aceitar o
+  upload. Também passa a tratar `GalleryLimitExceededError` vindo de
+  `updateListing` (defesa contra corrida entre o pré-check e a escrita em
+  duas requisições concorrentes) com o mesmo 409 do pré-check.
+- `worker/api.js`: `handlePutListing` ganhou um catch para
+  `ListingConflictError` (cobre o novo `GalleryLimitExceededError`) — antes
+  esse handler só tratava `ListingNotFoundError` e deixava tudo o mais cair
+  no 500 genérico central; `handleCreateListing` já tratava
+  `ListingConflictError` desde a Etapa 3, nada mudou lá.
+- `worker/admin.js`: novas rotas `/api/admin/plans*` (CRUD, atrás de
+  `requireSuperadmin` como todo o resto deste arquivo) e
+  `PUT /api/admin/brokers/:id/plan` (atribuir/trocar plano — verbo PUT,
+  não POST, por ser "definir um recurso" e não uma ação tipo
+  aprovar/suspender, mesma convenção de `PUT /api/me/profile`).
+- `storage/keys.js`/`storage/indexes.js`: `privateKeys.plan(planId)`
+  (`plans/{planId}.json`), `privateKeys.planRegistry()`
+  (`indexes/plans.json`), e o registro correspondente
+  (`getKnownPlanIds`/`registerPlanId`/`deregisterPlanId`) — este último é
+  o único registro do projeto que de fato remove entradas (`deletePlan`),
+  ao contrário do registro de corretores/cidades, que só cresce.
+- `schemas/plan.schema.json` (novo): shape de `plans/{planId}.json`. Sem
+  projeção pública — plano é um dado só-admin nesta etapa (Etapa 10/Asaas é
+  quem eventualmente precisaria expor algo ao público, se precisar).
+- `frontend/admin/{data,render,brokers,plans,app}.js`: nova seção
+  "Planos" (listar/criar/editar/remover) e a coluna "Plano" da tabela de
+  corretores virou um `<select>` que atribui na hora (`onChange`, sem
+  botão "salvar" separado) em vez de texto estático. `frontend/admin/app.js`
+  é quem sincroniza as duas seções — a lista de planos que
+  `frontend/admin/plans.js` mantém também alimenta o `<select>` de
+  `frontend/admin/brokers.js`, via um `onPlansChanged` que a seção de
+  planos chama depois de qualquer mutação bem-sucedida.
+- 40 novos/alterados testes: `tests/business/plans.test.js` (novo — CRUD,
+  seed do plano padrão, `assignBrokerPlan`, `getGalleryLimitForBroker`),
+  `tests/business/listings.test.js` (troca os testes do teto fixo por
+  testes do limite vindo do plano, incluindo um corretor com plano acima
+  de 50), `tests/security/admin-api.test.js` (rotas `/api/admin/plans*` e
+  `/api/admin/brokers/:id/plan`, incluindo o gate de superadmin),
+  `tests/storage/keys.test.js`/`tests/storage/indexes.test.js` (chaves e
+  registro de plano).
+
+### Pendências abertas (ver também docs/OPERATIONS.md)
+
+- **Catálogo real de planos**: nomes, preços e limites de planos reais
+  (além do `"free"` semeado com 50 fotos/anúncio) não foram inventados —
+  são decisão de produto do solicitante. A estrutura de CRUD já suporta
+  criá-los via `POST /api/admin/plans` assim que a decisão existir.
+- **Limite de anúncios ativos por corretor**: fora de escopo por decisão
+  explícita — o documento não define esse limite; nenhum campo foi
+  adicionado ao modelo de plano para evitar um campo que pareceria
+  funcionar sem funcionar.
+- **`createBroker`'s `plan` field**: continua texto livre, não validado
+  contra o catálogo de planos (não há rota de criação de corretor que
+  precisasse disso — ver pendência da Etapa 8a). `assignBrokerPlan` é o
+  único caminho que garante `broker.plan` apontando para um plano real.
+- **Cobrança/Asaas**: Etapa 10, como já estava previsto — este lote é só a
+  estrutura de dados do plano e o limite técnico que ele impõe.
+
 ## Etapa 8a — SuperAdmin: aprovação/suspensão + rebuild manual (§90, §53, §55, §72)
 
 Fecha a pendência aberta desde a Etapa 4: até este lote, um corretor
