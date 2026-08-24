@@ -213,7 +213,7 @@ export function renderListingForm(content, { listing, mode, saving, error, uploa
     field("Vagas", "parkingSpaces", f.parkingSpaces, "number"),
     field("Área (m²)", "area", f.area, "number"),
     field("Vídeo (link do YouTube)", "videoUrl", listing?.video ? `https://youtube.com/watch?v=${listing.video.id}` : ""),
-    field("Tour 360 (URL)", "tour360Url", listing?.tour360?.url),
+    field("Tour 360 (URL)", "tour360Url", listing?.tour360?.url, "url"),
     el("button", { attrs: { type: "submit" }, text: saving ? "Salvando…" : "Salvar" }),
   ]);
 

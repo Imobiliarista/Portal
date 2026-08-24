@@ -154,3 +154,15 @@ a {
   border: none;
   border-radius: 0.5rem;
 }
+
+.imob-tour360 {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--imob-accent);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--imob-accent);
+  text-decoration: none;
+  font-weight: 600;
+}
