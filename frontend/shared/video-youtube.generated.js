@@ -18,5 +18,5 @@ export function parseYoutubeId(input) {
 }
 
 export function buildEmbedUrl(id) {
-  return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`;
 }

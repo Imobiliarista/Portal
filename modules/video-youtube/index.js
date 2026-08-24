@@ -41,11 +41,15 @@ export function parseYoutubeId(input) {
 
 /**
  * Monta a URL de embed (`<iframe src="...">`) a partir de um id já
- * validado (`listing.video.id` — §50). `id` é URL-encoded por segurança
- * mesmo não sendo esperado conter caracteres especiais.
+ * validado (`listing.video.id` — §50). Usa `youtube-nocookie.com`
+ * (modo "privacidade reforçada" do YouTube): o portal é público e
+ * indexado, e esse domínio evita que o YouTube grave cookie de
+ * rastreamento no visitante antes de ele optar por dar play. `id` é
+ * URL-encoded por segurança mesmo não sendo esperado conter caracteres
+ * especiais.
  */
 export function buildEmbedUrl(id) {
-  return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`;
 }
 
 /**

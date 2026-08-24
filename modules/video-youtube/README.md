@@ -69,6 +69,12 @@ O arquivo gerado é commitado (nunca editado à mão) — mesmo espírito de
    painel; o Worker só recebe e valida o objeto `{provider, id}` já
    pronto (§78, `business/listings.js#FIELD_RULES`) — consistente com
    "preferir client-side sempre que possível" (mesmo espírito do §44).
+4. **`buildEmbedUrl` aponta para `youtube-nocookie.com`, não
+   `youtube.com`.** O documento não distingue os dois domínios de embed
+   do YouTube — mas o portal é público e indexado (visitante nunca deu
+   opt-in de tracking antes de abrir a página do imóvel), então o modo
+   "privacidade reforçada" (`youtube-nocookie.com`, que não grava cookie
+   de rastreamento antes do play) é a leitura mais conservadora.
 
 ## Pendências
 
