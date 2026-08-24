@@ -1,5 +1,91 @@
 # Changelog
 
+## Etapa 7 — Escala (§90, §7-9, §32-36)
+
+O Publicador (Etapa 6) assumia implicitamente shard único por cidade
+(`dataKeys.cityShard(slug, 1)` hardcoded). Este lote remove essa suposição:
+cidades agora particionam de verdade quando ultrapassam 300 cards OU ~1MB
+comprimido (§9), o que vier primeiro.
+
+- `business/sharding.js` (novo): lógica pura de particionamento —
+  `cardFitsInShard`/`partitionCardsIntoShards`/`estimateCompressedSize`.
+  Sem R2 aqui, testável isoladamente (`tests/business/sharding.test.js`).
+  `estimateCompressedSize` só roda `CompressionStream("gzip")` de verdade
+  quando o JSON descomprimido já ultrapassa o alvo de 1MB — abaixo disso, a
+  compressão de JSON textual normal só encolhe, então o tamanho
+  descomprimido já garante que cabe (evita rodar gzip em toda publicação
+  de uma cidade pequena, que é o caso comum).
+- `business/publishing.js`: reescrito `applyCardToCity`/`touchCityManifest`
+  e adicionado `findOrCreateShardForNewCard`. Decisões (documentadas no
+  cabeçalho do arquivo, decisão 4):
+  - **Atribuição de shard é sticky por anúncio.** Novo campo no manifest
+    privado do anúncio, `publishedShard` — registra em qual shard da
+    cidade atual o card está. Editar um anúncio já publicado atualiza o
+    card **no mesmo shard**, nunca move para outro, mesmo que o shard
+    cresça um pouco além do alvo de 1MB nesse processo. O limite do §9 é
+    sobre abrir um shard novo, não sobre nunca deixar um existente crescer
+    por causa de uma edição in place.
+  - **Card novo sempre tenta o último shard da cidade primeiro**; se não
+    couber, abre um shard novo. Nunca faz backfill em shards anteriores que
+    sobraram com espaço por remoções — mesma filosofia monotônica já usada
+    pelo registro de cidades (`storage/indexes.js#registerCitySlug`):
+    simplicidade (§94) em vez de reempacotamento perfeito.
+  - **`manifest.shards` é monotônico** na publicação incremental — só
+    cresce (um shard esvaziado por remoções continua listado). Renumerar
+    quebraria `publishedShard` de outros anúncios apontando pro mesmo
+    número. Só `rebuildCity` pode encolher essa lista.
+  - **Fallback defensivo**: se `publishedShard` estiver desatualizado (ex.:
+    a cidade foi reparticionada por `rebuildCity` sem essa gravação ter
+    chegado por algum motivo) e o card não for encontrado no shard
+    indicado, o publicador trata como inserção nova em vez de travar ou
+    silenciosamente não fazer nada.
+- `business/publishing.js#rebuildCity`: agora reparticiona de verdade
+  (`partitionCardsIntoShards`) em vez de gravar tudo em `001.json` com um
+  `console.warn` acima de 300 cards. Também sincroniza `publishedShard` de
+  cada anúncio processado com o resultado do reparticionamento, e apaga
+  explicitamente arquivos de shard que sobraram de uma contagem anterior
+  maior (cidade encolheu) — nunca deixa `NNN.json` órfão apontando pra
+  nada.
+- `rebuildAll` (§34): sem mudança de comportamento — continua processando
+  em lotes por cidade (não por shard individual), o que já é mais
+  conservador que "100 shards por lote" sugere, não menos; comentário
+  atualizado só porque a premissa antiga (cidade == 1 shard) não vale mais.
+- Jobs/Queue (§35-36): sem mudança — nenhum sinal de volume que justifique
+  Queue; permanece execução síncrona/direta (decisão já tomada na Etapa 6,
+  revalidada aqui).
+- **Nenhuma mudança de schema.** `city-manifest.schema.json` (`shards` já
+  array), `city-index.schema.json` (`shard` já sem limite superior) e
+  `city-shard.schema.json` (`maxItems: 300` já presente) já previam
+  múltiplos shards desde o Lote 1. `frontend/portal/data.js`/`filters.js`
+  (Lote 2) também já eram agnósticos à contagem de shards — já buscavam
+  shard por número e já usavam `shardsNeededForFilters` sobre o índice
+  compacto para decidir quais shards buscar. Confirmado com um teste de
+  integração dedicado
+  (`tests/frontend/portal/multi-shard-read.test.js`) em vez de qualquer
+  mudança de código no frontend.
+- 16 novos testes: `tests/business/sharding.test.js` (particionamento puro
+  — limite por contagem, limite por tamanho comprimido usando conteúdo de
+  alta entropia pra cruzar ~1MB com poucos cards, caso vazio),
+  `tests/publishing/sharding.test.js` (publicação real que força um shard
+  novo ao passar de 300 cards + atribuição sticky, regressão de cidade
+  pequena em shard único, `rebuildCity` reparticionando/encolhendo uma
+  cidade com limpeza do shard órfão) e
+  `tests/frontend/portal/multi-shard-read.test.js` (leitura via
+  `data.js`/`filters.js` reais contra fixtures de uma cidade de 2 shards).
+- Pendências explícitas, fora do escopo deste lote (Etapa 8):
+  - Telas de SuperAdmin para monitorar tamanho de shard ou disparar
+    reparticionamento manual — `rebuildCity`/`rebuildAll` continuam só CLI
+    (`scripts/rebuild-*.js`), sem rota `/api/admin/rebuild/*` exposta
+    (mesma pendência já registrada na Etapa 6).
+  - Particionamento de listagens de corretor (§17 "mesma regra pode ser
+    reutilizada") não foi tocado — fora do escopo explícito deste lote
+    (só particionamento de cidade, §7-9). `brokers/{slug}/listings.json`
+    continua um arquivo único.
+  - Sem compactação/reempacotamento automático de shards esparsos — uma
+    cidade que perde muitos anúncios por remoção só volta a ocupar menos
+    shards quando alguém roda `rebuildCity`/`rebuildAll` explicitamente
+    (nenhum gatilho automático foi pedido nem adicionado).
+
 ## Etapa 6 — Publicador (§90, §29-37, §64)
 
 Primeira vez que um anúncio criado no painel (Etapa 5) passa a existir de
