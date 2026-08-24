@@ -50,6 +50,22 @@
 
       const { mount } = await import(modulePath);
       mount(document.getElementById("app"));
+
+      // Módulo pwa (§48) — registro/link opcional, só no host do portal
+      // (o manifest é branding do portal, não de corretor/minisite —
+      // ver modules/pwa/README.md). Isolado de propósito: nenhuma lógica
+      // do módulo mora aqui, só esta chamada; se frontend/manifest.json e
+      // frontend/service-worker.js não existirem (módulo removido), o
+      // <link> é ignorado pelo browser e `register` rejeita — capturado
+      // abaixo — sem afetar o resto do portal.
+      const isPortalHost = !isMinisite && !isPainelHost && !isAdminHost;
+      if (isPortalHost && "serviceWorker" in navigator) {
+        const manifestLink = document.createElement("link");
+        manifestLink.rel = "manifest";
+        manifestLink.href = "/manifest.json";
+        document.head.append(manifestLink);
+        navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+      }
     </script>
   </body>
 </html>

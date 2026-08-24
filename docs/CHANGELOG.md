@@ -1,5 +1,48 @@
 # Changelog
 
+## Etapa 9 (lote 1/N) — Módulo pwa (§90, §48)
+
+Primeiro módulo real da Etapa 9 (§90 lista `pwa` entre os módulos
+iniciais, §40). §48 é só duas frases ("Módulo isolado. Não tornar PWA
+dependência do portal."), então a maior parte do trabalho foi resolver
+ambiguidade — decisões completas em `modules/pwa/README.md`; resumo:
+
+1. **Escopo = portal público, não minisite/painel/admin.** O manifest é
+   config estática (nome "imobiliarista.net"), não dado de corretor —
+   aplicá-lo a minisites (origem por corretor) seria semanticamente
+   errado neste lote. Minisite/painel/admin ficam de fora, revisitáveis
+   depois.
+2. **`modules/pwa/manifest.js`** (novo): `PWA_MANIFEST_CONFIG` +
+   `buildManifestObject()`, puro, sem I/O.
+3. **`modules/pwa/service-worker.js`** (novo): app shell precache
+   (`frontend/portal/*`) + cache network-first dos JSONs públicos que
+   `frontend/portal/data.js` busca, com TTL de
+   `storage/cache.js#CACHE_TTL_SECONDS` (§59-§61) — nunca redigitado.
+   `renderServiceWorkerSource()` embute a mesma `CACHE_TTL_SECONDS` e a
+   mesma função `classifyJsonRequestKind` testada em Node (via
+   `.toString()`), então o código gerado é literalmente o código testado.
+4. **`modules/pwa/index.js`** (novo): `registerServiceWorker()`, único
+   ponto de contato com o frontend — nunca lança, sempre falha em
+   silêncio.
+5. **`scripts/generate-pwa-assets.js`** (novo, `npm run generate:pwa`,
+   mesmo padrão de `scripts/generate-cities-catalog.js`): escreve
+   `frontend/manifest.json` e `frontend/service-worker.js` — Static
+   Assets reais, commitados, nunca editados à mão. Workers Static Assets
+   só serve `frontend/` (`wrangler.toml`), então esses dois arquivos não
+   podiam morar só em `modules/pwa/` sem um passo de geração; nenhuma
+   rota de Worker foi adicionada (§94, §73).
+6. **`frontend/index.html`**: único ponto tocado no shell do portal — um
+   `<link rel="manifest">` + `navigator.serviceWorker.register(...)`
+   opcionais, só no host do portal, com `.catch(() => {})`. Se
+   `modules/pwa/` for removido, esse trecho falha em silêncio e o portal
+   continua 100% funcional (§48).
+7. **`frontend/icons/icon.svg`** (novo): único ícone hoje — SVG mínimo
+   escrito à mão. Ícones PNG reais (192/512/maskable) ficam como
+   pendência antes de um lançamento real.
+
+Nenhuma mudança em `core/`, `business/`, `worker/index.js` ou em qualquer
+`app.js` de frontend — `core/` continua sem conhecer `modules/` (§39).
+
 ## Etapa 8b — SuperAdmin: planos (§90, §52, §53)
 
 Segunda metade da Etapa 8, separada da 8a (aprovação/suspensão/rebuild)
