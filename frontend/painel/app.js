@@ -20,6 +20,10 @@ import {
 } from "./render.js";
 import { buildProfilePatch, buildListingPayload } from "./forms.js";
 import { assertUploadableImage, ClientMediaValidationError } from "./media.js";
+// modules/publications (§47): gerado a partir de
+// modules/publications/index.js + config.js — ver
+// frontend/shared/publications.generated.js.
+import { resolveBloggerFeedUrl, validatePublicationsConfig, readPublicationsConfig } from "../shared/publications.generated.js";
 
 function injectStylesheet() {
   if (document.querySelector("link[data-imob-painel-styles]")) return;
@@ -78,23 +82,63 @@ export function mount(container) {
     drawProfile(contentEl, profile, {});
   }
 
-  function drawProfile(contentEl, profile, { error, saving, saved } = {}) {
-    renderProfileForm(contentEl, { profile, error, saving, saved }, {
-      onSubmit: async (entries) => {
-        drawProfile(contentEl, profile, { saving: true });
-        try {
-          const updated = await api.updateProfile(buildProfilePatch(entries));
-          drawProfile(contentEl, updated, { saved: true });
-        } catch (submitError) {
-          if (isSessionExpired(submitError)) return showLogin("Sessão expirada. Entre novamente.");
-          drawProfile(contentEl, profile, { error: submitError.message });
-        }
+  function drawProfile(contentEl, profile, { error, saving, saved, publicationsBusy, publicationsError, publicationsSaved } = {}) {
+    renderProfileForm(
+      contentEl,
+      { profile, error, saving, saved, publicationsBusy, publicationsError, publicationsSaved },
+      {
+        onSubmit: async (entries) => {
+          drawProfile(contentEl, profile, { saving: true });
+          try {
+            const updated = await api.updateProfile(buildProfilePatch(entries));
+            drawProfile(contentEl, updated, { saved: true });
+          } catch (submitError) {
+            if (isSessionExpired(submitError)) return showLogin("Sessão expirada. Entre novamente.");
+            drawProfile(contentEl, profile, { error: submitError.message });
+          }
+        },
+        onUploadLogo: (file) => uploadProfileMedia(contentEl, profile, file, "broker-logo"),
+        onUploadCover: (file) => uploadProfileMedia(contentEl, profile, file, "broker-cover"),
+        onDeleteLogo: () => deleteProfileMedia(contentEl, profile, "logo"),
+        onDeleteCover: () => deleteProfileMedia(contentEl, profile, "cover"),
+        onSubmitPublications: (input) => submitPublications(contentEl, profile, input),
       },
-      onUploadLogo: (file) => uploadProfileMedia(contentEl, profile, file, "broker-logo"),
-      onUploadCover: (file) => uploadProfileMedia(contentEl, profile, file, "broker-cover"),
-      onDeleteLogo: () => deleteProfileMedia(contentEl, profile, "logo"),
-      onDeleteCover: () => deleteProfileMedia(contentEl, profile, "cover"),
-    });
+    );
+  }
+
+  // modules/publications (§47): resolve o link do blog (quando informado)
+  // para o feed Atom antes de gravar — a descoberta roda uma única vez,
+  // aqui, nunca a cada carregamento do minisite (ver
+  // modules/publications/README.md#decisões). Deixar o campo de blog em
+  // branco mantém o feed já resolvido anteriormente.
+  async function submitPublications(contentEl, profile, { enabled, blogUrl }) {
+    drawProfile(contentEl, profile, { publicationsBusy: true });
+
+    let feedUrl = readPublicationsConfig(profile).feedUrl;
+    if (blogUrl) {
+      feedUrl = await resolveBloggerFeedUrl(blogUrl);
+      if (!feedUrl) {
+        return drawProfile(contentEl, profile, {
+          publicationsError: "Não foi possível encontrar o feed desse blog. Confira o link e tente novamente.",
+        });
+      }
+    }
+
+    const result = validatePublicationsConfig({ enabled, feedUrl });
+    if (!result.valid) {
+      return drawProfile(contentEl, profile, { publicationsError: result.error });
+    }
+
+    try {
+      // `modules` é substituído por inteiro por business/brokers.js
+      // (não faz merge profundo) — precisa ir com os outros módulos já
+      // configurados do corretor, não só `publications`.
+      const updated = await api.updateProfile({ modules: { ...profile.modules, publications: result.config } });
+      drawProfile(contentEl, updated, { publicationsSaved: true });
+    } catch (submitError) {
+      if (isSessionExpired(submitError)) return showLogin("Sessão expirada. Entre novamente.");
+      drawProfile(contentEl, profile, { publicationsError: submitError.message });
+    }
   }
 
   async function uploadProfileMedia(contentEl, profile, file, target) {

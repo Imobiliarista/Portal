@@ -17,6 +17,7 @@
     "generate:pwa": "node scripts/generate-pwa-assets.js",
     "generate:video-youtube": "node scripts/generate-video-youtube-assets.js",
     "generate:tour-360": "node scripts/generate-tour-360-assets.js",
+    "generate:publications": "node scripts/generate-publications-assets.js",
     "rebuild:listing": "node scripts/rebuild-listing.js",
     "rebuild:broker": "node scripts/rebuild-broker.js",
     "rebuild:city": "node scripts/rebuild-city.js",

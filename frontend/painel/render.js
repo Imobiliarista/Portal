@@ -4,6 +4,11 @@
 // frontend/minisite/render.js. Verified visually (dev server + browser)
 // rather than unit-tested, same convention noted in frontend/portal/render.js.
 
+// modules/publications (§47): readPublicationsConfig is generated from
+// modules/publications/index.js + config.js — see
+// frontend/shared/publications.generated.js.
+import { readPublicationsConfig } from "../shared/publications.generated.js";
+
 function el(tag, { className, text, attrs, value } = {}, children = []) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -80,7 +85,11 @@ export function renderAppShell(container, { activeRoute, brokerName } = {}, hand
 }
 
 // --- perfil (§54, PUT /api/me/profile) ------------------------------------------
-export function renderProfileForm(content, { profile, saving, error, saved } = {}, handlers = {}) {
+export function renderProfileForm(
+  content,
+  { profile, saving, error, saved, publicationsBusy, publicationsError, publicationsSaved } = {},
+  handlers = {},
+) {
   clear(content);
 
   const field = (labelText, name, value, type = "text") =>
@@ -116,7 +125,50 @@ export function renderProfileForm(content, { profile, saving, error, saved } = {
     renderMediaSlot("Capa", profile?.cover, (file) => handlers.onUploadCover?.(file), () => handlers.onDeleteCover?.()),
   ]);
 
-  content.append(el("h1", { text: "Meu perfil" }), form, mediaSection);
+  const publicationsForm = renderPublicationsForm(
+    profile,
+    { busy: publicationsBusy, error: publicationsError, saved: publicationsSaved },
+    handlers,
+  );
+
+  content.append(el("h1", { text: "Meu perfil" }), form, mediaSection, publicationsForm);
+}
+
+// modules/publications (§47) — config no perfil público do corretor
+// (`modules.publications: {enabled, feedUrl}`). Formulário separado do de
+// cima: resolver o link do blog envolve rede (busca externa, ver
+// frontend/painel/app.js#submitPublications) e não deveria travar/errar
+// junto com os campos simples do perfil.
+function renderPublicationsForm(profile, { busy, error, saved } = {}, handlers = {}) {
+  const current = readPublicationsConfig(profile);
+
+  const form = el("form", { className: "imob-publications-form" }, [
+    el("h2", { text: "Publicações" }),
+    messageBox(error),
+    saved ? messageBox("Publicações atualizadas.", "success") : null,
+    el("p", { className: "imob-message", text: current.feedUrl ? `Feed atual: ${current.feedUrl}` : "Nenhum blog configurado ainda." }),
+    el("label", { className: "imob-field imob-field-checkbox" }, [
+      el("input", { attrs: { type: "checkbox", name: "publicationsEnabled", ...(current.enabled ? { checked: "true" } : {}) } }),
+      el("span", { text: "Mostrar publicações no minisite" }),
+    ]),
+    el("label", { className: "imob-field" }, [
+      el("span", { text: "Link do blog (Blogger/Blogspot)" }),
+      el("input", { attrs: { name: "publicationsBlogUrl", type: "url", placeholder: "https://seublog.blogspot.com" } }),
+    ]),
+    el("p", { className: "imob-hint", text: "Deixe em branco para manter o feed já configurado." }),
+    el("button", { attrs: { type: "submit" }, text: busy ? "Verificando…" : "Salvar publicações" }),
+  ]);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    handlers.onSubmitPublications?.({
+      enabled: data.get("publicationsEnabled") === "on",
+      blogUrl: (data.get("publicationsBlogUrl") ?? "").toString().trim(),
+    });
+  });
+
+  return form;
 }
 
 function renderMediaSlot(label, url, onUpload, onDelete) {

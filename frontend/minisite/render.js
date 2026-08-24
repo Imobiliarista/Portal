@@ -7,6 +7,9 @@
 // the same whether you arrived via the portal or a minisite.
 
 import { renderCard } from "../portal/render.js";
+// modules/publications (§47): formatPublicationDate is generated from
+// modules/publications/index.js — see frontend/shared/publications.generated.js.
+import { formatPublicationDate } from "../shared/publications.generated.js";
 
 function el(tag, { className, text, attrs } = {}, children = []) {
   const node = document.createElement(tag);
@@ -52,12 +55,12 @@ export function renderSuspended(container) {
  * Renders the broker's minisite home: profile header + listings grid +
  * "carregar mais" when the broker's listings are sharded (§17).
  *
- * `state`: { profile, cards, hasMore }
+ * `state`: { profile, cards, hasMore, publications }
  * `handlers`: { onLoadMore }
  */
 export function renderProfile(container, state, handlers = {}) {
   clear(container);
-  const { profile, cards, hasMore } = state;
+  const { profile, cards, hasMore, publications } = state;
 
   const header = el("header", { className: "imob-broker-header" }, [
     profile.logo ? el("img", { className: "imob-broker-logo", attrs: { src: profile.logo, alt: profile.name } }) : null,
@@ -79,5 +82,34 @@ export function renderProfile(container, state, handlers = {}) {
     }
   }
 
+  // §47 (mesmo espírito de §49 "se inexistente, componente não
+  // renderiza"): sem entradas — módulo desabilitado, feed vazio ou busca
+  // ao blog externo falhou — o bloco de publicações simplesmente não
+  // aparece, nunca uma seção vazia.
+  if (publications && publications.length > 0) {
+    children.push(renderPublicationsSection(publications));
+  }
+
   container.append(...children);
+}
+
+function renderPublicationsSection(entries) {
+  const items = entries.map((entry) =>
+    el("li", { className: "imob-publication-item" }, [
+      el("a", {
+        className: "imob-publication-title",
+        text: entry.title,
+        attrs: { href: entry.url, target: "_blank", rel: "noreferrer" },
+      }),
+      entry.publishedAt
+        ? el("time", { className: "imob-publication-date", text: formatPublicationDate(entry.publishedAt) })
+        : null,
+      entry.summary ? el("p", { className: "imob-publication-summary", text: entry.summary }) : null,
+    ]),
+  );
+
+  return el("section", { className: "imob-publications" }, [
+    el("h2", { text: "Publicações" }),
+    el("ul", { className: "imob-publication-list" }, items),
+  ]);
 }
