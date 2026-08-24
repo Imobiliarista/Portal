@@ -4,8 +4,10 @@
 // home ("/"), cidade ("/{citySlug}", filtros via querystring — §18 shows
 // "/londrina?venda&apartamento" as an illustrative example; this SPA uses
 // an explicit key=value querystring instead, noted in the Lote 2 PR as a
-// deliberate choice for reliable parsing), and imóvel completo
-// ("/imovel/{slug}", §15).
+// deliberate choice for reliable parsing), imóvel completo
+// ("/imovel/{slug}", §15) and comparação ("/comparar", §45 — the selection
+// itself lives in localStorage, not in the URL, so this route takes no
+// params).
 //
 // No DOM/history access here — frontend/portal/app.js owns wiring this to
 // `window.location`/`history.pushState` so this module stays testable in
@@ -59,10 +61,15 @@ export function buildListingUrl(slug) {
   return `/imovel/${slug}`;
 }
 
+export function buildComparisonUrl() {
+  return "/comparar";
+}
+
 /**
  * Parses `pathname` + `search` into a route descriptor:
  *   { name: "home" }
  *   { name: "listing", slug }
+ *   { name: "comparison" }
  *   { name: "city", citySlug, filters, sortBy }
  *   { name: "not-found" }
  */
@@ -75,6 +82,10 @@ export function parseRoute(pathname, search = "") {
 
   if (segments[0] === "imovel" && segments.length === 2) {
     return { name: "listing", slug: segments[1] };
+  }
+
+  if (segments[0] === "comparar" && segments.length === 1) {
+    return { name: "comparison" };
   }
 
   if (segments.length === 1) {
