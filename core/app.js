@@ -7,10 +7,11 @@
 // a safe error envelope instead of leaking a stack trace.
 
 import { applySecurityHeaders } from "./security.js";
-import { internalError, notFound } from "./response.js";
+import { internalError, notFound, unauthorized } from "./response.js";
 import { ValidationError } from "./validation.js";
 import { ForbiddenError } from "./permissions.js";
 import { TenantMismatchError } from "./tenant.js";
+import { UnauthorizedError } from "./session.js";
 import { createLogger } from "./logger.js";
 
 function errorToResponse(error, logger) {
@@ -24,6 +25,9 @@ function errorToResponse(error, logger) {
         { status: 422, headers: { "Content-Type": "application/json; charset=utf-8" } },
       ),
     );
+  }
+  if (error instanceof UnauthorizedError) {
+    return applySecurityHeaders(unauthorized(error.message));
   }
   if (error instanceof ForbiddenError || error instanceof TenantMismatchError) {
     return applySecurityHeaders(

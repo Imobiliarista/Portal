@@ -5,15 +5,16 @@
 // only invoked for /api/* — every public navigation is served straight
 // from Static Assets / R2 and never reaches this file (§73, §89).
 //
-// Etapa 1 (this lot) wires the router + app shell only. Real routes
-// (§72: /api/auth/login, /api/me/*, /api/admin/*, ...) land in Etapa 3/4/5/8
-// as R2 PRIVATE, auth, and the painel/admin are built out. Until then every
-// /api/* request answers 501 so the shape of the response contract is
-// already stable for the frontend to build against.
+// Etapa 4 (this lot) wires /api/auth/login and /api/auth/logout (§72,
+// §26-28) — worker/auth.js is where login/sessão was always meant to land
+// (see its own former placeholder comment). /api/me/* and /api/admin/*
+// (worker/api.js, worker/admin.js) stay 501 until Etapa 5/8 build the
+// painel/admin CRUD that needs them.
 
 import { Router } from "../core/router.js";
 import { createApp } from "../core/app.js";
 import { notImplemented } from "../core/response.js";
+import { handleLogin, handleLogout } from "./auth.js";
 
 const router = new Router();
 
@@ -23,6 +24,9 @@ router.get("/api/health", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
 });
+
+router.post("/api/auth/login", async (request, env) => handleLogin(request, env));
+router.post("/api/auth/logout", async () => handleLogout());
 
 router.get("/api/*", async () => notImplemented());
 router.post("/api/*", async () => notImplemented());

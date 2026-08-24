@@ -35,13 +35,19 @@ até ele existir).
 
 ## Segredos
 
-Nenhum segredo vai para `wrangler.toml` nem para o Git (§3.1, §27). Quando a
-Etapa 4 (Auth) ligar `core/session.js`/`core/auth.js` de ponta a ponta, o
-segredo de assinatura de sessão é provisionado via:
+Nenhum segredo vai para `wrangler.toml` nem para o Git (§3.1, §27). Desde a
+Etapa 4 (Auth), `worker/auth.js` exige `env.SESSION_SECRET` para
+assinar/verificar sessões (`core/session.js`) — sem ele, `POST
+/api/auth/login` lança em vez de emitir um cookie. Provisionar com:
 
 ```bash
 npx wrangler secret put SESSION_SECRET
 ```
+
+**Pendente/bloqueante para deploy real** (assim como os 3 buckets R2 —
+ver acima): este comando ainda não foi executado neste ambiente; sem o
+secret configurado, `wrangler dev`/`deploy` sobem mas qualquer chamada a
+`/api/auth/login` falha com erro 500 ("SESSION_SECRET ausente em env").
 
 ## Comandos locais
 
