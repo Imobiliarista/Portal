@@ -62,6 +62,15 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
 - **broker → listingIds** → lista de imóveis de um corretor, para o painel
   "meus imóveis" sem varrer `listings/`. Usado por
   `business/listings.js#listListingsByBroker` (listings-by-broker).
+- **city → listingIds** (`indexes/cities/{city}/listings.json`, Etapa 6) →
+  todo anúncio já publicado sob uma cidade (qualquer status — a entrada
+  nunca é removida), para `business/publishing.js#rebuildCity` achar os
+  anúncios de uma cidade sem varrer `listings/`.
+- **registro de cidades** (`indexes/cities.json`, Etapa 6) → todo slug de
+  cidade que já teve algum anúncio publicado, para
+  `business/publishing.js#rebuildAll` enumerar "todas as cidades" sem
+  varrer `indexes/cities/`. Cresce monotonicamente (nunca remove um slug —
+  cidade sem anúncios ainda publica um manifest vazio válido, §77).
 
 ## Business privado (§29-§30, Etapa 3)
 
@@ -96,6 +105,43 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
 - `worker/auth.js` — único lugar que lê o cookie de sessão de um `Request`
   (`getSession`/`requireSession`/`requireTenant`); resolve o tenant sempre
   via `core/tenant.js#resolveTenant(session)`, nunca do corpo (§55).
+
+## Publicador (§31-34, §64, Etapa 6)
+
+`business/publishing.js` é a ponte entre o estado privado (acima) e as
+projeções públicas que `frontend/portal`/`frontend/minisite` (Lote 2) leem
+direto do R2 DATA, sem Worker (§73):
+
+- `publishListing(env, listingId)` — publicação incremental (§32): faz
+  upsert do listing completo (`listings/{slug}.json`) e do card só no shard
+  único da cidade atual (§90 — shard único nesta etapa, particionamento é
+  Etapa 7), atualiza `cities/{city}/index.json` e bumpa
+  `cities/{city}/manifest.json`. Também publica/atualiza o perfil público
+  do corretor se estiver ausente/desatualizado. Mapeamento de status
+  privado→público e a lista completa de decisões desta etapa estão no
+  cabeçalho do próprio arquivo.
+- `publishBroker(env, brokerId, { force })` — idem para
+  `brokers/{slug}/profile.json`, com checagem de staleness comparando
+  `broker.updatedAt` contra o que foi publicado por último (bookkeeping em
+  `brokers/{brokerId}/manifest.json`, PRIVATE — nenhum schema público
+  restringe esse manifest).
+- `rebuildListing`/`rebuildBroker`/`rebuildCity`/`rebuildAll` (§33-34) —
+  reconstrução a partir do estado privado, para divergência ou mudança de
+  schema. `rebuildCity` descarta e recalcula o shard/index/manifest inteiro
+  de uma cidade (usa o índice city→listingIds acima); `rebuildAll`
+  processa cidades em lotes checkpointáveis
+  (`jobs/rebuild-all/checkpoint.json`, PRIVATE) — nunca tudo de uma vez.
+  CLIs em `scripts/rebuild-*.js` (usam `getPlatformProxy` do wrangler para
+  os bindings reais).
+- `business/cards.js` — `buildListingCard`/`buildIndexEntry`, mapeamento
+  puro listing-public → card (§13) → índice (§21). Sem R2 aqui.
+- `business/cities.js` — resolve `city.name`/`city.uf` (exigidos por
+  `city-manifest.schema.json`) a partir de
+  `business/data/cities-catalog.generated.js`, catálogo estático gerado
+  por `scripts/generate-cities-catalog.js` (IBGE, rodado manualmente —
+  **pendente**: o arquivo commitado hoje é só uma amostra, ver
+  docs/CHANGELOG.md#etapa-6). Cidade fora do catálogo é `UnknownCityError`
+  explícito.
 
 ## Versionamento (§61)
 

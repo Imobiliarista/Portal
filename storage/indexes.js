@@ -96,3 +96,52 @@ export async function removeBrokerListingId(env, brokerId, listingId) {
   await putPrivate(env, privateKeys.brokerListingsIndex(brokerId), { listingIds });
   return listingIds;
 }
+
+// --- city -> listingIds index (Etapa 6, §33) ------------------------------
+// Mirrors the broker -> listingIds index above, but scoped to a city: lets
+// `rebuildCity` enumerate every listing ever published under that city
+// without scanning `listings/` (§26). Membership here means "this listing
+// has been published (or removed/sold-published) under this city at least
+// once" — it is never pruned, so a rebuild can still see a listing that is
+// currently inactive/sold/removed and correctly exclude it from the shard.
+
+export async function getCityListingIds(env, citySlug) {
+  const index = await getPrivate(env, privateKeys.cityListingsIndex(citySlug));
+  return index?.listingIds ?? [];
+}
+
+export async function addCityListingId(env, citySlug, listingId) {
+  const listingIds = await getCityListingIds(env, citySlug);
+  if (!listingIds.includes(listingId)) {
+    listingIds.push(listingId);
+    await putPrivate(env, privateKeys.cityListingsIndex(citySlug), { listingIds });
+  }
+  return listingIds;
+}
+
+export async function removeCityListingId(env, citySlug, listingId) {
+  const listingIds = (await getCityListingIds(env, citySlug)).filter((id) => id !== listingId);
+  await putPrivate(env, privateKeys.cityListingsIndex(citySlug), { listingIds });
+  return listingIds;
+}
+
+// --- city registry (Etapa 6, §34) -----------------------------------------
+// Every city slug that has ever had a listing published, so `rebuildAll`
+// can enumerate "all cities" without scanning `indexes/cities/` (§26).
+// Grows monotonically — a city with zero active listings still publishes a
+// valid empty manifest (§77), so there is no need to ever remove a slug.
+
+export async function getKnownCitySlugs(env) {
+  const registry = await getPrivate(env, privateKeys.cityRegistry());
+  return registry?.citySlugs ?? [];
+}
+
+export async function registerCitySlug(env, citySlug) {
+  const citySlugs = await getKnownCitySlugs(env);
+  if (!citySlugs.includes(citySlug)) {
+    citySlugs.push(citySlug);
+    citySlugs.sort();
+    await putPrivate(env, privateKeys.cityRegistry(), { citySlugs });
+  }
+  return citySlugs;
+}

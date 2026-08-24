@@ -26,7 +26,12 @@ const SECRET = "test-secret-do-not-use-in-prod";
 const ORIGIN = "https://painel.imobiliarista.net";
 
 function makeEnv() {
-  return { IMOB_PRIVATE: new FakeR2Bucket(), IMOB_MEDIA: new FakeR2Bucket(), SESSION_SECRET: SECRET };
+  return {
+    IMOB_PRIVATE: new FakeR2Bucket(),
+    IMOB_DATA: new FakeR2Bucket(),
+    IMOB_MEDIA: new FakeR2Bucket(),
+    SESSION_SECRET: SECRET,
+  };
 }
 
 async function makeBrokerSession(env, overrides = {}) {
@@ -221,6 +226,70 @@ test("DELETE /api/me/listings/:id on another broker's listing is blocked (§55)"
       id: listingB.listingId,
     }),
   );
+});
+
+// --- Etapa 6 — Publicador: painel -> portal público, ponta a ponta -------------
+// A primeira vez que um anúncio criado pelo corretor via painel (Etapa 5)
+// passa a existir de fato no R2 DATA que o portal público (Etapa 2) lê —
+// sem isso, POST/PUT/DELETE em /api/me/listings só mudavam o draft privado.
+
+test("POST /api/me/listings with status:active publishes the listing into its city shard/index/manifest", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeBrokerSession(env);
+
+  const response = await handleCreateListing(
+    req("/api/me/listings", {
+      method: "POST",
+      cookie,
+      body: baseListingInput({ district: "Centro", status: "active" }),
+    }),
+    env,
+  );
+  assert.equal(response.status, 201);
+  const listing = (await response.json()).data;
+
+  const listingPublicRaw = await env.IMOB_DATA.get("listings/apartamento-centro-123.json");
+  assert.ok(listingPublicRaw, "listings/{slug}.json deve existir em R2 DATA");
+  const listingPublic = await listingPublicRaw.json();
+  assert.equal(listingPublic.status, "active");
+  assert.equal(listingPublic.broker.slug, "joao");
+
+  const shardRaw = await env.IMOB_DATA.get("cities/londrina/001.json");
+  const shard = await shardRaw.json();
+  assert.equal(shard.length, 1);
+  assert.equal(shard[0].id, listing.listingId);
+  assert.equal(shard[0].slug, "apartamento-centro-123");
+
+  const manifestRaw = await env.IMOB_DATA.get("cities/londrina/manifest.json");
+  const manifest = await manifestRaw.json();
+  assert.equal(manifest.totalListings, 1);
+  assert.equal(manifest.publicationVersion, 1);
+  assert.equal(manifest.city.uf, "PR");
+});
+
+test("DELETE /api/me/listings/:id on a previously active listing pulls its card out of the shard but keeps the public link (§64)", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeBrokerSession(env);
+
+  const created = await handleCreateListing(
+    req("/api/me/listings", {
+      method: "POST",
+      cookie,
+      body: baseListingInput({ district: "Centro", status: "active" }),
+    }),
+    env,
+  );
+  const listing = (await created.json()).data;
+
+  await handleDeleteListing(req(`/api/me/listings/${listing.listingId}`, { method: "DELETE", cookie }), env, null, {
+    id: listing.listingId,
+  });
+
+  const shard = await (await env.IMOB_DATA.get("cities/londrina/001.json")).json();
+  assert.equal(shard.length, 0);
+
+  const listingPublic = await (await env.IMOB_DATA.get("listings/apartamento-centro-123.json")).json();
+  assert.equal(listingPublic.status, "removed");
 });
 
 // --- /api/me/media --------------------------------------------------------------

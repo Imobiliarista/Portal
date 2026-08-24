@@ -1,5 +1,110 @@
 # Changelog
 
+## Etapa 6 — Publicador (§90, §29-37, §64)
+
+Primeira vez que um anúncio criado no painel (Etapa 5) passa a existir de
+fato no portal público (Etapa 2) — até aqui, tudo que a Etapa 2 lia em R2
+DATA era fixture de teste.
+
+- `business/publishing.js` (novo, era placeholder): o publicador —
+  `publishListing`, `publishBroker`, `rebuildListing`, `rebuildBroker`,
+  `rebuildCity`, `rebuildAll`. `publishListing` é chamado pelo Worker toda
+  vez que o corretor salva/edita (§32) e faz upsert incremental — só o
+  shard único da cidade afetada é regravado (lido, filtrado por id,
+  regravado), nunca a cidade inteira; `rebuildCity` é o caminho que
+  descarta e recalcula um shard/index/manifest do zero a partir do estado
+  privado (§33), usado por divergência, não pelo fluxo normal de edição.
+- `business/cards.js` (novo, era placeholder): `buildListingCard`/
+  `buildIndexEntry`, mapeamento puro listing-public → card (§13) → entrada
+  de índice (§21). `id` do card é o `listingId` privado (§13 já mostra esse
+  formato no exemplo) — listing-public.schema.json não tem id nenhum, só
+  `slug`.
+- `business/cities.js` + `business/data/cities-catalog.generated.js`
+  (novos): `city-manifest.schema.json` exige `city.name`/`city.uf`, mas o
+  draft do anúncio (Lote 3) só guarda `city` como slug livre, sem UF em
+  lugar nenhum do sistema. Decisão (após confirmar com o usuário): catálogo
+  estático nacional de municípios gerado uma única vez a partir da API de
+  Localidades do IBGE (`scripts/generate-cities-catalog.js`, não chamado em
+  runtime), não uma tabela inventada nem um novo campo no draft do Lote 3.
+  **Pendência bloqueante**: esta sessão de trabalho não tinha rede liberada
+  para `servicodados.ibge.gov.br` (bloqueio de política do ambiente,
+  confirmado via `/__agentproxy/status` — não contornável); o arquivo
+  gerado commitado é só uma amostra pequena (4 cidades reais + um par
+  sintético para exercitar o desempate de slug por UF), marcada como
+  placeholder no próprio cabeçalho. Rodar `node
+  scripts/generate-cities-catalog.js` (rede liberada) e commitar o
+  resultado real (~5.570 municípios) é pré-requisito para deploy — uma
+  cidade fora do catálogo é `UnknownCityError`, nunca um name/uf inventado.
+- Mapeamento de status (decisão, documentada no cabeçalho de
+  `business/publishing.js`): o draft do anúncio tem 5 estados
+  (draft/active/paused/sold/removed) e listing-public.schema.json tem
+  outros 5, só 3 em comum. Única correspondência não-arbitrária dado os
+  enums: `paused → inactive`, `draft → null` (ainda não publicado). Mesma
+  lógica para corretor: `pending → null` (não aprovado), `disabled →
+  suspended` (broker-public.schema.json não tem estado "disabled").
+- Card só existe no shard/index para status público `active` (o card não
+  tem campo status nenhum, §13/§14 — é implicitamente sempre ativo).
+  `sold`/`removed` saem do shard mas `listings/{slug}.json` continua
+  existindo com o status explícito (§64) — nunca 404 silencioso. Uma
+  listagem que nunca foi `active` (draft → sold direto, por exemplo) nunca
+  ganha um tombstone público: não havia link nenhum pra preservar.
+- Caso de borda fora do documento: anúncio já publicado que volta pra
+  `status: "draft"` (`business/listings.js#updateListing` permite essa
+  transição). Decisão conservadora: o card sai do shard/index, mas
+  `listings/{slug}.json` NÃO é reescrito (fica com o último status público
+  válido) — listing-public.schema.json não tem um valor "draft".
+- Gap descoberto (não decisão desta etapa — cruza Lote 1/Lote 3):
+  `business/listings.js` não exige `district` na criação do anúncio, mas
+  `listing-public.schema.json` exige `location.district` (minLength 1).
+  `publishListing` recusa publicar nesse caso (`PublishValidationError` —
+  validação estrutural leve própria, sem ajv, §94) em vez de gravar um
+  district vazio. `business/listings.js` provavelmente deveria exigir
+  `district` na criação — não alterado aqui, fora do escopo deste lote.
+- Índices privados novos em `storage/indexes.js` (mesmo padrão de
+  `getBrokerListingIds`): `getCityListingIds`/`addCityListingId`/
+  `removeCityListingId` (`indexes/cities/{city}/listings.json` — para
+  `rebuildCity` achar os anúncios de uma cidade sem varrer `listings/`,
+  §26) e `getKnownCitySlugs`/`registerCitySlug` (`indexes/cities.json` —
+  para `rebuildAll` enumerar cidades sem varrer `indexes/cities/`).
+- `worker/api.js`/`worker/uploads.js`: toda rota que já mutava estado
+  privado do anúncio/corretor agora também chama o publicador depois
+  (create/update/delete de anúncio, update de perfil, upload/remoção de
+  foto de galeria e de logo/capa — capa é um gatilho explícito do §32).
+  Todas essas chamadas são no-op segura para um draft/perfil ainda não
+  publicável (draft/pending) — `shouldPublish` em
+  `business/publishing.js`.
+- Jobs/Queue (§35-36): execução síncrona/direta, decisão documentada. Não
+  há sinal de volume que justifique Queue (§94); a única "fila" real é o
+  cursor de `rebuildAll`, persistido em R2 PRIVATE
+  (`jobs/rebuild-all/checkpoint.json`), não uma Cloudflare Queue.
+- `scripts/rebuild-listing.js`/`rebuild-broker.js`/`rebuild-city.js`/
+  `rebuild-all.js` (eram placeholders): CLIs finos sobre
+  `business/publishing.js`, usando `getPlatformProxy` do próprio wrangler
+  (já devDependency) para os bindings reais de R2 a partir de
+  `wrangler.toml` — nenhuma credencial de R2 nova, nenhum código de acesso
+  a bucket fora de `storage/` (§93). `rebuild-all.js` aceita `--all`
+  (processa lotes até terminar) e `--batch-size=N`; sem `--all`, roda um
+  lote e para, retomando do checkpoint na próxima chamada (§34).
+- Shard único por cidade nesta etapa (decisão explícita do escopo, §90):
+  particionamento por 300 cards/1MB fica pra Etapa 7. A estrutura
+  (`manifest.shards` como array, `dataKeys.cityShard(slug, N)`) já é
+  compatível com múltiplos shards.
+- Não implementado, pendência explícita: cron (§37) — nenhum trigger
+  periódico automático foi adicionado; `rebuildAll` existe e funciona, mas
+  precisa ser chamado manualmente (CLI) ou por uma futura rota
+  SuperAdmin/cron. Telas de SuperAdmin para disparar rebuild continuam
+  Etapa 8.
+- 46 novos testes: `tests/publishing/publishing.test.js` (publicação
+  incremental só toca o shard certo, manifest com `publicationVersion`
+  incrementado, remoção/vendido sem quebrar o link, mudança de cidade,
+  regressão pra draft, `publishBroker`/`rebuildBroker`, e um teste de
+  rebuild completo que corrompe o shard público e reconstrói o mesmo
+  estado a partir do privado, mais batching/checkpoint/idempotência de
+  `rebuildAll`), `tests/business/cards.test.js`,
+  `tests/business/cities.test.js`, mais 2 testes ponta a ponta novos em
+  `tests/security/painel-api.test.js` provando a integração
+  Worker→publicador→R2 DATA de verdade (o "cabeçalho" deste lote).
+
 ## Etapa 5 — Painel (§90, §54, §56-57)
 
 - `worker/api.js` (novo, era placeholder): `/api/me/profile` (GET/PUT),

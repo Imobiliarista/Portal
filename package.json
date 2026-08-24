@@ -12,7 +12,12 @@
     "versions:upload": "wrangler versions upload",
     "deploy": "wrangler deploy",
     "test": "node --test \"tests/**/*.test.js\"",
-    "validate:schemas": "node scripts/validate-json.js"
+    "validate:schemas": "node scripts/validate-json.js",
+    "generate:cities": "node scripts/generate-cities-catalog.js",
+    "rebuild:listing": "node scripts/rebuild-listing.js",
+    "rebuild:broker": "node scripts/rebuild-broker.js",
+    "rebuild:city": "node scripts/rebuild-city.js",
+    "rebuild:all": "node scripts/rebuild-all.js"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"

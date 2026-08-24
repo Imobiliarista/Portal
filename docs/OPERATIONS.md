@@ -1,5 +1,25 @@
 # Operações
 
+## Pendências bloqueantes (Etapa 6)
+
+4. **Catálogo nacional de municípios (IBGE)**: `business/data/cities-catalog.generated.js`
+   é o que resolve `city.name`/`city.uf` (exigidos por
+   `city-manifest.schema.json`) a partir do slug de cidade que
+   `business/listings.js` guarda no draft do anúncio. O arquivo commitado
+   hoje é só uma amostra pequena (4 cidades reais + um par sintético) — a
+   sessão que implementou a Etapa 6 não tinha rede liberada para
+   `servicodados.ibge.gov.br` (bloqueio de política do ambiente). Antes do
+   deploy:
+
+   ```bash
+   npm run generate:cities   # roda scripts/generate-cities-catalog.js
+   ```
+
+   de um ambiente com rede liberada para o IBGE, e commitar o resultado
+   (cobertura nacional, ~5.570 municípios). Sem isso, publicar um anúncio
+   em qualquer cidade fora da amostra falha explicitamente com
+   `UnknownCityError` — nunca silenciosamente.
+
 ## Pendências bloqueantes (Etapa 1)
 
 Estas ações são manuais, no painel Cloudflare, e **bloqueiam** um
@@ -53,8 +73,15 @@ secret configurado, `wrangler dev`/`deploy` sobem mas qualquer chamada a
 
 ```bash
 npm install
-npm test                 # node --test — suíte de core/ e storage/
+npm test                 # node --test — suíte completa
 npm run validate:schemas # valida schemas/*.schema.json
 npm run dev               # wrangler dev
 npx wrangler deploy --dry-run  # valida wrangler.toml sem publicar
+
+# Etapa 6 — Publicador
+npm run generate:cities        # regenera business/data/cities-catalog.generated.js (IBGE)
+npm run rebuild:listing -- <listingId>
+npm run rebuild:broker -- <brokerId>
+npm run rebuild:city -- <citySlug>
+npm run rebuild:all            # 1 lote e para; use -- --all para processar até terminar
 ```

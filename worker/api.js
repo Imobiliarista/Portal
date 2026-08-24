@@ -28,6 +28,7 @@ import {
 import { assertTenantMatch } from "../core/tenant.js";
 import { success, notFound, conflict } from "../core/response.js";
 import { ValidationError } from "../core/validation.js";
+import { publishListing, publishBroker } from "../business/publishing.js";
 
 async function readJsonBody(request) {
   try {
@@ -65,6 +66,11 @@ export async function handlePutProfile(request, env) {
   const body = await readJsonBody(request);
   try {
     const updated = await updateBrokerProfile(env, brokerId, body);
+    // Etapa 6 (§31-32): keep brokers/{slug}/profile.json in sync with the
+    // private profile right away — publishBroker() itself skips the write
+    // when nothing publish-relevant changed (staleness check) or the
+    // broker isn't approved yet (status "pending").
+    await publishBroker(env, brokerId);
     return success(updated);
   } catch (error) {
     if (error instanceof BrokerNotFoundError) return notFound(error.message);
@@ -91,6 +97,11 @@ export async function handleCreateListing(request, env) {
   const body = await readJsonBody(request);
   try {
     const draft = await createListing(env, brokerId, body);
+    // Etapa 6 (§32): a new listing is usually created as status:"draft" —
+    // publishListing() no-ops for that case (nothing to publish yet). If
+    // the caller set an explicit publishable status at creation, this
+    // takes it live immediately.
+    await publishListing(env, draft.listingId);
     return success(draft, { status: 201 });
   } catch (error) {
     if (error instanceof ListingConflictError) return conflict(error.message);
@@ -122,6 +133,10 @@ export async function handlePutListing(request, env, ctx, params) {
   const body = await readJsonBody(request);
   try {
     const updated = await updateListing(env, brokerId, params.id, body);
+    // Etapa 6 (§32) — the trigger this section of the doc names first:
+    // "quando o corretor salva/edita via Etapa 5". Publishes the full
+    // listing + updates only this listing's city shard/index/manifest.
+    await publishListing(env, updated.listingId);
     return success(updated);
   } catch (error) {
     if (error instanceof ListingNotFoundError) return notFound(error.message);
@@ -143,6 +158,11 @@ export async function handleDeleteListing(request, env, ctx, params) {
 
   try {
     const updated = await updateListing(env, brokerId, params.id, { status: "removed" });
+    // Etapa 6 (§64): pulls the card out of the city shard/index right away.
+    // listings/{slug}.json is NOT deleted — it's rewritten with
+    // status:"removed" (publishListing/normalizeListingForPublic), so the
+    // public URL keeps resolving instead of 404ing silently.
+    await publishListing(env, updated.listingId);
     return success(updated);
   } catch (error) {
     if (error instanceof ListingNotFoundError) return notFound(error.message);
