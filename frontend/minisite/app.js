@@ -8,6 +8,11 @@
 import { resolveBrokerSlug, createDataClient } from "./data.js";
 import { renderLoading, renderSiteNotFound, renderSuspended, renderProfile } from "./render.js";
 import { renderListingDetail, renderNotFound } from "../portal/render.js";
+// modules/publications (§47): gerado a partir de
+// modules/publications/index.js + config.js — ver
+// frontend/shared/publications.generated.js. Consumo 100% client-side,
+// sem rota de Worker (mesma filosofia de video-youtube/tour-360).
+import { readPublicationsConfig, parseAtomFeed } from "../shared/publications.generated.js";
 
 function injectStylesheet() {
   if (document.querySelector("link[data-imob-minisite-styles]")) return;
@@ -18,10 +23,33 @@ function injectStylesheet() {
   document.head.append(link);
 }
 
+// modules/publications (§47): busca e faz o parsing do feed já resolvido
+// (broker.modules.publications.feedUrl — descoberta aconteceu uma vez no
+// painel, ver modules/publications/README.md#decisões). Nunca lança:
+// blog fora do ar/CORS bloqueado/feed mudou de formato viram `[]`
+// silenciosamente — mesmo espírito de "campo opcional, se inexistente
+// componente não renderiza" dos módulos tour-360/video-youtube.
+async function loadPublications(profile) {
+  const config = readPublicationsConfig(profile);
+  if (!config.enabled) return [];
+  try {
+    const response = await fetch(config.feedUrl);
+    if (!response.ok) return [];
+    return parseAtomFeed(await response.text());
+  } catch {
+    return [];
+  }
+}
+
 async function renderProfileRoute(container, dataClient, brokerSlug, profile) {
+  // Roda em paralelo com os imóveis — um blog externo lento/fora do ar
+  // não deveria atrasar a listagem de imóveis, que é o conteúdo
+  // principal do minisite.
+  const publicationsPromise = loadPublications(profile);
+
   const flat = await dataClient.listingsFlat(brokerSlug);
   if (flat) {
-    renderProfile(container, { profile, cards: flat, hasMore: false }, {});
+    renderProfile(container, { profile, cards: flat, hasMore: false, publications: await publicationsPromise }, {});
     return;
   }
 
@@ -29,10 +57,11 @@ async function renderProfileRoute(container, dataClient, brokerSlug, profile) {
   const manifest = await dataClient.listingsManifest(brokerSlug);
   const shardCount = manifest?.shards?.length ?? 0;
   if (shardCount === 0) {
-    renderProfile(container, { profile, cards: [], hasMore: false }, {});
+    renderProfile(container, { profile, cards: [], hasMore: false, publications: await publicationsPromise }, {});
     return;
   }
 
+  const publications = await publicationsPromise;
   let cards = [];
   let cursor = 0;
   async function loadNextShard() {
@@ -40,7 +69,7 @@ async function renderProfileRoute(container, dataClient, brokerSlug, profile) {
     cursor += 1;
     const shardCards = (await dataClient.listingsShard(brokerSlug, cursor)) ?? [];
     cards = [...cards, ...shardCards];
-    renderProfile(container, { profile, cards, hasMore: cursor < shardCount }, { onLoadMore: loadNextShard });
+    renderProfile(container, { profile, cards, hasMore: cursor < shardCount, publications }, { onLoadMore: loadNextShard });
   }
   await loadNextShard();
 }

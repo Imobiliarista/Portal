@@ -51,7 +51,8 @@ a {
 
 .imob-login-form,
 .imob-profile-form,
-.imob-listing-form {
+.imob-listing-form,
+.imob-publications-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -59,11 +60,32 @@ a {
   max-width: 420px;
 }
 
+.imob-publications-form {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--imob-border);
+}
+
 .imob-field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.9rem;
+}
+
+.imob-field-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.imob-field-checkbox input {
+  width: auto;
+}
+
+.imob-hint {
+  margin: -0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--imob-muted);
 }
 
 input,

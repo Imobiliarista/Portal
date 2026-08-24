@@ -154,3 +154,38 @@ a {
   border: none;
   border-radius: 0.5rem;
 }
+
+.imob-publications {
+  margin: 2rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--imob-border);
+}
+
+.imob-publication-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.imob-publication-item {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--imob-border);
+}
+
+.imob-publication-title {
+  display: block;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.imob-publication-date {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--imob-muted);
+}
+
+.imob-publication-summary {
+  margin: 0.35rem 0 0;
+  color: var(--imob-muted);
+}
