@@ -87,6 +87,22 @@
 //    listing-public.schema.json exige `location.district` (minLength 1).
 //    O publicador recusa publicar nesse caso (`PublishValidationError`) em
 //    vez de gravar um district vazio — ver pendências no PR.
+//
+// 8. Etapa 8 (§53, SuperAdmin) — anúncios de corretor suspenso. O documento
+//    não define isso explicitamente (só §76, sobre o perfil do corretor
+//    virar publicação mínima); decisão de produto confirmada com o
+//    solicitante antes de implementar: o card sai do shard/index da cidade
+//    (mesmo tratamento que paused/sold/removed já recebem), mas
+//    listings/{slug}.json continua existindo (§64, nunca 404 silencioso)
+//    com status "suspended" — valor que listing-public.schema.json já
+//    reservava (enum status inclui "suspended" desde antes desta etapa,
+//    sem nenhum caminho de código que o produzisse até agora). Ver
+//    `publishListing` (o override "brokerBlocksPublic") e
+//    `republishBrokerListings` (o gatilho que aplica isso nos anúncios já
+//    publicados no momento da suspensão/reativação, não só na próxima
+//    edição individual). Um anúncio independentemente sold/removed/paused
+//    mantém esse status mais específico — a suspensão do corretor só
+//    rebaixa o que seria "active".
 
 import { getListingById, ListingNotFoundError } from "./listings.js";
 import { getBrokerById, BrokerNotFoundError } from "./brokers.js";
@@ -103,6 +119,7 @@ import {
   removeCityListingId,
   getKnownCitySlugs,
   registerCitySlug,
+  getBrokerListingIds,
 } from "../storage/indexes.js";
 
 export { ListingNotFoundError, BrokerNotFoundError };
@@ -383,7 +400,7 @@ export async function publishListing(env, listingId) {
   const manifestKey = privateKeys.listingManifest(listingId);
   const manifest = (await getPrivate(env, manifestKey)) ?? {};
 
-  const status = mapListingStatusForPublic(draft.status);
+  const listingStatus = mapListingStatusForPublic(draft.status);
   const everPublished = Boolean(manifest.publicationVersion);
 
   // Nothing to do unless this listing either goes/stays "active" (creates
@@ -392,14 +409,24 @@ export async function publishListing(env, listingId) {
   // having been active never had a public URL to preserve, so there is no
   // tombstone to write (§64 exists to protect links that were actually
   // handed out, not to fabricate one for a listing the public never saw).
-  const shouldPublish = status === "active" || everPublished;
+  const shouldPublish = listingStatus === "active" || everPublished;
   if (!shouldPublish) {
-    return { published: false, reason: status === null ? "draft" : "never-published" };
+    return { published: false, reason: listingStatus === null ? "draft" : "never-published" };
   }
 
   const broker = await getBrokerById(env, draft.brokerId);
   if (!broker) throw new BrokerNotFoundError(draft.brokerId);
   await publishBroker(env, draft.brokerId);
+
+  // Etapa 8 (§53) — decisão de produto explícita: um corretor
+  // suspenso/disabled some da cidade (o card sai do shard/index, igual a
+  // paused/sold/removed), mas listings/{slug}.json continua existindo
+  // (§64, nunca 404 silencioso), agora com status "suspended" — valor que
+  // listing-public.schema.json já reservava para exatamente este caso. Um
+  // anúncio que já era independentemente sold/removed/paused mantém esse
+  // status mais específico; a suspensão só rebaixa o que seria "active".
+  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled";
+  const status = brokerBlocksPublic && listingStatus === "active" ? "suspended" : listingStatus;
 
   const cityRef = requireCityBySlug(draft.city);
 
@@ -523,6 +550,25 @@ export async function rebuildListing(env, listingId) {
 /** Reconstrói o perfil público de um corretor, ignorando a checagem de staleness. */
 export async function rebuildBroker(env, brokerId) {
   return publishBroker(env, brokerId, { force: true });
+}
+
+/**
+ * Republica todos os anúncios de um corretor (§53 "republicar corretor" —
+ * a rota POST /api/admin/brokers/:id/publish, Etapa 8, faz isto além de
+ * `rebuildBroker` acima). Também é o gatilho que aplica de imediato o
+ * cascateamento de suspensão/reativação (decisão acima em `publishListing`)
+ * nos anúncios JÁ publicados de um corretor — sem isto, suspender um
+ * corretor só afetaria seus anúncios na próxima vez que cada um fosse
+ * salvo individualmente. Usa o índice broker->listingIds (§26, sem
+ * varredura); reaproveita `publishListing`, não reimplementa nada.
+ */
+export async function republishBrokerListings(env, brokerId) {
+  const listingIds = await getBrokerListingIds(env, brokerId);
+  const results = [];
+  for (const listingId of listingIds) {
+    results.push(await publishListing(env, listingId));
+  }
+  return results;
 }
 
 /**

@@ -40,6 +40,14 @@ export class InvalidCredentialsError extends Error {
 // creates one.
 const ROLES = ["broker", "superadmin"];
 
+// Etapa 8 (§53) — statuses that block login even with correct credentials.
+// "pending" (not yet approved by a superadmin) is deliberately NOT here: a
+// broker awaiting approval can still log into the painel to fill in their
+// profile/draft listings while they wait (nothing in §90/§53 says
+// otherwise, and business/publishing.js#publishBroker already keeps a
+// pending broker's public footprint at zero regardless of what they save).
+const BLOCKED_LOGIN_STATUSES = ["suspended", "disabled"];
+
 // A syntactically valid (but never-used-for-a-real-account) hash, computed
 // once per process and reused as the right-hand side of verifyPassword when
 // no real credential record exists. Without this, `login` would return
@@ -107,7 +115,15 @@ export async function login(env, { email, password } = {}, secret) {
   const storedHash = authUser?.passwordHash ?? (await getDummyHash());
   const passwordOk = await verifyPassword(password, storedHash);
 
-  if (!broker || !authUser || !passwordOk) {
+  // Etapa 8 (§53) — fecha a pendência aberta desde a Etapa 4: um corretor
+  // suspenso (ou "disabled", o estado mais forte do mesmo enum,
+  // business/brokers.js#BROKER_STATUSES) nunca ganha sessão, mesmo com
+  // senha correta. Mesmo InvalidCredentialsError genérico de sempre — não
+  // revela a um atacante que testou um e-mail que a conta existe e está
+  // suspensa, em vez de simplesmente não existir ou ter senha errada.
+  const brokerBlocked = broker && BLOCKED_LOGIN_STATUSES.includes(broker.status);
+
+  if (!broker || !authUser || !passwordOk || brokerBlocked) {
     throw new InvalidCredentialsError();
   }
 

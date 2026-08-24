@@ -28,19 +28,25 @@
 
       const host = location.hostname;
       const isPainelHost = host === `painel.${APEX}`;
-      // Local dev has no real painel.imobiliarista.net hostname to hit —
-      // `?app=painel` is the same kind of escape hatch as
-      // frontend/portal/data.js's `window.__IMOB_DATA_BASE_URL__` override.
-      const isPainelDevOverride =
-        (host === "localhost" || host === "127.0.0.1") &&
-        new URLSearchParams(location.search).get("app") === "painel";
+      const isAdminHost = host === `admin.${APEX}`;
+      // Local dev has no real painel./admin.imobiliarista.net hostname to
+      // hit — `?app=painel`/`?app=admin` is the same kind of escape hatch
+      // as frontend/portal/data.js's `window.__IMOB_DATA_BASE_URL__` override.
+      const devOverrideApp =
+        (host === "localhost" || host === "127.0.0.1") ? new URLSearchParams(location.search).get("app") : null;
       const isMinisite = host.endsWith(`.${APEX}`) && !RESERVED_HOSTS.has(host);
       // Absolute path — this same index.html is served (SPA fallback) for
       // every route (e.g. /imovel/{slug}, /{citySlug}, /imoveis/{id}), so a
       // path relative to the current URL would resolve wrong on any route
       // but "/".
       const modulePath =
-        isPainelHost || isPainelDevOverride ? "/painel/app.js" : isMinisite ? "/minisite/app.js" : "/portal/app.js";
+        isAdminHost || devOverrideApp === "admin"
+          ? "/admin/app.js"
+          : isPainelHost || devOverrideApp === "painel"
+            ? "/painel/app.js"
+            : isMinisite
+              ? "/minisite/app.js"
+              : "/portal/app.js";
 
       const { mount } = await import(modulePath);
       mount(document.getElementById("app"));

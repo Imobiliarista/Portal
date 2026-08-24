@@ -6,6 +6,10 @@ import {
   getBrokerById,
   getBrokerBySlug,
   getBrokerByEmail,
+  approveBroker,
+  suspendBroker,
+  reactivateBroker,
+  listBrokers,
   BrokerNotFoundError,
   BrokerConflictError,
 } from "../../business/brokers.js";
@@ -173,4 +177,101 @@ test("updateBrokerProfile throws BrokerNotFoundError for an unknown brokerId", a
 test("updateBrokerProfile requires an explicit brokerId argument", async () => {
   const env = makeEnv();
   await assert.rejects(() => updateBrokerProfile(env, "", { name: "x" }), ValidationError);
+});
+
+// --- SuperAdmin: aprovação/suspensão/reativação (§53, Etapa 8) ------------
+
+test("approveBroker moves a pending broker to active and refreshes updatedAt", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput());
+  assert.equal(broker.status, "pending");
+
+  const approved = await approveBroker(env, broker.brokerId);
+  assert.equal(approved.status, "active");
+  // Millisecond-resolution ISO timestamp — same-millisecond execution can
+  // produce an identical string, so this only checks it never goes
+  // backwards, not strict inequality (avoids a flaky test).
+  assert.ok(approved.updatedAt >= broker.updatedAt);
+
+  const manifestRaw = await env.IMOB_PRIVATE.get(`brokers/${broker.brokerId}/manifest.json`);
+  const manifest = await manifestRaw.json();
+  assert.equal(manifest.status, "active");
+});
+
+test("approveBroker rejects a broker that isn't pending", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }));
+  await assert.rejects(() => approveBroker(env, broker.brokerId), BrokerConflictError);
+});
+
+test("approveBroker throws BrokerNotFoundError for an unknown brokerId", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => approveBroker(env, "broker_ghost"), BrokerNotFoundError);
+});
+
+test("suspendBroker moves an active broker to suspended", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }));
+
+  const suspended = await suspendBroker(env, broker.brokerId);
+  assert.equal(suspended.status, "suspended");
+  assert.equal((await getBrokerById(env, broker.brokerId)).status, "suspended");
+});
+
+test("suspendBroker also accepts a still-pending broker (blocking an obviously fraudulent cadastro before approval)", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput());
+  assert.equal(broker.status, "pending");
+
+  const suspended = await suspendBroker(env, broker.brokerId);
+  assert.equal(suspended.status, "suspended");
+});
+
+test("suspendBroker rejects a broker that's already suspended", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }));
+  await suspendBroker(env, broker.brokerId);
+  await assert.rejects(() => suspendBroker(env, broker.brokerId), BrokerConflictError);
+});
+
+test("reactivateBroker moves a suspended broker back to active", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }));
+  await suspendBroker(env, broker.brokerId);
+
+  const reactivated = await reactivateBroker(env, broker.brokerId);
+  assert.equal(reactivated.status, "active");
+});
+
+test("reactivateBroker rejects a broker that isn't suspended", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }));
+  await assert.rejects(() => reactivateBroker(env, broker.brokerId), BrokerConflictError);
+});
+
+// --- SuperAdmin: lista de corretores (§53, Etapa 8) -----------------------
+
+test("listBrokers returns every known broker regardless of status, via the broker registry (no bucket scan)", async () => {
+  const env = makeEnv();
+  const a = await createBroker(env, baseInput());
+  const b = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }));
+
+  const all = await listBrokers(env);
+  assert.equal(all.length, 2);
+  assert.deepEqual(
+    all.map((broker) => broker.brokerId).sort(),
+    [a.brokerId, b.brokerId].sort(),
+  );
+});
+
+test("listBrokers filters by status when given", async () => {
+  const env = makeEnv();
+  await createBroker(env, baseInput());
+  const active = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }));
+
+  const pendingOnly = await listBrokers(env, { status: "pending" });
+  assert.equal(pendingOnly.length, 1);
+
+  const activeOnly = await listBrokers(env, { status: "active" });
+  assert.deepEqual(activeOnly.map((broker) => broker.brokerId), [active.brokerId]);
 });

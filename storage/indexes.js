@@ -145,3 +145,22 @@ export async function registerCitySlug(env, citySlug) {
   }
   return citySlugs;
 }
+
+// --- broker registry (Etapa 8, §53) ---------------------------------------
+// Every brokerId ever created, so SuperAdmin's broker list can enumerate all
+// brokers (any status) without scanning `brokers/` (§26). Grows
+// monotonically, same rationale as the city registry above.
+
+export async function getKnownBrokerIds(env) {
+  const registry = await getPrivate(env, privateKeys.brokerRegistry());
+  return registry?.brokerIds ?? [];
+}
+
+export async function registerBrokerId(env, brokerId) {
+  const brokerIds = await getKnownBrokerIds(env);
+  if (!brokerIds.includes(brokerId)) {
+    brokerIds.push(brokerId);
+    await putPrivate(env, privateKeys.brokerRegistry(), { brokerIds });
+  }
+  return brokerIds;
+}

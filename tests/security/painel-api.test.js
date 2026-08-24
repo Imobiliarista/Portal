@@ -17,7 +17,7 @@ import {
 } from "../../worker/api.js";
 import { handleUploadMedia, handleDeleteMedia } from "../../worker/uploads.js";
 import { login, setAuthPassword } from "../../business/auth.js";
-import { createBroker } from "../../business/brokers.js";
+import { createBroker, suspendBroker } from "../../business/brokers.js";
 import { createListing } from "../../business/listings.js";
 import { SESSION_COOKIE_NAME } from "../../core/session.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
@@ -91,6 +91,27 @@ test("GET /api/me/profile returns the caller's own profile", async () => {
 test("GET /api/me/profile without a session returns 401", async () => {
   const env = makeEnv();
   await assert.rejects(() => handleGetProfile(req("/api/me/profile"), env));
+});
+
+// --- Etapa 8 (§53): sessão de corretor suspenso perde acesso a /api/me/* imediatamente ---
+// Sessões são stateless (§28) — sem isso, um corretor suspenso mid-sessão
+// continuaria usando o painel normalmente até o cookie expirar.
+
+test("a broker suspended mid-session is blocked from /api/me/* on the very next request, even with a still-valid cookie", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeBrokerSession(env);
+
+  // sanity: the session works before suspension
+  const before = await handleGetProfile(req("/api/me/profile", { cookie }), env);
+  assert.equal(before.status, 200);
+
+  const broker = (await before.json()).data;
+  await suspendBroker(env, broker.brokerId);
+
+  await assert.rejects(() => handleGetProfile(req("/api/me/profile", { cookie }), env));
+  await assert.rejects(() =>
+    handlePutProfile(req("/api/me/profile", { method: "PUT", cookie, body: { name: "Tentativa" } }), env),
+  );
 });
 
 test("PUT /api/me/profile updates allowlisted fields only", async () => {

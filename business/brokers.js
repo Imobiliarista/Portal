@@ -22,6 +22,8 @@ import {
   resolveBrokerByEmail,
   setBrokerEmailIndex,
   deleteBrokerEmailIndex,
+  getKnownBrokerIds,
+  registerBrokerId,
 } from "../storage/indexes.js";
 import {
   isNonEmptyString,
@@ -164,6 +166,7 @@ export async function createBroker(env, input) {
   if (broker.email) {
     await setBrokerEmailIndex(env, broker.email, brokerId);
   }
+  await registerBrokerId(env, brokerId);
 
   return broker;
 }
@@ -236,4 +239,81 @@ export async function getBrokerByEmail(env, email) {
   const resolved = await resolveBrokerByEmail(env, email);
   if (!resolved) return null;
   return getBrokerById(env, resolved.brokerId);
+}
+
+// --- SuperAdmin: aprovação/suspensão/reativação (§53, Etapa 8) ------------
+//
+// A broker's private status is the single authoritative flag both login
+// (business/auth.js#login) and the publisher (business/publishing.js —
+// broker-suspension cascades onto its listings) read. Transitions are
+// intentionally narrow: only the 3 moves §53 actually names ("aprovar",
+// "suspender", "reativar"). "disabled" (present in BROKER_STATUSES/the
+// schema enum since an earlier etapa) has no admin action wired to it in
+// this lot — see the PR's pendências.
+
+export class BrokerStatusError extends BrokerConflictError {}
+
+const STATUS_TRANSITIONS = {
+  approve: { from: ["pending"], to: "active" },
+  // A pending signup can also be suspended directly (e.g. an admin blocking
+  // an obviously fraudulent cadastro before ever approving it) — not just an
+  // already-active broker.
+  suspend: { from: ["active", "pending"], to: "suspended" },
+  reactivate: { from: ["suspended"], to: "active" },
+};
+
+async function transitionBrokerStatus(env, brokerId, action) {
+  if (!isNonEmptyString(brokerId)) {
+    throw new ValidationError([{ field: "brokerId", message: "obrigatório" }]);
+  }
+  const { from, to } = STATUS_TRANSITIONS[action];
+
+  const current = await getBrokerById(env, brokerId);
+  if (!current) throw new BrokerNotFoundError(brokerId);
+  if (!from.includes(current.status)) {
+    throw new BrokerStatusError(
+      `Corretor "${brokerId}" está "${current.status}" — ação "${action}" requer um dos estados: ${from.join(", ")}.`,
+    );
+  }
+
+  const updated = { ...current, status: to, updatedAt: new Date().toISOString() };
+  await putPrivate(env, privateKeys.brokerProfileDraft(brokerId), updated);
+
+  const manifestKey = privateKeys.brokerManifest(brokerId);
+  const manifest = (await getPrivate(env, manifestKey)) ?? {};
+  await putPrivate(env, manifestKey, { ...manifest, status: to });
+
+  return updated;
+}
+
+/** pending -> active (§53 "aprovar"). */
+export async function approveBroker(env, brokerId) {
+  return transitionBrokerStatus(env, brokerId, "approve");
+}
+
+/** active/pending -> suspended (§53 "suspender"). */
+export async function suspendBroker(env, brokerId) {
+  return transitionBrokerStatus(env, brokerId, "suspend");
+}
+
+/** suspended -> active (§53 "reativar"). */
+export async function reactivateBroker(env, brokerId) {
+  return transitionBrokerStatus(env, brokerId, "reactivate");
+}
+
+/**
+ * Lists every known broker (any status), for SuperAdmin's broker list
+ * (§53). Uses the broker registry (storage/indexes.js#getKnownBrokerIds) —
+ * never a bucket scan (§26). Optionally filters to a single `status`.
+ */
+export async function listBrokers(env, { status } = {}) {
+  const brokerIds = await getKnownBrokerIds(env);
+  const brokers = [];
+  for (const brokerId of brokerIds) {
+    const broker = await getBrokerById(env, brokerId);
+    if (!broker) continue; // defensivo — registro órfão não derruba a listagem
+    if (status && broker.status !== status) continue;
+    brokers.push(broker);
+  }
+  return brokers;
 }

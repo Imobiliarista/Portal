@@ -17,7 +17,16 @@ import {
 } from "../core/session.js";
 import { resolveTenant } from "../core/tenant.js";
 import { login as loginBusiness, InvalidCredentialsError } from "../business/auth.js";
+import { getBrokerById } from "../business/brokers.js";
+import { ForbiddenError } from "../core/permissions.js";
 import { success, unauthorized, badRequest } from "../core/response.js";
+
+// Etapa 8 (§53) — mirrors business/auth.js#BLOCKED_LOGIN_STATUSES. Sessions
+// are stateless (§28, no server-side revocation), so a broker suspended
+// *after* already holding a valid cookie would otherwise keep using
+// /api/me/* until the token expires. requireTenant below re-checks the
+// broker's live status on every private request instead.
+const BLOCKED_TENANT_STATUSES = ["suspended", "disabled"];
 
 function sessionSecret(env) {
   if (!env?.SESSION_SECRET) {
@@ -49,10 +58,24 @@ export async function requireSession(request, env) {
  * private handlers actually want: `{ session, tenant }`, where `tenant` is
  * `null` for a superadmin session with no brokerId of its own (§53 acts
  * cross-tenant by design, see core/tenant.js).
+ *
+ * Etapa 8: for a broker session, also re-checks the broker's live status —
+ * see `BLOCKED_TENANT_STATUSES` above. Skipped for a superadmin session
+ * (never subject to broker suspension, even though it happens to carry a
+ * brokerId of its own per business/auth.js's identity model).
  */
 export async function requireTenant(request, env) {
   const session = await requireSession(request, env);
-  return { session, tenant: resolveTenant(session) };
+  const tenant = resolveTenant(session);
+
+  if (tenant && session.role !== "superadmin") {
+    const broker = await getBrokerById(env, tenant.brokerId);
+    if (!broker || BLOCKED_TENANT_STATUSES.includes(broker.status)) {
+      throw new ForbiddenError("Conta suspensa.");
+    }
+  }
+
+  return { session, tenant };
 }
 
 /** POST /api/auth/login (§72). */

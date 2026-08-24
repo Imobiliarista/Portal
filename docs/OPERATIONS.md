@@ -1,5 +1,32 @@
 # Operações
 
+## Pendências não-bloqueantes (Etapa 8a)
+
+5. **Provisionamento do primeiro SuperAdmin**: não existe rota HTTP de
+   criação de corretor/admin neste lote (§53 lista "criar corretor", mas
+   ficou fora do escopo pedido — ver docs/CHANGELOG.md). Para criar a
+   primeira conta superadmin, hoje só via script/console, chamando
+   diretamente:
+
+   ```js
+   import { createBroker } from "./business/brokers.js";
+   import { setAuthPassword } from "./business/auth.js";
+
+   const broker = await createBroker(env, {
+     userId: "user_admin_1",
+     slug: "admin", // não vira minisite público de verdade — broker-public.schema.json não distingue "é admin"
+     name: "Nome do admin",
+     plan: "internal",
+     status: "active",
+     email: "admin@imobiliarista.net",
+   });
+   await setAuthPassword(env, broker.userId, "senha-forte-aqui", { role: "superadmin" });
+   ```
+
+   O mesmo vale para colocar o primeiro corretor real em `pending` para
+   testar o fluxo de aprovação — sem rota de autocadastro pública ainda,
+   `createBroker` direto é o único caminho.
+
 ## Pendências bloqueantes (Etapa 6)
 
 4. **Catálogo nacional de municípios (IBGE)**: `business/data/cities-catalog.generated.js`
