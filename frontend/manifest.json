@@ -1,0 +1,19 @@
+{
+  "name": "imobiliarista.net",
+  "short_name": "Imobiliarista",
+  "description": "Portal imobiliário — cidades, imóveis e corretores.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

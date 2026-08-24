@@ -14,6 +14,7 @@
     "test": "node --test \"tests/**/*.test.js\"",
     "validate:schemas": "node scripts/validate-json.js",
     "generate:cities": "node scripts/generate-cities-catalog.js",
+    "generate:pwa": "node scripts/generate-pwa-assets.js",
     "rebuild:listing": "node scripts/rebuild-listing.js",
     "rebuild:broker": "node scripts/rebuild-broker.js",
     "rebuild:city": "node scripts/rebuild-city.js",
