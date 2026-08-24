@@ -19,6 +19,11 @@
 // `GET /api/admin/brokers/:id` and `PUT /api/admin/brokers/:id` (full
 // admin edit) are likewise out of scope — the admin frontend this lot only
 // needs list + approve/suspend/reactivate + rebuild.
+//
+// Etapa 8b (this update — §52/§53): adds `/api/admin/plans*` (CRUD over
+// business/plans.js's catalog) and `PUT /api/admin/brokers/:id/plan`
+// (assign/change a broker's plan). Not in §72's original route list — that
+// section predates the plans system existing at all.
 
 import { requireSession } from "./auth.js";
 import { requireSuperadmin } from "../core/permissions.js";
@@ -34,6 +39,16 @@ import {
 } from "../business/brokers.js";
 import { publishBroker, republishBrokerListings, rebuildCity, rebuildAll } from "../business/publishing.js";
 import { UnknownCityError } from "../business/cities.js";
+import {
+  listPlans,
+  createPlan,
+  updatePlan,
+  getPlanById,
+  deletePlan,
+  assignBrokerPlan,
+  PlanNotFoundError,
+  PlanConflictError,
+} from "../business/plans.js";
 
 async function requireAdmin(request, env) {
   const session = await requireSession(request, env);
@@ -151,4 +166,79 @@ export async function handleRebuildAll(request, env) {
   const body = await readJsonBody(request);
   const result = await rebuildAll(env, { cursor: body?.cursor });
   return success(result);
+}
+
+// --- planos (§52, §53, Etapa 8b) ----------------------------------------------
+
+// --- GET /api/admin/plans ------------------------------------------------
+export async function handleListPlans(request, env) {
+  await requireAdmin(request, env);
+  const plans = await listPlans(env);
+  return success(plans);
+}
+
+// --- POST /api/admin/plans ------------------------------------------------
+export async function handleCreatePlan(request, env) {
+  await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  try {
+    const plan = await createPlan(env, body);
+    return success(plan, { status: 201 });
+  } catch (error) {
+    if (error instanceof PlanConflictError) return conflict(error.message);
+    throw error;
+  }
+}
+
+// --- GET /api/admin/plans/:id ---------------------------------------------
+export async function handleGetPlan(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  const plan = await getPlanById(env, params.id);
+  if (!plan) return notFound(`Plano "${params.id}" não encontrado.`);
+  return success(plan);
+}
+
+// --- PUT /api/admin/plans/:id ----------------------------------------------
+export async function handleUpdatePlan(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  try {
+    const plan = await updatePlan(env, params.id, body);
+    return success(plan);
+  } catch (error) {
+    if (error instanceof PlanNotFoundError) return notFound(error.message);
+    if (error instanceof PlanConflictError) return conflict(error.message);
+    throw error;
+  }
+}
+
+// --- DELETE /api/admin/plans/:id --------------------------------------------
+export async function handleDeletePlan(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  try {
+    await deletePlan(env, params.id);
+    return success({ deleted: true });
+  } catch (error) {
+    if (error instanceof PlanNotFoundError) return notFound(error.message);
+    if (error instanceof PlanConflictError) return conflict(error.message);
+    throw error;
+  }
+}
+
+// --- PUT /api/admin/brokers/:id/plan ----------------------------------------
+// §53 "gerenciar planos" applied to a specific corretor. Distinct from
+// `handlePublishBroker`'s POST-action style (approve/suspend/etc.) because
+// this sets a resource (the broker's plan), not an action — same
+// convention as `PUT /api/me/profile` (worker/api.js).
+export async function handleAssignBrokerPlan(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  try {
+    const broker = await assignBrokerPlan(env, params.id, body?.planId);
+    return success(broker);
+  } catch (error) {
+    if (error instanceof BrokerNotFoundError) return notFound(error.message);
+    if (error instanceof PlanNotFoundError) return notFound(error.message);
+    throw error;
+  }
 }

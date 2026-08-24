@@ -27,6 +27,35 @@
    testar o fluxo de aprovação — sem rota de autocadastro pública ainda,
    `createBroker` direto é o único caminho.
 
+   **Nota Etapa 8b**: o `plan: "internal"` acima continua sendo só o texto
+   livre que `business/brokers.js#createBroker` sempre aceitou (Etapa 3) —
+   não precisa (e normalmente não deve) corresponder a um `planId` real do
+   catálogo de `business/plans.js`, já que uma conta superadmin não
+   publica anúncios como corretor. Se algum dia isso mudar, atribua um
+   plano de verdade via `PUT /api/admin/brokers/:id/plan` depois de criar
+   o plano correspondente.
+
+## Pendências não-bloqueantes (Etapa 8b)
+
+6. **Catálogo real de planos**: este lote só constrói a estrutura de CRUD
+   (`business/plans.js`, `/api/admin/plans*`) e semeia um único plano
+   `"free"` (50 fotos/anúncio — mesmo valor do antigo
+   `PROVISIONAL_MAX_GALLERY_ITEMS`) como fallback técnico para corretor sem
+   plano atribuído. Nomes, preços e limites dos planos reais (ex.: um
+   "premium") são decisão de produto ainda não tomada — use
+   `POST /api/admin/plans` para criá-los quando a decisão existir.
+7. **Limite de anúncios ativos por corretor**: fora do escopo deste lote
+   por decisão explícita do solicitante — o documento não define esse
+   limite em lugar nenhum. Só o limite de fotos por anúncio foi migrado
+   para o sistema de planos.
+8. **`business/brokers.js#createBroker`'s `plan` field**: continua sendo
+   validado só como texto livre (`isNonEmptyString`, não contra o catálogo
+   de `business/plans.js`) — não foi tocado neste lote porque não existe
+   rota de criação de corretor (`POST /api/admin/brokers`, ver pendência
+   da Etapa 8a) que precisasse dessa validação. `assignBrokerPlan` (Etapa
+   8b) é o único caminho hoje que garante um `broker.plan` apontando para
+   um plano que de fato existe.
+
 ## Pendências bloqueantes (Etapa 6)
 
 4. **Catálogo nacional de municípios (IBGE)**: `business/data/cities-catalog.generated.js`

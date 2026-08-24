@@ -16,6 +16,12 @@ import {
   handlePublishBroker,
   handleRebuildCity,
   handleRebuildAll,
+  handleListPlans,
+  handleCreatePlan,
+  handleGetPlan,
+  handleUpdatePlan,
+  handleDeletePlan,
+  handleAssignBrokerPlan,
 } from "../../worker/admin.js";
 import { handleCreateListing } from "../../worker/api.js";
 import { login, setAuthPassword } from "../../business/auth.js";
@@ -299,4 +305,149 @@ test("POST /api/admin/rebuild/all reaproveita business/publishing.js#rebuildAll 
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.data.done, true);
+});
+
+// --- planos (§52, §53, Etapa 8b) ----------------------------------------------
+
+test("GET /api/admin/plans without a superadmin session is rejected", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => handleListPlans(req("/api/admin/plans"), env));
+
+  const { cookie } = await makeBrokerSession(env);
+  await assert.rejects(() => handleListPlans(req("/api/admin/plans", { cookie }), env));
+});
+
+test("POST /api/admin/plans creates a plan; GET lists it", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+
+  const createResponse = await handleCreatePlan(
+    req("/api/admin/plans", { method: "POST", cookie, body: { planId: "premium", name: "Premium", maxGalleryItems: 100 } }),
+    env,
+  );
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json();
+  assert.equal(created.data.planId, "premium");
+
+  const listResponse = await handleListPlans(req("/api/admin/plans", { cookie }), env);
+  const list = await listResponse.json();
+  assert.equal(list.data.length, 1);
+});
+
+test("POST /api/admin/plans rejects a duplicate planId with 409", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  const body = { planId: "premium", name: "Premium", maxGalleryItems: 100 };
+
+  await handleCreatePlan(req("/api/admin/plans", { method: "POST", cookie, body }), env);
+  const response = await handleCreatePlan(req("/api/admin/plans", { method: "POST", cookie, body }), env);
+  assert.equal(response.status, 409);
+});
+
+test("GET /api/admin/plans/:id returns 404 for an unknown plan", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  const response = await handleGetPlan(req("/api/admin/plans/ghost", { cookie }), env, null, { id: "ghost" });
+  assert.equal(response.status, 404);
+});
+
+test("PUT /api/admin/plans/:id updates name/limit", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  await handleCreatePlan(
+    req("/api/admin/plans", { method: "POST", cookie, body: { planId: "premium", name: "Premium", maxGalleryItems: 100 } }),
+    env,
+  );
+
+  const response = await handleUpdatePlan(
+    req("/api/admin/plans/premium", { method: "PUT", cookie, body: { name: "Premium Plus", maxGalleryItems: 150 } }),
+    env,
+    null,
+    { id: "premium" },
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.data.name, "Premium Plus");
+  assert.equal(body.data.maxGalleryItems, 150);
+});
+
+test("DELETE /api/admin/plans/:id removes a plan not in use", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  await handleCreatePlan(
+    req("/api/admin/plans", { method: "POST", cookie, body: { planId: "premium", name: "Premium", maxGalleryItems: 100 } }),
+    env,
+  );
+
+  const response = await handleDeletePlan(req("/api/admin/plans/premium", { method: "DELETE", cookie }), env, null, {
+    id: "premium",
+  });
+  assert.equal(response.status, 200);
+
+  const getResponse = await handleGetPlan(req("/api/admin/plans/premium", { cookie }), env, null, { id: "premium" });
+  assert.equal(getResponse.status, 404);
+});
+
+test("DELETE /api/admin/plans/:id refuses to remove a plan assigned to a broker", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  await handleCreatePlan(
+    req("/api/admin/plans", { method: "POST", cookie, body: { planId: "premium", name: "Premium", maxGalleryItems: 100 } }),
+    env,
+  );
+  const { broker } = await makeBrokerSession(env);
+  await handleAssignBrokerPlan(
+    req(`/api/admin/brokers/${broker.brokerId}/plan`, { method: "PUT", cookie, body: { planId: "premium" } }),
+    env,
+    null,
+    { id: broker.brokerId },
+  );
+
+  const response = await handleDeletePlan(req("/api/admin/plans/premium", { method: "DELETE", cookie }), env, null, {
+    id: "premium",
+  });
+  assert.equal(response.status, 409);
+});
+
+test("PUT /api/admin/brokers/:id/plan assigns a plan to a broker and requires superadmin", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  await handleCreatePlan(
+    req("/api/admin/plans", { method: "POST", cookie, body: { planId: "premium", name: "Premium", maxGalleryItems: 100 } }),
+    env,
+  );
+  const { broker, cookie: brokerCookie } = await makeBrokerSession(env);
+
+  await assert.rejects(() =>
+    handleAssignBrokerPlan(
+      req(`/api/admin/brokers/${broker.brokerId}/plan`, { method: "PUT", cookie: brokerCookie, body: { planId: "premium" } }),
+      env,
+      null,
+      { id: broker.brokerId },
+    ),
+  );
+
+  const response = await handleAssignBrokerPlan(
+    req(`/api/admin/brokers/${broker.brokerId}/plan`, { method: "PUT", cookie, body: { planId: "premium" } }),
+    env,
+    null,
+    { id: broker.brokerId },
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.data.plan, "premium");
+});
+
+test("PUT /api/admin/brokers/:id/plan returns 404 for an unknown planId", async () => {
+  const env = makeEnv();
+  const { cookie } = await makeSuperadminSession(env);
+  const { broker } = await makeBrokerSession(env);
+
+  const response = await handleAssignBrokerPlan(
+    req(`/api/admin/brokers/${broker.brokerId}/plan`, { method: "PUT", cookie, body: { planId: "ghost" } }),
+    env,
+    null,
+    { id: broker.brokerId },
+  );
+  assert.equal(response.status, 404);
 });

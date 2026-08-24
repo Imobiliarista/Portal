@@ -17,6 +17,13 @@
 // was never live (draft/pending) — see business/publishing.js's
 // `shouldPublish`/status-mapping — so this is safe even for media attached
 // to a not-yet-published draft.
+//
+// Etapa 8b (§52/§53) change to this Etapa-5 file: the gallery-full check
+// below no longer reads the fixed `PROVISIONAL_MAX_GALLERY_ITEMS` constant
+// (removed from business/listings.js) — it now asks
+// business/plans.js#getGalleryLimitForBroker for the uploading broker's
+// actual plan limit, falling back to a seeded default plan when none is
+// assigned.
 
 import { requireTenant } from "./auth.js";
 import { can } from "../core/permissions.js";
@@ -28,9 +35,10 @@ import {
   getListingById,
   updateListing,
   ListingNotFoundError,
-  PROVISIONAL_MAX_GALLERY_ITEMS,
+  GalleryLimitExceededError,
 } from "../business/listings.js";
 import { updateBrokerProfile } from "../business/brokers.js";
+import { getGalleryLimitForBroker } from "../business/plans.js";
 import { publishListing, publishBroker } from "../business/publishing.js";
 import { success, badRequest, notFound, conflict } from "../core/response.js";
 
@@ -121,8 +129,9 @@ export async function handleUploadMedia(request, env) {
     assertTenantMatch(session, listing.brokerId); // superadmin-exempt; throws TenantMismatchError -> 403 centrally
 
     const currentGallery = listing.gallery ?? [];
-    if (currentGallery.length >= PROVISIONAL_MAX_GALLERY_ITEMS) {
-      return conflict(`Limite de ${PROVISIONAL_MAX_GALLERY_ITEMS} fotos por anúncio atingido.`);
+    const galleryLimit = await getGalleryLimitForBroker(env, listing.brokerId);
+    if (currentGallery.length >= galleryLimit) {
+      return conflict(`Limite de ${galleryLimit} fotos por anúncio atingido para o plano deste corretor.`);
     }
 
     const key = mediaKeys.listingGalleryItem(listingId, newFileName(extension));
@@ -134,6 +143,10 @@ export async function handleUploadMedia(request, env) {
       await publishListing(env, listingId);
     } catch (error) {
       if (error instanceof ListingNotFoundError) return notFound(error.message);
+      // Defesa contra corrida entre o pré-check acima e esta escrita
+      // (duas requisições concorrentes de upload) — mesma resposta 409 do
+      // pré-check, não um 500.
+      if (error instanceof GalleryLimitExceededError) return conflict(error.message);
       throw error;
     }
 

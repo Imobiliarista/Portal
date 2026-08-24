@@ -164,3 +164,31 @@ export async function registerBrokerId(env, brokerId) {
   }
   return brokerIds;
 }
+
+// --- plan registry (Etapa 8b, §52/§53) ------------------------------------
+// Every planId ever created, so SuperAdmin's plan catalog listing can
+// enumerate all plans without scanning `plans/` (§26). Mirrors the broker
+// registry above, except this one IS pruned by `deletePlan` (a removed plan
+// should stop showing up in the catalog — unlike a broker/city, a plan has
+// no historical public footprint that needs the id to keep resolving).
+
+export async function getKnownPlanIds(env) {
+  const registry = await getPrivate(env, privateKeys.planRegistry());
+  return registry?.planIds ?? [];
+}
+
+export async function registerPlanId(env, planId) {
+  const planIds = await getKnownPlanIds(env);
+  if (!planIds.includes(planId)) {
+    planIds.push(planId);
+    planIds.sort();
+    await putPrivate(env, privateKeys.planRegistry(), { planIds });
+  }
+  return planIds;
+}
+
+export async function deregisterPlanId(env, planId) {
+  const planIds = (await getKnownPlanIds(env)).filter((id) => id !== planId);
+  await putPrivate(env, privateKeys.planRegistry(), { planIds });
+  return planIds;
+}

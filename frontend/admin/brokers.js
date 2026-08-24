@@ -16,9 +16,13 @@ import { renderBrokersSection } from "./render.js";
  * frontend/painel/app.js#guarded). `initialBrokers`, when given, is drawn
  * immediately without a redundant fetch — the caller (frontend/admin/app.js)
  * already fetched the list once as its "am I logged in" probe.
+ * `initialPlans`/`setPlans` (§52/§53, Etapa 8b) feed the per-row plan
+ * picker — this controller never fetches plans itself, frontend/admin/app.js
+ * owns keeping the two sections' plan lists in sync (frontend/admin/plans.js
+ * is the source of truth for the catalog).
  */
-export function createBrokersSection(content, { onSessionExpired, initialBrokers }) {
-  let state = { brokers: initialBrokers ?? [], busyBrokerId: null, error: undefined };
+export function createBrokersSection(content, { onSessionExpired, initialBrokers, initialPlans }) {
+  let state = { brokers: initialBrokers ?? [], plans: initialPlans ?? [], busyBrokerId: null, error: undefined };
   draw();
 
   function draw() {
@@ -27,6 +31,7 @@ export function createBrokersSection(content, { onSessionExpired, initialBrokers
       onSuspend: (brokerId) => runAction(brokerId, api.suspendBroker),
       onReactivate: (brokerId) => runAction(brokerId, api.reactivateBroker),
       onPublish: (brokerId) => runAction(brokerId, api.publishBroker),
+      onAssignPlan: (brokerId, planId) => runAction(brokerId, () => api.assignBrokerPlan(brokerId, planId)),
     });
   }
 
@@ -46,7 +51,7 @@ export function createBrokersSection(content, { onSessionExpired, initialBrokers
   async function load() {
     try {
       const brokers = await api.listBrokers();
-      state = { brokers, busyBrokerId: null, error: undefined };
+      state = { ...state, brokers, busyBrokerId: null, error: undefined };
       draw();
     } catch (error) {
       if (isSessionExpired(error)) return onSessionExpired();
@@ -55,5 +60,10 @@ export function createBrokersSection(content, { onSessionExpired, initialBrokers
     }
   }
 
-  return { load };
+  function setPlans(plans) {
+    state = { ...state, plans };
+    draw();
+  }
+
+  return { load, setPlans };
 }

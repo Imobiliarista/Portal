@@ -19,6 +19,7 @@ import { handleUploadMedia, handleDeleteMedia } from "../../worker/uploads.js";
 import { login, setAuthPassword } from "../../business/auth.js";
 import { createBroker, suspendBroker } from "../../business/brokers.js";
 import { createListing } from "../../business/listings.js";
+import { createPlan, assignBrokerPlan } from "../../business/plans.js";
 import { SESSION_COOKIE_NAME } from "../../core/session.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
 
@@ -378,7 +379,7 @@ test("POST /api/me/media blocks uploading into another broker's listing (§55)",
   );
 });
 
-test("POST /api/me/media enforces the provisional per-listing gallery cap", async () => {
+test("POST /api/me/media enforces the per-listing gallery cap from the broker's plan (§52/§53, Etapa 8b — falls back to the seeded default plan's 50 here, since \"premium\" from makeBrokerSession isn't a real plan record in this env)", async () => {
   const env = makeEnv();
   const { cookie } = await makeBrokerSession(env);
   const created = await handleCreateListing(
@@ -398,6 +399,32 @@ test("POST /api/me/media enforces the provisional per-listing gallery cap", asyn
     env,
   );
   assert.equal(response.status, 409);
+});
+
+test("POST /api/me/media allows uploads past 50 once the broker is on a plan with a higher limit (§52/§53, Etapa 8b)", async () => {
+  const env = makeEnv();
+  await createPlan(env, { planId: "premium", name: "Premium", maxGalleryItems: 60 });
+
+  const { broker, cookie } = await makeBrokerSession(env);
+  await assignBrokerPlan(env, broker.brokerId, "premium");
+
+  const created = await handleCreateListing(
+    req("/api/me/listings", {
+      method: "POST",
+      cookie,
+      body: baseListingInput({
+        gallery: Array.from({ length: 50 }, (_, i) => `https://media.imobiliarista.net/listings/x/gallery/${i}.webp`),
+      }),
+    }),
+    env,
+  );
+  const listing = (await created.json()).data;
+
+  const response = await handleUploadMedia(
+    makeUploadRequest({ cookie, fileBytes: new Uint8Array([1, 2, 3]), contentType: "image/webp", target: "listing-gallery", listingId: listing.listingId }),
+    env,
+  );
+  assert.equal(response.status, 201);
 });
 
 test("POST /api/me/media uploads a broker logo and updates the profile", async () => {

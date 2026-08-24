@@ -140,6 +140,13 @@ export async function handlePutListing(request, env, ctx, params) {
     return success(updated);
   } catch (error) {
     if (error instanceof ListingNotFoundError) return notFound(error.message);
+    // Etapa 8b (§52/§53): a `gallery` patch here goes through the same
+    // plan-derived limit as worker/uploads.js's own upload flow
+    // (business/listings.js#updateListing -> GalleryLimitExceededError,
+    // a ListingConflictError subclass) — a broker PUTting a full gallery
+    // array directly must be capped exactly like uploading one photo at a
+    // time is.
+    if (error instanceof ListingConflictError) return conflict(error.message);
     throw error;
   }
 }
