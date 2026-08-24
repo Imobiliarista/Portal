@@ -77,6 +77,26 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
   draft carregado contra o argumento antes de gravar
   (`core/tenant.js#TenantMismatchError`).
 
+## Auth privado (§26-§28, Etapa 4)
+
+- `auth/{userId}.json` (`storage/keys.js#privateKeys.authUser`) — identidade
+  de credencial: `{ schemaVersion, userId, role, passwordHash, authVersion,
+  updatedAt }`. Deliberadamente **não** faz parte de `broker.schema.json`
+  (que tem `additionalProperties: false`) nem de nenhum schema em
+  `schemas/` — objeto puramente privado/de segurança, nunca serializado
+  para fora do Worker. Gerido por `business/auth.js#setAuthPassword`/
+  `getAuthUser`.
+- `business/auth.js#login` compõe duas buscas independentes por e-mail:
+  `business/brokers.getBrokerByEmail` (índice `broker-email` → contexto de
+  tenant: `brokerId`/`slug`) e `getAuthUser` (a partir do `userId` do
+  broker → credencial). O índice `login` (`loginIdentifierHash` → `{
+  userId }`, já existente desde a Etapa 1) fica disponível para uma
+  identidade de auth sem perfil de corretor (ex.: superadmin, Etapa 8) mas
+  não é usado pelo login de corretor desta etapa.
+- `worker/auth.js` — único lugar que lê o cookie de sessão de um `Request`
+  (`getSession`/`requireSession`/`requireTenant`); resolve o tenant sempre
+  via `core/tenant.js#resolveTenant(session)`, nunca do corpo (§55).
+
 ## Versionamento (§61)
 
 Todo JSON relevante carrega `schemaVersion` e, quando aplicável,

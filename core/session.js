@@ -11,6 +11,18 @@
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
+/** Thrown by callers (worker/auth.js#requireSession) when a request carries
+ * no session cookie, or the cookie fails verification/has expired. Lives
+ * here (not in worker/) so core/app.js can special-case it like
+ * ValidationError/ForbiddenError/TenantMismatchError without core depending
+ * on worker/. */
+export class UnauthorizedError extends Error {
+  constructor(message = "Sessão inválida ou expirada.") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
 function toBase64Url(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);

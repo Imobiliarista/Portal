@@ -1,5 +1,43 @@
 # Changelog
 
+## Etapa 4 — Auth (§90)
+
+- `business/auth.js` (novo): identidade de credencial em
+  `auth/{userId}.json`, separada do perfil do corretor (schema
+  `broker.schema.json` tem `additionalProperties: false` — não há onde
+  colocar `passwordHash` ali). `setAuthPassword` cria/atualiza o hash
+  (`core/auth.js`, PBKDF2) e incrementa `authVersion`; não é um fluxo de
+  cadastro novo — `business/brokers.createBroker` continua não recebendo
+  senha. `login` compõe `business/brokers.getBrokerByEmail` (contexto de
+  tenant: brokerId/slug) com `getAuthUser` (credencial: passwordHash/role/
+  authVersion) e emite sessão via `core/session.js#createSessionToken`.
+  Todo caminho de falha (e-mail inexistente, sem credencial, senha errada)
+  lança o mesmo `InvalidCredentialsError` — inclusive rodando o hashing
+  contra um hash "dummy" quando não há credencial real, para não vazar por
+  timing se o e-mail existe.
+- `worker/auth.js`: implementado (era placeholder da Etapa 1). Expõe
+  `handleLogin`/`handleLogout` (§72) e o middleware
+  `getSession`/`requireSession`/`requireTenant`, que lê o cookie assinado
+  de um `Request`, verifica via `core/session.js` e resolve o tenant via
+  `core/tenant.js` — nunca a partir do corpo da requisição (§55).
+- `worker/index.js`: `POST /api/auth/login` e `POST /api/auth/logout`
+  ligados (o comentário original do placeholder `worker/auth.js` já dizia
+  que login/sessão pertence a esta etapa). `/api/me/*` e `/api/admin/*`
+  continuam 501 — isso é Etapa 5/8.
+- `core/session.js`: nova `UnauthorizedError`, para `core/app.js` devolver
+  401 de forma consistente com o tratamento já existente de
+  `ValidationError`/`ForbiddenError`/`TenantMismatchError`.
+- Sessão é stateless (§28): logout apenas expira o cookie
+  (`buildLogoutCookie`, já existente desde a Etapa 1) — nenhuma lista de
+  revogação foi introduzida (evitaria §93 ao exigir KV/D1).
+- 20 novos testes: `tests/business/auth.test.js` (unitário — hashing,
+  login com credencial certa/senha errada/e-mail inexistente, mensagem
+  genérica idêntica nos dois casos de falha) e
+  `tests/security/auth-flow.test.js` (ponta a ponta — handlers HTTP de
+  login/logout, sessão válida/expirada/adulterada, e bloqueio de acesso
+  cross-tenant combinando uma sessão real emitida pelo login com
+  `business/listings.updateListing`/`core/tenant.js#assertTenantMatch`).
+
 ## Etapa 3 — R2 privado (§90)
 
 - `business/brokers.js`: CRUD do corretor privado (§29) —
