@@ -35,10 +35,42 @@
 //    listing-public.schema.json não tem um valor "draft" válido para
 //    representar esse estado. Ver pendências no PR.
 //
-// 4. Shard único por cidade. Esta etapa assume 1 shard (001.json) por
-//    cidade — particionamento por 300 cards/1MB é Etapa 7 (§90). A
-//    estrutura (manifest.shards como array, dataKeys.cityShard(slug, N))
-//    já é compatível com múltiplos shards no futuro.
+// 4. Particionamento real por shard (Etapa 7, §7-9). Cada cidade tem N
+//    shards (business/sharding.js decide onde cada card cabe: 300 cards OU
+//    ~1MB comprimido, o que vier primeiro). Decisões específicas desta
+//    etapa:
+//
+//    a. Atribuição de shard é "sticky" por listing. O manifest privado do
+//       anúncio (privateKeys.listingManifest) ganha um campo novo,
+//       `publishedShard`, que registra em qual shard o card do anúncio
+//       está publicado nessa cidade. Uma edição (preço, capa, etc.) troca
+//       o card NO MESMO shard em que ele já estava, mesmo que o shard
+//       cresça um pouco além do alvo de 1MB nesse processo — o limite do
+//       §9 é sobre *abrir um shard novo*, não sobre nunca deixar um shard
+//       existente crescer um byte além do alvo por causa de uma edição in
+//       place. Só uma inserção nova (`findOrCreateShardForNewCard`)
+//       decide se cabe no último shard ou se abre um shard novo.
+//    b. Novo card sempre tenta o ÚLTIMO shard da cidade primeiro; se não
+//       couber (300 cards ou o alvo de ~1MB comprimido, ver
+//       business/sharding.js), abre um shard novo. Nunca faz backfill em
+//       shards anteriores que sobraram com espaço por causa de remoções —
+//       mesma filosofia "monotônica" já usada pelo registro de cidades
+//       (storage/indexes.js#registerCitySlug): simplicidade (§94) em vez
+//       de reempacotamento perfeito.
+//    c. `manifest.shards` também é monotônico: só cresce (um shard que
+//       fica vazio por remoções continua listado, só com um array vazio
+//       nele) — nunca renumera shards existentes, o que quebraria
+//       `publishedShard` de outros anúncios apontando pro mesmo número.
+//       Só `rebuildCity` (que recalcula tudo do zero) pode encolher essa
+//       lista, e quando encolhe apaga explicitamente os arquivos de shard
+//       que sobraram (ver rebuildCity abaixo) em vez de deixar órfãos.
+//    d. Fallback defensivo: se `publishedShard` estiver desatualizado (ex.:
+//       um `rebuildCity` reparticionou a cidade sem essa gravação ter
+//       chegado por algum motivo) e o card não for encontrado no shard
+//       indicado, o publicador trata como inserção nova em vez de travar —
+//       diverge para o caminho de "acha ou cria" em vez de silenciosamente
+//       não fazer nada. Divergência real de estado é o que `rebuildCity`
+//       existe pra corrigir (§33).
 //
 // 5. city.name/city.uf (exigidos por city-manifest.schema.json) vêm de
 //    business/cities.js, catálogo estático gerado a partir do IBGE — ver o
@@ -60,9 +92,10 @@ import { getListingById, ListingNotFoundError } from "./listings.js";
 import { getBrokerById, BrokerNotFoundError } from "./brokers.js";
 import { requireCityBySlug } from "./cities.js";
 import { buildListingCard, buildIndexEntry } from "./cards.js";
+import { cardFitsInShard, partitionCardsIntoShards } from "./sharding.js";
 import { getPrivate, putPrivate, deletePrivate } from "../storage/private.js";
-import { getPublic, putPublic } from "../storage/public.js";
-import { privateKeys, dataKeys, MAX_CARDS_PER_SHARD, REBUILD_BATCH_SIZE } from "../storage/keys.js";
+import { getPublic, putPublic, deletePublic } from "../storage/public.js";
+import { privateKeys, dataKeys, shardFileName, MAX_CARDS_PER_SHARD, REBUILD_BATCH_SIZE } from "../storage/keys.js";
 import { buildCacheControl } from "../storage/cache.js";
 import {
   getCityListingIds,
@@ -226,9 +259,16 @@ function assertValidBrokerPublic(brokerPublic) {
   assertPresent("broker-public", brokerPublic, REQUIRED_BROKER_PUBLIC_FIELDS);
 }
 
-// --- shard/index/manifest de cidade (shard único — decisão 4 acima) -------
+// --- shard/index/manifest de cidade (particionamento real — decisão 4) ----
 
-async function touchCityManifest(env, citySlug, totalListings, cityRef) {
+/**
+ * Grava/atualiza `cities/{city}/manifest.json` a partir de contadores já
+ * conhecidos pelo chamador (nunca lê os shards pra somar — publicação
+ * incremental mantém `totalListings`/`shardCount` andando via delta, §32).
+ * `shards` é sempre a lista contígua `001.json..NNN.json` — ver decisão 4c
+ * no cabeçalho do arquivo sobre por que essa lista é monotônica.
+ */
+async function touchCityManifest(env, citySlug, { totalListings, shardCount }, cityRef) {
   const manifestKey = dataKeys.cityManifest(citySlug);
   const existing = await getPublic(env, manifestKey);
   const manifest = {
@@ -237,28 +277,91 @@ async function touchCityManifest(env, citySlug, totalListings, cityRef) {
     publicationVersion: (existing?.publicationVersion ?? 0) + 1,
     totalListings,
     pageSize: MAX_CARDS_PER_SHARD,
-    shards: totalListings > 0 ? ["001.json"] : [],
+    shards: Array.from({ length: shardCount }, (_, i) => shardFileName(i + 1)),
     lastUpdated: new Date().toISOString(),
   };
   await putPublic(env, manifestKey, manifest, { cacheControl: buildCacheControl("cityManifest") });
   return manifest;
 }
 
-/** Upserts (card != null) or removes (card == null) one listing's card in a city's single shard + index, then bumps the city manifest. */
-async function applyCardToCity(env, citySlug, listingId, card, cityRef) {
-  const shardKey = dataKeys.cityShard(citySlug, 1);
-  const shard = (await getPublic(env, shardKey)) ?? [];
-  const nextShard = shard.filter((existingCard) => existingCard.id !== listingId);
-  if (card) nextShard.push(card);
-  await putPublic(env, shardKey, nextShard, { cacheControl: buildCacheControl("cityShard") });
+/**
+ * Acha um lugar pro card novo: tenta o último shard existente da cidade
+ * (se couber, §9); senão abre um shard novo. Nunca faz backfill em shards
+ * anteriores (decisão 4b) — só usado para inserção, nunca para edição de
+ * um card que já tem shard conhecido (ver `applyCardToCity`).
+ */
+async function findOrCreateShardForNewCard(env, citySlug, shardCount, card) {
+  if (shardCount > 0) {
+    const lastShardNumber = shardCount;
+    const lastShardKey = dataKeys.cityShard(citySlug, lastShardNumber);
+    const lastShard = (await getPublic(env, lastShardKey)) ?? [];
+    if (await cardFitsInShard(lastShard, card)) {
+      await putPublic(env, lastShardKey, [...lastShard, card], { cacheControl: buildCacheControl("cityShard") });
+      return { shardNumber: lastShardNumber, isNewShard: false };
+    }
+  }
+  const newShardNumber = shardCount + 1;
+  await putPublic(env, dataKeys.cityShard(citySlug, newShardNumber), [card], { cacheControl: buildCacheControl("cityShard") });
+  return { shardNumber: newShardNumber, isNewShard: true };
+}
+
+/**
+ * Upserts (card != null) or removes (card == null) one listing's card in a
+ * city's shards + index, then bumps the city manifest (§32).
+ *
+ * `previousShardNumber` is the shard this listing's card is currently
+ * believed to live in for THIS city (from the listing's private manifest,
+ * `publishedShard`) — `undefined`/`null` means "never placed in this city
+ * before" (first insert, or the city just changed). When it's known and
+ * the card is actually found there, the update happens IN PLACE (decision
+ * 4a) — edits never move a card to a different shard. When it's unknown,
+ * stale, or the card isn't actually where expected (decision 4d), this
+ * falls through to `findOrCreateShardForNewCard` as if it were a fresh
+ * insert, instead of silently doing nothing.
+ *
+ * Returns `{ manifest, shardNumber }` — `shardNumber` is `null` when the
+ * card was removed (or there was nothing to remove).
+ */
+async function applyCardToCity(env, citySlug, listingId, card, cityRef, previousShardNumber) {
+  const manifest = await getPublic(env, dataKeys.cityManifest(citySlug));
+  let totalListings = manifest?.totalListings ?? 0;
+  let shardCount = manifest?.shards?.length ?? 0;
+
+  let resultShardNumber = null;
+  let handledInPlace = false;
+
+  if (previousShardNumber && previousShardNumber <= shardCount) {
+    const shardKey = dataKeys.cityShard(citySlug, previousShardNumber);
+    const shard = (await getPublic(env, shardKey)) ?? [];
+    const withoutCard = shard.filter((existingCard) => existingCard.id !== listingId);
+    const hadCard = withoutCard.length !== shard.length;
+    if (hadCard) {
+      handledInPlace = true;
+      if (card) {
+        await putPublic(env, shardKey, [...withoutCard, card], { cacheControl: buildCacheControl("cityShard") });
+        resultShardNumber = previousShardNumber;
+      } else {
+        await putPublic(env, shardKey, withoutCard, { cacheControl: buildCacheControl("cityShard") });
+        totalListings -= 1;
+      }
+    }
+  }
+
+  if (!handledInPlace && card) {
+    const placement = await findOrCreateShardForNewCard(env, citySlug, shardCount, card);
+    resultShardNumber = placement.shardNumber;
+    if (placement.isNewShard) shardCount += 1;
+    totalListings += 1;
+  }
 
   const indexKey = dataKeys.cityIndex(citySlug);
   const index = (await getPublic(env, indexKey)) ?? [];
   const nextIndex = index.filter((entry) => entry.id !== listingId);
-  if (card) nextIndex.push(buildIndexEntry(card, 1));
+  if (card) nextIndex.push(buildIndexEntry(card, resultShardNumber));
   await putPublic(env, indexKey, nextIndex, { cacheControl: buildCacheControl("cityIndex") });
 
-  return touchCityManifest(env, citySlug, nextShard.length, cityRef);
+  const nextManifest = await touchCityManifest(env, citySlug, { totalListings, shardCount }, cityRef);
+  return { manifest: nextManifest, shardNumber: resultShardNumber };
 }
 
 // --- publicação incremental (§32) ------------------------------------------
@@ -324,12 +427,22 @@ export async function publishListing(env, listingId) {
   }
 
   const previousCity = manifest.publishedCity;
-  if (previousCity && previousCity !== draft.city) {
-    await applyCardToCity(env, previousCity, listingId, null, requireCityBySlug(previousCity));
+  const cityChanged = Boolean(previousCity) && previousCity !== draft.city;
+  if (cityChanged) {
+    await applyCardToCity(env, previousCity, listingId, null, requireCityBySlug(previousCity), manifest.publishedShard);
     await removeCityListingId(env, previousCity, listingId);
   }
 
-  await applyCardToCity(env, draft.city, listingId, card, cityRef);
+  // Only trust the tracked shard when we're still in the same city — a
+  // shard number from a different city means nothing here (decision 4a/4d).
+  const { shardNumber } = await applyCardToCity(
+    env,
+    draft.city,
+    listingId,
+    card,
+    cityRef,
+    cityChanged ? null : manifest.publishedShard,
+  );
   await addCityListingId(env, draft.city, listingId);
   await registerCitySlug(env, draft.city);
 
@@ -344,6 +457,7 @@ export async function publishListing(env, listingId) {
     publicKey: dataKeys.listingPublic(draft.slug),
     publicationVersion,
     publishedCity: draft.city,
+    publishedShard: shardNumber,
     lastPublishedAt: new Date().toISOString(),
   });
 
@@ -418,13 +532,27 @@ export async function rebuildBroker(env, brokerId) {
  * cidade, sem varrer `listings/` (§26). Ao contrário de `publishListing`,
  * que faz upsert incremental, isto descarta e regera o shard/index inteiros
  * — use para corrigir divergência, nunca como caminho normal de uma edição
- * pequena (§33 "nunca reconstruir tudo por pequena alteração").
+ * pequena (§33 "nunca reconstruir tudo por pequena alteração"). É também o
+ * único caminho que reparticiona (Etapa 7, §9): recalcula do zero em quais
+ * shards os cards cabem (`business/sharding.js#partitionCardsIntoShards`)
+ * em vez de manter a distribuição incremental existente.
+ *
+ * Duas coisas ficam sincronizadas com o resultado do reparticionamento:
+ *
+ * - `publishedShard` no manifest privado de cada anúncio processado, pro
+ *   próximo `publishListing` incremental achar o card no lugar certo em
+ *   vez de cair no fallback defensivo (decisão 4d).
+ * - Arquivos de shard que sobraram de uma contagem anterior maior (cidade
+ *   encolheu) são apagados explicitamente — `manifest.shards` normalmente
+ *   só cresce (decisão 4c), mas aqui, que recalcula tudo do zero, não faz
+ *   sentido deixar `004.json` órfão apontando pra nada se a cidade agora
+ *   cabe em 3 shards.
  */
 export async function rebuildCity(env, citySlug) {
   const cityRef = requireCityBySlug(citySlug);
   const listingIds = await getCityListingIds(env, citySlug);
 
-  const cards = [];
+  const items = [];
   for (const listingId of listingIds) {
     const draft = await getListingById(env, listingId);
     if (!draft) continue; // entrada de índice órfã — draft não existe mais
@@ -438,22 +566,42 @@ export async function rebuildCity(env, citySlug) {
     const listingManifest = (await getPrivate(env, privateKeys.listingManifest(listingId))) ?? {};
     const publicationVersion = listingManifest.publicationVersion || 1;
     const listingPublic = normalizeListingForPublic(draft, status, broker, publicationVersion);
-    cards.push(buildListingCard(listingId, listingPublic));
+    items.push({ listingId, card: buildListingCard(listingId, listingPublic) });
   }
 
-  if (cards.length > MAX_CARDS_PER_SHARD) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `business/publishing: cidade "${citySlug}" tem ${cards.length} cards ativos, acima do limite de ${MAX_CARDS_PER_SHARD} por shard (§9). Particionamento em múltiplos shards é Etapa 7 — gravando tudo em 001.json por ora.`,
-    );
+  const shards = await partitionCardsIntoShards(items.map((item) => item.card));
+
+  const indexEntries = [];
+  const shardByListingId = new Map();
+  for (let i = 0; i < shards.length; i += 1) {
+    const shardNumber = i + 1;
+    await putPublic(env, dataKeys.cityShard(citySlug, shardNumber), shards[i], {
+      cacheControl: buildCacheControl("cityShard"),
+    });
+    for (const card of shards[i]) {
+      indexEntries.push(buildIndexEntry(card, shardNumber));
+      shardByListingId.set(card.id, shardNumber);
+    }
   }
-
-  await putPublic(env, dataKeys.cityShard(citySlug, 1), cards, { cacheControl: buildCacheControl("cityShard") });
-
-  const indexEntries = cards.map((card) => buildIndexEntry(card, 1));
   await putPublic(env, dataKeys.cityIndex(citySlug), indexEntries, { cacheControl: buildCacheControl("cityIndex") });
 
-  return touchCityManifest(env, citySlug, cards.length, cityRef);
+  for (const { listingId } of items) {
+    const listingManifestKey = privateKeys.listingManifest(listingId);
+    const listingManifest = await getPrivate(env, listingManifestKey);
+    if (!listingManifest) continue;
+    const newShard = shardByListingId.get(listingId) ?? null;
+    if (listingManifest.publishedShard !== newShard) {
+      await putPrivate(env, listingManifestKey, { ...listingManifest, publishedShard: newShard });
+    }
+  }
+
+  const previousManifest = await getPublic(env, dataKeys.cityManifest(citySlug));
+  const previousShardCount = previousManifest?.shards?.length ?? 0;
+  for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
+    await deletePublic(env, dataKeys.cityShard(citySlug, shardNumber));
+  }
+
+  return touchCityManifest(env, citySlug, { totalListings: items.length, shardCount: shards.length }, cityRef);
 }
 
 // --- rebuild em lote (§34) --------------------------------------------
@@ -462,9 +610,11 @@ export async function rebuildCity(env, citySlug) {
  * Reconstrói várias/todas as cidades, processadas em lotes checkpointáveis
  * (§34) — nunca todas de uma vez numa execução curta de Worker. Uma
  * chamada processa até `batchSize` cidades (aproximação desta etapa para
- * "100 shards por lote", §34: com shard único por cidade — decisão 4 —,
- * cidade e shard coincidem 1:1 por ora) a partir do registro de cidades
- * conhecidas (storage/indexes.js#getKnownCitySlugs), grava um checkpoint
+ * "100 shards por lote", §34 — batching por cidade, não por shard
+ * individual: uma cidade grande com vários shards ainda conta como 1
+ * unidade de lote, o que já é mais conservador que o texto do §34 sugere,
+ * não menos) a partir do registro de cidades conhecidas
+ * (storage/indexes.js#getKnownCitySlugs), grava um checkpoint
  * em R2 PRIVATE (`jobs/rebuild-all/checkpoint.json`) e retorna
  * `{ done: false, nextCursor }` se sobrar trabalho — o chamador (script ou
  * uma futura rota de SuperAdmin) invoca de novo para continuar. Idempotente:

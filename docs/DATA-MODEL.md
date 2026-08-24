@@ -113,13 +113,12 @@ projeções públicas que `frontend/portal`/`frontend/minisite` (Lote 2) leem
 direto do R2 DATA, sem Worker (§73):
 
 - `publishListing(env, listingId)` — publicação incremental (§32): faz
-  upsert do listing completo (`listings/{slug}.json`) e do card só no shard
-  único da cidade atual (§90 — shard único nesta etapa, particionamento é
-  Etapa 7), atualiza `cities/{city}/index.json` e bumpa
-  `cities/{city}/manifest.json`. Também publica/atualiza o perfil público
-  do corretor se estiver ausente/desatualizado. Mapeamento de status
-  privado→público e a lista completa de decisões desta etapa estão no
-  cabeçalho do próprio arquivo.
+  upsert do listing completo (`listings/{slug}.json`) e do card no shard
+  certo da cidade atual (Etapa 7, §7-9 — particionamento real, ver abaixo),
+  atualiza `cities/{city}/index.json` e bumpa `cities/{city}/manifest.json`.
+  Também publica/atualiza o perfil público do corretor se estiver
+  ausente/desatualizado. Mapeamento de status privado→público e a lista
+  completa de decisões desta etapa estão no cabeçalho do próprio arquivo.
 - `publishBroker(env, brokerId, { force })` — idem para
   `brokers/{slug}/profile.json`, com checagem de staleness comparando
   `broker.updatedAt` contra o que foi publicado por último (bookkeeping em
@@ -128,11 +127,45 @@ direto do R2 DATA, sem Worker (§73):
 - `rebuildListing`/`rebuildBroker`/`rebuildCity`/`rebuildAll` (§33-34) —
   reconstrução a partir do estado privado, para divergência ou mudança de
   schema. `rebuildCity` descarta e recalcula o shard/index/manifest inteiro
-  de uma cidade (usa o índice city→listingIds acima); `rebuildAll`
-  processa cidades em lotes checkpointáveis
+  de uma cidade (usa o índice city→listingIds acima) — é também o único
+  caminho que reparticiona de verdade (Etapa 7): recalcula do zero quantos
+  shards a cidade precisa, apagando arquivos de shard que sobrarem se ela
+  encolheu. `rebuildAll` processa cidades em lotes checkpointáveis
   (`jobs/rebuild-all/checkpoint.json`, PRIVATE) — nunca tudo de uma vez.
   CLIs em `scripts/rebuild-*.js` (usam `getPlatformProxy` do wrangler para
   os bindings reais).
+
+### Particionamento por shard (Etapa 7, §7-9)
+
+- `business/sharding.js` (novo) — lógica pura de particionamento, sem R2:
+  `cardFitsInShard` (300 cards OU ~1MB comprimido, o que vier primeiro) e
+  `partitionCardsIntoShards` (usado só por `rebuildCity`, para reparticionar
+  do zero). `estimateCompressedSize` só roda gzip de verdade
+  (`CompressionStream`) quando o JSON descomprimido já passou do alvo de
+  1MB — abaixo disso, compressão só encolhe texto JSON normal, então o
+  tamanho descomprimido já garante que cabe.
+- Publicação incremental (`business/publishing.js#applyCardToCity`) nunca
+  reparticiona um shard existente: um card novo tenta o **último** shard da
+  cidade e só abre um shard novo se não couber; uma edição fica **sempre**
+  no mesmo shard em que já estava. Nenhum backfill em shards anteriores que
+  sobraram com espaço por remoções — mesma filosofia monotônica do registro
+  de cidades acima. `manifest.shards` só cresce por essa via; só
+  `rebuildCity` pode encolher (e aí sim apaga os arquivos de shard órfãos).
+- O manifest privado de cada anúncio (`listings/{listingId}/manifest.json`,
+  sem schema público) ganhou o campo `publishedShard`: em qual shard da
+  cidade atual o card desse anúncio está. É como uma edição/remoção acha o
+  shard certo sem escanear a cidade inteira, e como `rebuildCity` deixa
+  esse dado correto depois de reparticionar. Decisões completas (inclusive
+  o fallback defensivo para quando esse valor está desatualizado) estão na
+  decisão 4 do cabeçalho de `business/publishing.js`.
+- Nenhuma mudança de schema foi necessária: `city-manifest.schema.json`
+  (`shards` já é array), `city-index.schema.json` (`shard` já é o número do
+  shard, sem limite superior) e `city-shard.schema.json` (`maxItems: 300`)
+  já prontos para múltiplos shards desde o Lote 1 — assim como
+  `frontend/portal/data.js`/`filters.js` (Lote 2), que já buscavam shards
+  por número e já sabiam decidir quais shards buscar a partir do índice
+  compacto (`shardsNeededForFilters`). Só o publicador (Etapa 6) assumia
+  shard único.
 - `business/cards.js` — `buildListingCard`/`buildIndexEntry`, mapeamento
   puro listing-public → card (§13) → índice (§21). Sem R2 aqui.
 - `business/cities.js` — resolve `city.name`/`city.uf` (exigidos por
