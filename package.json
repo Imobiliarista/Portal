@@ -18,6 +18,7 @@
     "generate:video-youtube": "node scripts/generate-video-youtube-assets.js",
     "generate:tour-360": "node scripts/generate-tour-360-assets.js",
     "generate:comparison": "node scripts/generate-comparison-assets.js",
+    "generate:financing-calculator": "node scripts/generate-financing-calculator-assets.js",
     "generate:publications": "node scripts/generate-publications-assets.js",
     "rebuild:listing": "node scripts/rebuild-listing.js",
     "rebuild:broker": "node scripts/rebuild-broker.js",

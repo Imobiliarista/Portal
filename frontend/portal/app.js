@@ -23,6 +23,10 @@ import {
 // ver o header desse arquivo para o porquê de não tocar render.js.
 import { readComparisonSlugs, writeComparisonSlugs } from "../shared/comparison.generated.js";
 import { createCompareBar, attachCompareToggles, createCompareToggleButton, renderComparisonView } from "./components/comparison.js";
+// Módulo financing-calculator (§44): lógica pura em frontend/shared/
+// financing-calculator.generated.js, UI em ./components/financing-calculator.js
+// — mesmo motivo de não tocar render.js documentado no header desse arquivo.
+import { mountFinancingCalculator } from "./components/financing-calculator.js";
 
 function injectStylesheet() {
   if (document.querySelector('link[data-imob-portal-styles]')) return;
@@ -97,6 +101,8 @@ async function renderListingRoute(container, dataClient, route, compareBar) {
   // §45 — appended after the fact so ../render.js#renderListingDetail (also
   // used by the minisite) stays untouched; see components/comparison.js header.
   container.prepend(createCompareToggleButton(listing.slug, { onChange: () => compareBar.refresh() }));
+  // §44 — same reasoning: appended after the fact, see components/financing-calculator.js header.
+  mountFinancingCalculator(container, { propertyValue: listing.price });
 }
 
 async function renderComparisonRoute(container, dataClient, compareBar) {

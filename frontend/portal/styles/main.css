@@ -255,3 +255,113 @@ a {
   font-size: 0.75rem;
   cursor: pointer;
 }
+
+/* Módulo financing-calculator (§44) */
+
+.imob-financing-calculator {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--imob-border);
+}
+
+.imob-financing-calculator__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.imob-financing-calculator__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--imob-muted);
+}
+
+.imob-financing-calculator__input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--imob-border);
+  border-radius: 0.4rem;
+  font-size: 1rem;
+  color: var(--imob-fg);
+}
+
+.imob-financing-calculator__input.is-invalid {
+  border-color: #dc2626;
+}
+
+.imob-financing-calculator__error {
+  margin: 0;
+  min-height: 1em;
+  font-size: 0.75rem;
+  color: #dc2626;
+}
+
+.imob-financing-calculator__submit {
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--imob-accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  height: fit-content;
+}
+
+.imob-financing-calculator__summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin-top: 1.25rem;
+}
+
+.imob-financing-calculator__summary dt {
+  color: var(--imob-muted);
+}
+
+.imob-financing-calculator__summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.imob-financing-calculator__toggle {
+  margin-top: 1rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--imob-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--imob-accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.imob-financing-calculator__toggle[hidden],
+.imob-financing-calculator__schedule[hidden] {
+  display: none;
+}
+
+.imob-financing-calculator__schedule {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.imob-financing-calculator__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.imob-financing-calculator__table th,
+.imob-financing-calculator__table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--imob-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.imob-financing-calculator__table th {
+  background: #f9fafb;
+  color: var(--imob-muted);
+  font-weight: 600;
+}
