@@ -6,6 +6,9 @@ import {
   setLoginIndex,
   resolveSlug,
   setSlugIndex,
+  resolveBrokerByEmail,
+  setBrokerEmailIndex,
+  deleteBrokerEmailIndex,
   getBrokerListingIds,
   addBrokerListingId,
   removeBrokerListingId,
@@ -45,6 +48,28 @@ test("slug index stores type alongside id so brokers and listings can share one 
     type: "listing",
     id: "listing_000456",
   });
+});
+
+test("broker email index resolves case-insensitively and is distinct from the login index", async () => {
+  const env = makeEnv();
+  await setBrokerEmailIndex(env, "Joao@Imobiliarista.net", "broker_000123");
+
+  assert.deepEqual(await resolveBrokerByEmail(env, "joao@imobiliarista.net"), {
+    brokerId: "broker_000123",
+  });
+  assert.equal(await resolveLogin(env, "joao@imobiliarista.net"), null);
+});
+
+test("resolveBrokerByEmail returns null for an unknown email", async () => {
+  const env = makeEnv();
+  assert.equal(await resolveBrokerByEmail(env, "ninguem@imobiliarista.net"), null);
+});
+
+test("deleteBrokerEmailIndex removes the mapping", async () => {
+  const env = makeEnv();
+  await setBrokerEmailIndex(env, "joao@imobiliarista.net", "broker_000123");
+  await deleteBrokerEmailIndex(env, "joao@imobiliarista.net");
+  assert.equal(await resolveBrokerByEmail(env, "joao@imobiliarista.net"), null);
 });
 
 test("broker listing index add/remove stays deduplicated", async () => {

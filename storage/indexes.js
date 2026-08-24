@@ -53,6 +53,28 @@ export async function deleteSlugIndex(env, slug) {
   return deletePrivate(env, privateKeys.slugIndex(slug));
 }
 
+// --- broker email index: emailHash -> { brokerId } ------------------------
+// Distinct from the login index above: the login index resolves an auth
+// identity (email -> userId, for Etapa 4's credential check), while this
+// resolves a broker's own contact email straight to its brokerId, which is
+// what business/brokers.js#getBrokerByEmail needs (§29) without touching
+// auth/session concerns.
+
+export async function resolveBrokerByEmail(env, email) {
+  const hash = await loginIdentifierHash(email);
+  return getPrivate(env, privateKeys.brokerEmailIndex(hash));
+}
+
+export async function setBrokerEmailIndex(env, email, brokerId) {
+  const hash = await loginIdentifierHash(email);
+  return putPrivate(env, privateKeys.brokerEmailIndex(hash), { brokerId });
+}
+
+export async function deleteBrokerEmailIndex(env, email) {
+  const hash = await loginIdentifierHash(email);
+  return deletePrivate(env, privateKeys.brokerEmailIndex(hash));
+}
+
 // --- broker -> listingIds index -------------------------------------------
 
 export async function getBrokerListingIds(env, brokerId) {

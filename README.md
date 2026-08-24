@@ -16,10 +16,10 @@ Documentação de apoio em [`docs/`](./docs/):
 
 ```bash
 npm install
-npm test                  # suíte core/ + storage/
+npm test                  # suíte core/ + storage/ + business/ + frontend/
 npm run validate:schemas  # valida schemas/*.schema.json
 npm run dev                # wrangler dev
 ```
 
 Implementação em lotes, um PR por etapa (§90-§92 do documento normativo).
-Status atual: **Etapa 1 — Fundação**.
+Status atual: **Etapa 3 — R2 privado**.
