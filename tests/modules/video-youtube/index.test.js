@@ -41,12 +41,12 @@ test("parseYoutubeId returns null when youtube.com URL has no v= param", () => {
   assert.equal(parseYoutubeId("https://www.youtube.com/embed/"), null);
 });
 
-test("buildEmbedUrl builds the iframe embed URL", () => {
-  assert.equal(buildEmbedUrl("abc123"), "https://www.youtube.com/embed/abc123");
+test("buildEmbedUrl builds the iframe embed URL using the youtube-nocookie.com privacy-enhanced domain", () => {
+  assert.equal(buildEmbedUrl("abc123"), "https://www.youtube-nocookie.com/embed/abc123");
 });
 
 test("buildEmbedUrl URL-encodes the id", () => {
-  assert.equal(buildEmbedUrl("a b/c"), "https://www.youtube.com/embed/a%20b%2Fc");
+  assert.equal(buildEmbedUrl("a b/c"), "https://www.youtube-nocookie.com/embed/a%20b%2Fc");
 });
 
 test("renderFrontendModuleSource embeds both functions as a standalone ESM module", () => {
@@ -67,5 +67,5 @@ test("renderFrontendModuleSource output is loadable and behaves identically to t
 
   const generated = await import(`file://${path}`);
   assert.equal(generated.parseYoutubeId("https://youtu.be/xyz789"), "xyz789");
-  assert.equal(generated.buildEmbedUrl("xyz789"), "https://www.youtube.com/embed/xyz789");
+  assert.equal(generated.buildEmbedUrl("xyz789"), "https://www.youtube-nocookie.com/embed/xyz789");
 });
