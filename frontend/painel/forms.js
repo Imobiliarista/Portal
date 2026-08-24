@@ -8,6 +8,10 @@
 // the actual source of truth and is never bypassed by anything this file
 // does.
 
+// modules/video-youtube (§50): parseYoutubeId is generated from
+// modules/video-youtube/index.js — see frontend/shared/video-youtube.generated.js.
+export { parseYoutubeId } from "../shared/video-youtube.generated.js";
+
 /** Only forwards non-empty allowlisted fields — matches business/brokers.js#PROFILE_UPDATE_ALLOWED_FIELDS. */
 export function buildProfilePatch(entries) {
   const patch = {};
@@ -22,20 +26,6 @@ function numberOrUndefined(value) {
   if (value === undefined || value === null || value === "") return undefined;
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
-}
-
-/** Extracts a YouTube video id from a pasted URL (youtube.com/watch?v=, youtu.be/) or accepts a bare id. Returns `null` for an empty field. */
-export function parseYoutubeId(input) {
-  const trimmed = (input ?? "").trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.hostname.includes("youtu.be")) return url.pathname.slice(1) || null;
-    if (url.hostname.includes("youtube.com")) return url.searchParams.get("v");
-    return null;
-  } catch {
-    return /^[\w-]{6,}$/.test(trimmed) ? trimmed : null;
-  }
 }
 
 /** Builds the business/listings.js create/update payload from a listing form's FormData. Empty optional fields are simply omitted (not sent as null) — clearing a value to null isn't a workflow this form exposes. */

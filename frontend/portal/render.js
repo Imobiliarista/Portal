@@ -8,6 +8,7 @@
 // the markup.
 
 import { buildListingUrl } from "./router.js";
+import { buildEmbedUrl } from "../shared/video-youtube.generated.js";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -225,7 +226,7 @@ export function renderListingDetail(container, listing) {
       el("iframe", {
         className: "imob-video",
         attrs: {
-          src: `https://www.youtube.com/embed/${vm.video.id}`,
+          src: buildEmbedUrl(vm.video.id),
           title: "Vídeo do imóvel",
           allowfullscreen: "true",
         },
