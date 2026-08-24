@@ -148,10 +148,6 @@ export const mediaKeys = {
     assertSafeSegment(listingId, "listingId");
     return `listings/${listingId}/gallery/${assertSafeSegment(fileName, "fileName")}`;
   },
-  listingVideoItem(listingId, fileName) {
-    assertSafeSegment(listingId, "listingId");
-    return `listings/${listingId}/videos/${assertSafeSegment(fileName, "fileName")}`;
-  },
   brokerLogo(brokerId, extension = "webp") {
     return `brokers/${assertSafeSegment(brokerId, "brokerId")}/logo.${extension}`;
   },

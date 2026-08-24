@@ -5,6 +5,14 @@
 // R2 MEDIA (§56); the browser never receives an R2 credential. This module
 // is where the file-level validation from §57 lives (MIME real, tamanho,
 // extensão permitida, dimensões quando aplicável, path, nome/chave).
+//
+// Etapa 5 decision: only image uploads are accepted here. §50 already
+// defines "vídeo" as a YouTube link (`{provider:"youtube", id}` on the
+// listing draft, validated in business/listings.js), not a binary upload —
+// that's modules/video-youtube (§50, Etapa 9) territory. Video MIME types
+// were accepted by this file since Lote 1 but nothing ever exercised that
+// path; keeping it would leave a live upload door for 200MB files R2 MEDIA
+// was never meant to serve, so it's removed rather than left as dead code.
 
 const ALLOWED_IMAGE_TYPES = Object.freeze({
   "image/webp": "webp",
@@ -13,18 +21,9 @@ const ALLOWED_IMAGE_TYPES = Object.freeze({
   "image/png": "png",
 });
 
-const ALLOWED_VIDEO_TYPES = Object.freeze({
-  "video/mp4": "mp4",
-  "video/webm": "webm",
-});
-
-export const ALLOWED_MEDIA_TYPES = Object.freeze({
-  ...ALLOWED_IMAGE_TYPES,
-  ...ALLOWED_VIDEO_TYPES,
-});
+export const ALLOWED_MEDIA_TYPES = ALLOWED_IMAGE_TYPES;
 
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB
-export const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
 
 export class MediaValidationError extends Error {
   constructor(message) {
@@ -44,12 +43,10 @@ export function assertValidMedia(contentType, byteLength) {
   if (!extension) {
     throw new MediaValidationError(`Tipo de mídia não permitido: ${contentType}`);
   }
-  const isVideo = contentType in ALLOWED_VIDEO_TYPES;
-  const limit = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-  if (typeof byteLength !== "number" || byteLength <= 0 || byteLength > limit) {
+  if (typeof byteLength !== "number" || byteLength <= 0 || byteLength > MAX_IMAGE_BYTES) {
     throw new MediaValidationError(`Tamanho de arquivo inválido para ${contentType}.`);
   }
-  return { extension, isVideo };
+  return { extension };
 }
 
 function bucket(env) {
