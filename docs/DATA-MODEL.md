@@ -48,15 +48,34 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
 
 ## Índices privados (§26)
 
-`storage/indexes.js` implementa os três índices que evitam varredura de
-bucket:
+`storage/indexes.js` implementa os índices que evitam varredura de bucket:
 
 - **login** → `loginIdentifierHash(email)` (SHA-256 do e-mail normalizado)
-  resolve para `{ userId }`.
+  resolve para `{ userId }`. Índice de identidade de auth (Etapa 4).
 - **slug** → qualquer slug público (corretor ou imóvel) resolve para
-  `{ type, id }`.
+  `{ type, id }`. Usado por `business/brokers.js#getBrokerBySlug` (broker-by-slug).
+- **broker-email** → `loginIdentifierHash(email)` resolve para
+  `{ brokerId }`. Distinto do índice de login: resolve o e-mail de contato
+  do corretor direto para seu `brokerId`, sem envolver auth/sessão. Usado por
+  `business/brokers.js#getBrokerByEmail` (broker-by-email; §29, necessário
+  para o login da Etapa 4, mas não faz parte dela).
 - **broker → listingIds** → lista de imóveis de um corretor, para o painel
-  "meus imóveis" sem varrer `listings/`.
+  "meus imóveis" sem varrer `listings/`. Usado por
+  `business/listings.js#listListingsByBroker` (listings-by-broker).
+
+## Business privado (§29-§30, Etapa 3)
+
+- `business/brokers.js` — CRUD do corretor privado (`brokers/{brokerId}/*`):
+  `createBroker`, `updateBrokerProfile`, `getBrokerById`, `getBrokerBySlug`,
+  `getBrokerByEmail`. Sem hash de senha, login ou sessão (Etapa 4).
+- `business/listings.js` — CRUD do anúncio privado
+  (`listings/{listingId}/*`): `createListing`, `updateListing`,
+  `getListingById`, `listListingsByBroker`. Sem publicador (Etapa 6).
+- Isolamento multitenant (§55): toda função de escrita/leitura escopada a um
+  corretor recebe `brokerId` como argumento posicional explícito — nunca lido
+  do corpo (`input`/`patch`). `updateListing` também revalida o `brokerId` do
+  draft carregado contra o argumento antes de gravar
+  (`core/tenant.js#TenantMismatchError`).
 
 ## Versionamento (§61)
 

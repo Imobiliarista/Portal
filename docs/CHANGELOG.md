@@ -1,5 +1,26 @@
 # Changelog
 
+## Etapa 3 — R2 privado (§90)
+
+- `business/brokers.js`: CRUD do corretor privado (§29) —
+  `createBroker`, `updateBrokerProfile`, `getBrokerById`, `getBrokerBySlug`,
+  `getBrokerByEmail`. Sem hash de senha, login ou sessão (isso é Etapa 4).
+- `business/listings.js`: CRUD do anúncio privado (§30) —
+  `createListing`, `updateListing`, `getListingById`,
+  `listListingsByBroker`. Sem publicador/projeção pública (isso é Etapa 6).
+- Novo índice privado `broker-email` em `storage/indexes.js` +
+  `storage/keys.js` (`indexes/broker-emails/{hash}.json` → `{ brokerId }`),
+  reutilizando `loginIdentifierHash` já existente. Distinto do índice
+  `login` (que resolve para `userId`, identidade de auth).
+- Isolamento multitenant (§55): toda função de negócio recebe `brokerId`
+  como argumento posicional explícito, nunca lido de `input`/`patch`;
+  `updateListing` revalida o `brokerId` do recurso carregado contra o
+  argumento (`TenantMismatchError` de `core/tenant.js`).
+- 34 novos testes unitários (`tests/business/brokers.test.js`,
+  `tests/business/listings.test.js`, mais o índice `broker-email` coberto
+  em `tests/storage/indexes.test.js`), todos com `FakeR2Bucket` (sem R2
+  real).
+
 ## Etapa 1 — Fundação (§90)
 
 - Estrutura completa do repositório conforme §67 (placeholders onde ainda

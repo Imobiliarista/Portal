@@ -61,6 +61,10 @@ export const privateKeys = {
   loginIndex(loginHash) {
     return `indexes/logins/${assertSafeSegment(loginHash, "loginHash")}.json`;
   },
+  /** Resolves a hashed broker email to a brokerId — never store raw email as a key. */
+  brokerEmailIndex(emailHash) {
+    return `indexes/broker-emails/${assertSafeSegment(emailHash, "emailHash")}.json`;
+  },
   /** List of listingIds owned by a broker, for "meus imóveis" without a scan. */
   brokerListingsIndex(brokerId) {
     return `indexes/listings/${assertSafeSegment(brokerId, "brokerId")}.json`;

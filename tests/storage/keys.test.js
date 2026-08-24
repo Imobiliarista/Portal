@@ -31,6 +31,7 @@ test("privateKeys build the §23 layout", () => {
   assert.equal(privateKeys.listingDraft("listing_000456"), "listings/listing_000456/draft.json");
   assert.equal(privateKeys.authUser("user_000789"), "auth/user_000789.json");
   assert.equal(privateKeys.slugIndex("joao"), "indexes/slugs/joao.json");
+  assert.equal(privateKeys.brokerEmailIndex("abc123"), "indexes/broker-emails/abc123.json");
   assert.equal(privateKeys.job("cities", "londrina"), "jobs/cities/londrina.json");
 });
 
