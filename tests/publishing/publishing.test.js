@@ -11,11 +11,12 @@ import {
   rebuildBroker,
   rebuildCity,
   rebuildAll,
+  republishBrokerListings,
   PublishValidationError,
   ListingNotFoundError,
 } from "../../business/publishing.js";
 import { UnknownCityError } from "../../business/cities.js";
-import { createBroker } from "../../business/brokers.js";
+import { createBroker, suspendBroker, reactivateBroker } from "../../business/brokers.js";
 import { createListing, updateListing } from "../../business/listings.js";
 import { getPublic, putPublic } from "../../storage/public.js";
 import { getPrivate } from "../../storage/private.js";
@@ -299,6 +300,77 @@ test("publishListing keeps the listing's public broker profile in sync (§32)", 
   const brokerPublic = await getPublic(env, "brokers/joao/profile.json");
   assert.ok(brokerPublic, "publishing a listing should also publish its broker's profile if missing");
   assert.equal(brokerPublic.slug, "joao");
+});
+
+// --- Etapa 8 (§53): cascata de suspensão/reativação de corretor sobre anúncios já publicados ---
+
+test("publishing a listing whose broker is suspended forces public status \"suspended\" instead of \"active\", and drops the card", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "suspended" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+
+  const result = await publishListing(env, draft.listingId);
+  assert.equal(result.published, true);
+  assert.equal(result.cardActive, false);
+  assert.equal(result.listingPublic.status, "suspended");
+
+  const shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal(shard, null, "no card should have been placed for a suspended broker's listing");
+});
+
+test("suspending a broker via business/brokers.suspendBroker + republishBrokerListings pulls their already-published listings' cards but keeps the public page reachable", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+  await publishListing(env, draft.listingId);
+
+  let shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal(shard.length, 1, "sanity: the listing was live before suspension");
+
+  await suspendBroker(env, broker.brokerId);
+  const results = await republishBrokerListings(env, broker.brokerId);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].cardActive, false);
+
+  shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal(shard.length, 0, "card must be gone from the city shard");
+
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+  assert.ok(listingPublic, "listings/{slug}.json must still exist — §64, never a silent 404");
+  assert.equal(listingPublic.status, "suspended");
+});
+
+test("reactivating a broker restores the card for a listing that was only suspended because of the broker", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+  await publishListing(env, draft.listingId);
+
+  await suspendBroker(env, broker.brokerId);
+  await republishBrokerListings(env, broker.brokerId);
+
+  await reactivateBroker(env, broker.brokerId);
+  await republishBrokerListings(env, broker.brokerId);
+
+  const shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal(shard.length, 1);
+  assert.equal(shard[0].id, draft.listingId);
+
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+  assert.equal(listingPublic.status, "active");
+});
+
+test("a listing that was independently sold before the broker got suspended keeps status \"sold\", not \"suspended\"", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+  await publishListing(env, draft.listingId);
+  await updateListing(env, broker.brokerId, draft.listingId, { status: "sold" });
+  await publishListing(env, draft.listingId);
+
+  await suspendBroker(env, broker.brokerId);
+  const results = await republishBrokerListings(env, broker.brokerId);
+  assert.equal(results[0].listingPublic.status, "sold");
 });
 
 // --- rebuild (§33) e rebuildListing/alias -----------------------------------

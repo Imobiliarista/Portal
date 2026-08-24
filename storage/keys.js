@@ -85,6 +85,15 @@ export const privateKeys = {
   cityRegistry() {
     return "indexes/cities.json";
   },
+  /**
+   * Registry of every brokerId ever created, for SuperAdmin's "lista de
+   * corretores" (§53, Etapa 8) to enumerate all brokers without scanning
+   * `brokers/` (§26). Mirrors `cityRegistry()` above — grows monotonically,
+   * never pruned.
+   */
+  brokerRegistry() {
+    return "indexes/brokers.json";
+  },
   job(kind, id) {
     assertSafeSegment(kind, "kind");
     return `jobs/${kind}/${assertSafeSegment(id, "id")}.json`;

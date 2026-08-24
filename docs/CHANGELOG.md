@@ -1,5 +1,105 @@
 # Changelog
 
+## Etapa 8a — SuperAdmin: aprovação/suspensão + rebuild manual (§90, §53, §55, §72)
+
+Fecha a pendência aberta desde a Etapa 4: até este lote, um corretor
+suspenso continuava conseguindo logar normalmente. Escopo dividido em 8a
+(este PR) e 8b (planos, PR separado) por decisão explícita do solicitante —
+o escopo original da Etapa 8 (aprovação/suspensão + planos + rebuild manual
++ frontend admin) era grande demais para um único PR coerente.
+
+- `business/brokers.js`: `approveBroker`/`suspendBroker`/`reactivateBroker`
+  (transições de status validadas — pending→active, active/pending→suspended,
+  suspended→active) e `listBrokers` (lista todos os corretores, com filtro
+  opcional por status). Novo `BrokerStatusError` (subclasse de
+  `BrokerConflictError`). O enum de status (`pending`/`active`/`suspended`/
+  `disabled`) já existia desde o Lote 3 — nada novo aqui, só as transições.
+- `business/auth.js#login`: fecha a pendência da Etapa 4 — rejeita
+  `suspended`/`disabled` com o mesmo `InvalidCredentialsError` genérico já
+  usado para credencial errada (nunca revela que a conta existe e está
+  suspensa). `pending` continua podendo logar — nada no documento sugere
+  bloquear um corretor ainda não aprovado de usar o painel enquanto espera.
+- `worker/auth.js#requireTenant`: sessões são stateless (§28, sem revogação
+  server-side) — um corretor suspenso *depois* de já ter um cookie válido
+  continuaria usando `/api/me/*` até o token expirar. `requireTenant` agora
+  reconfirma o status do corretor a cada request privada (pulado para
+  sessão superadmin).
+- `business/publishing.js`: decisão de produto confirmada com o solicitante
+  antes de implementar (o documento só define isso para o perfil do
+  corretor, §76, não para os anúncios) — anúncios de um corretor
+  suspenso/disabled somem do shard/index da cidade (mesmo tratamento que
+  paused/sold/removed), mas `listings/{slug}.json` continua existindo
+  (§64, nunca 404 silencioso) com status `"suspended"` — valor que
+  `listing-public.schema.json` já reservava desde antes desta etapa, sem
+  nenhum caminho de código que o produzisse até agora. Novo
+  `republishBrokerListings` aplica isso de imediato nos anúncios já
+  publicados no momento da suspensão/reativação (não só na próxima edição
+  individual de cada anúncio) — reaproveita `publishListing`, não
+  reimplementa nada. Um anúncio independentemente sold/removed/paused
+  mantém esse status mais específico.
+- `storage/keys.js`/`storage/indexes.js`: novo registro `brokerRegistry`
+  (`indexes/brokers.json` → `{ brokerIds }`), mesmo padrão do
+  `cityRegistry` da Etapa 6/7 — necessário porque §72 lista rotas de admin
+  mas nenhum mecanismo de listar todos os corretores sem varrer o bucket
+  (§26) existia ainda.
+- `worker/admin.js`: implementado (era placeholder desde o Lote 1).
+  `GET /api/admin/brokers` (+ `?status=`), `POST .../approve`,
+  `POST .../suspend`, `POST .../activate`, `POST .../publish` (§53
+  "republicar corretor" — força republicação do perfil + todos os anúncios
+  do corretor), `POST /api/admin/rebuild/city/:city`,
+  `POST /api/admin/rebuild/all` (§53 "rebuild cidade"/"rebuild global" —
+  só expõe `business/publishing.js#rebuildCity`/`rebuildAll`, já existentes
+  desde a Etapa 6/7, nenhuma lógica de rebuild nova). Todas as rotas atrás
+  de `requireSuperadmin` (`core/permissions.js`, existente desde a Etapa 4,
+  primeira vez de fato usado por uma rota real).
+  **Fora do escopo deste lote** (§72 lista, mas a tarefa não pediu):
+  `POST /api/admin/brokers` (criar corretor) e
+  `GET`/`PUT /api/admin/brokers/:id` (edição livre) — ver pendências.
+- `frontend/index.html`: roteamento por hostname (§74) ganha o branch
+  `admin.imobiliarista.net` (+ `?app=admin` em dev), que nunca tinha sido
+  ligado — sem isso, o host admin caía silenciosamente no portal.
+  `frontend/admin/index.html` (placeholder do Lote 1, nunca servido de
+  fato — nem painel/portal/minisite têm um `index.html` próprio, só o da
+  raiz) removido por já estar morto/enganoso.
+- `frontend/admin/{data,render,brokers,publishing,app}.js` (novos +
+  antigos placeholders implementados): login (reaproveita
+  `POST /api/auth/login`, com uma checagem de papel puramente client-side —
+  a real é `requireSuperadmin` no Worker), lista de corretores com
+  aprovar/suspender/reativar/republicar, e botão de rebuild manual (por
+  cidade ou geral, com continuação do lote via `nextCursor`). `styles/main.css`
+  novo (mesma convenção minimalista de `frontend/painel/styles/main.css`).
+  `frontend/admin/listings.js` continua placeholder — gestão de imóveis via
+  admin não fazia parte do escopo pedido para este lote.
+- 32 novos testes: `tests/business/brokers.test.js` (transições de status +
+  `listBrokers`), `tests/business/auth.test.js` (login bloqueado para
+  suspended/disabled, permitido para pending), `tests/publishing/publishing.test.js`
+  (cascata de suspensão/reativação sobre anúncios já publicados),
+  `tests/security/painel-api.test.js` (corretor suspenso mid-sessão perde
+  `/api/me/*` na próxima request), `tests/security/admin-api.test.js`
+  (novo — todas as rotas `/api/admin/*`, incluindo o gate de superadmin).
+
+### Pendências abertas (ver também docs/OPERATIONS.md)
+
+- **Criação de corretor**: não há rota (`POST /api/admin/brokers`, listada
+  em §72) nem fluxo de autocadastro público — `business/brokers.createBroker`
+  só é exercitado por testes/scripts hoje. "Aprovar cadastro pendente"
+  pressupõe que um corretor `pending` já existe; como ele passa a existir
+  fica para um lote futuro (§53 lista "criar corretor" como função do
+  SuperAdmin, mas a tarefa deste lote não pediu essa rota).
+- **`"disabled"`**: existe no enum de status desde o Lote 3 e o publicador
+  já trata como suspensão para fins públicos/login, mas nenhuma rota admin
+  o produz neste lote (só `pending`/`active`/`suspended` são alcançáveis
+  via `/api/admin/brokers/:id/*`). Documentado como decisão consciente, não
+  esquecimento — ver `business/brokers.js`.
+- **Etapa 8b (planos)**: gestão de planos (CRUD, atribuir a corretor,
+  possível migração de `PROVISIONAL_MAX_GALLERY_ITEMS` para limite
+  por-plano) fica para um PR separado, por decisão do solicitante.
+- **Provisionamento do primeiro superadmin**: sem rota de criação (ver
+  acima), a primeira conta superadmin só pode ser criada hoje chamando
+  `business/brokers.createBroker` + `business/auth.setAuthPassword(..., {
+  role: "superadmin" })` diretamente (script/console), não por uma rota
+  HTTP. Ver docs/OPERATIONS.md.
+
 ## Etapa 7 — Escala (§90, §7-9, §32-36)
 
 O Publicador (Etapa 6) assumia implicitamente shard único por cidade

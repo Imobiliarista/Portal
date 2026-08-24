@@ -142,3 +142,41 @@ test("login rejects malformed input without touching storage", async () => {
   await assert.rejects(() => login(env, { email: "not-an-email", password: "x" }, SECRET), InvalidCredentialsError);
   await assert.rejects(() => login(env, { email: "joao@imobiliarista.net", password: "" }, SECRET), InvalidCredentialsError);
 });
+
+// --- Etapa 8 (§53): fecha a pendência da Etapa 4 — corretor suspenso ------
+
+test("login rejects a suspended broker with correct credentials, using the same generic error as a wrong password", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "suspended" });
+  await setAuthPassword(env, broker.userId, "correct horse battery staple");
+
+  let suspendedError;
+  try {
+    await login(env, { email: "joao@imobiliarista.net", password: "correct horse battery staple" }, SECRET);
+  } catch (error) {
+    suspendedError = error;
+  }
+
+  assert.equal(suspendedError.name, "InvalidCredentialsError");
+  assert.equal(suspendedError.message, "E-mail ou senha inválidos.");
+});
+
+test("login rejects a disabled broker the same way", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "disabled" });
+  await setAuthPassword(env, broker.userId, "correct horse battery staple");
+
+  await assert.rejects(
+    () => login(env, { email: "joao@imobiliarista.net", password: "correct horse battery staple" }, SECRET),
+    InvalidCredentialsError,
+  );
+});
+
+test("login still succeeds for a pending broker (approval doesn't gate login, only suspension does)", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "pending" });
+  await setAuthPassword(env, broker.userId, "correct horse battery staple");
+
+  const { claims } = await login(env, { email: "joao@imobiliarista.net", password: "correct horse battery staple" }, SECRET);
+  assert.equal(claims.brokerId, broker.brokerId);
+});
