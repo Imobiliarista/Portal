@@ -85,6 +85,7 @@ test("createDataClient builds requests against storage/keys.js paths under the g
       await client.cityShard("londrina", 2);
       await client.listing("apartamento-centro-123");
       await client.portalCities();
+      await client.brokerProfile("joao");
     },
   );
 
@@ -93,5 +94,6 @@ test("createDataClient builds requests against storage/keys.js paths under the g
     "https://dados.imobiliarista.net/cities/londrina/002.json",
     "https://dados.imobiliarista.net/listings/apartamento-centro-123.json",
     "https://dados.imobiliarista.net/portal/cities.json",
+    "https://dados.imobiliarista.net/brokers/joao/profile.json",
   ]);
 });

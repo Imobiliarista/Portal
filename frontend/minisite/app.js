@@ -18,6 +18,12 @@ import { readPublicationsConfig, parseAtomFeed } from "../shared/publications.ge
 // header de ../portal/render.js) e o comprador de um minisite também se
 // beneficia da simulação. Ver frontend/portal/components/financing-calculator.js.
 import { mountFinancingCalculator } from "../portal/components/financing-calculator.js";
+// modules/appointments (§41): mesmo componente reaproveitado do portal —
+// ver frontend/portal/components/appointments.js. Diferente do portal, o
+// minisite já tem `profile.whatsapp` em mãos (buscado abaixo, em
+// renderCurrentRoute, antes de chegar na rota de imóvel), então não
+// precisa de um fetch extra.
+import { mountAppointmentForm } from "../portal/components/appointments.js";
 
 function injectStylesheet() {
   if (document.querySelector("link[data-imob-minisite-styles]")) return;
@@ -113,6 +119,9 @@ export async function mount(container) {
       renderListingDetail(container, listing);
       // §44 — appended after the fact, same reasoning as the portal's app.js.
       mountFinancingCalculator(container, { propertyValue: listing.price });
+      // §41 — appended after the fact, same reasoning. `profile` here is
+      // this minisite's own broker (§74), already resolved above.
+      mountAppointmentForm(container, { listing, brokerWhatsapp: profile.whatsapp });
       return;
     }
 

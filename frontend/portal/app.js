@@ -27,6 +27,10 @@ import { createCompareBar, attachCompareToggles, createCompareToggleButton, rend
 // financing-calculator.generated.js, UI em ./components/financing-calculator.js
 // — mesmo motivo de não tocar render.js documentado no header desse arquivo.
 import { mountFinancingCalculator } from "./components/financing-calculator.js";
+// Módulo appointments (§41): lógica pura em frontend/shared/
+// appointments.generated.js, UI em ./components/appointments.js — mesmo
+// motivo de não tocar render.js documentado no header desse arquivo.
+import { mountAppointmentForm } from "./components/appointments.js";
 
 function injectStylesheet() {
   if (document.querySelector('link[data-imob-portal-styles]')) return;
@@ -103,6 +107,13 @@ async function renderListingRoute(container, dataClient, route, compareBar) {
   container.prepend(createCompareToggleButton(listing.slug, { onChange: () => compareBar.refresh() }));
   // §44 — same reasoning: appended after the fact, see components/financing-calculator.js header.
   mountFinancingCalculator(container, { propertyValue: listing.price });
+  // §41 — appended after the fact, same reasoning. listing.broker (§15) só
+  // tem slug/name, não whatsapp (§16), então busca o perfil público à
+  // parte — não renderiza nada se o corretor não tiver WhatsApp válido.
+  if (listing.broker?.slug) {
+    const brokerProfile = await dataClient.brokerProfile(listing.broker.slug);
+    mountAppointmentForm(container, { listing, brokerWhatsapp: brokerProfile?.whatsapp });
+  }
 }
 
 async function renderComparisonRoute(container, dataClient, compareBar) {
