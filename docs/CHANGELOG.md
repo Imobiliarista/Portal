@@ -1,5 +1,166 @@
 # Changelog
 
+## Etapa 9 (lote 6/N) — Módulo financing-calculator (§90, §44)
+
+Calculadora de financiamento imobiliário 100% client-side, tabela SAC
+(Sistema de Amortização Constante) — §44 pede "preferir client-side" e
+"se puro frontend, não criar rota Worker desnecessária"; sem rota de
+Worker nenhuma foi adicionada. Decisões completas em
+`modules/financing-calculator/README.md`.
+
+- `modules/financing-calculator/config.js` (novo): taxa de juros anual
+  padrão/faixa aceita, prazo padrão/faixa aceita, entrada mínima (20% do
+  valor do imóvel) — só referências de mercado, nada de instituição real.
+- `modules/financing-calculator/index.js` (novo): validação por campo,
+  `buildSacSchedule` (taxa mensal por conversão composta, convenção
+  brasileira), `summarizeSchedule`, `calculateFinancing` (ponto de
+  entrada único) e `renderFrontendModuleSource` (mesmo padrão de
+  `.toString()` embutido usado por comparison/tour-360/video-youtube).
+- `scripts/generate-financing-calculator-assets.js` (novo, `npm run
+  generate:financing-calculator`): escreve
+  `frontend/shared/financing-calculator.generated.js`.
+- `frontend/portal/components/financing-calculator.js` (novo): formulário
+  (valor/entrada/taxa/prazo) + resumo + tabela SAC completa colapsável
+  ("Ver tabela completa"), montado após `renderListingDetail` sem tocar
+  `render.js` (evita import circular).
+- Montado tanto no portal quanto no minisite — a página de imóvel
+  completo é idêntica nos dois sites (decisão 1 do README).
+- `frontend/portal/styles/main.css` e `frontend/minisite/styles/main.css`:
+  estilos do formulário/resumo/tabela.
+
+17 novos testes (`tests/modules/financing-calculator/index.test.js`).
+Verificado visualmente via `wrangler dev` (prefill do preço, validação
+por campo, resumo, tabela expandindo/recolhendo, presente nos dois
+sites) — nenhum erro de console.
+
+### Pendências abertas
+
+- Só SAC — sem Tabela Price (parcelas fixas).
+- Taxas/prazos são só simulação educativa, sem integração com
+  banco/financiadora real.
+- Nenhum registro de simulação (analytics/lead) — puramente client-side.
+
+## Etapa 9 (lote 5/N) — Módulo comparison (§90, §45)
+
+Comparação de anúncios lado a lado, 100% client-side — §45 é só três
+frases ("Client-side. Browser compara JSONs já carregados. Não precisa
+Worker."); o resto (onde a seleção fica guardada, quantos imóveis cabem
+lado a lado, quais campos entram na grade) é decisão deste lote,
+documentada em `modules/comparison/README.md`.
+
+- `modules/comparison/index.js` (novo): lógica pura testável em Node —
+  seleção em `localStorage` (`readComparisonSlugs`/`writeComparisonSlugs`/
+  `clearComparisonSlugs`, `storage` injetável, tolerante a storage
+  ausente/corrompido), `toggleComparisonSlug` (add/remove respeitando
+  `MAX_COMPARISON_ITEMS = 4`) e `buildComparisonRows` (extrai campos
+  comparáveis de `listings/{slug}.json` já carregados, §15, valores
+  brutos sem formatação).
+- `scripts/generate-comparison-assets.js` (novo, `npm run
+  generate:comparison`): escreve `frontend/shared/comparison.generated.js`.
+- `frontend/portal/components/comparison.js` (novo): botão "+ Comparar"
+  no card e no imóvel completo, barra de seleção persistente entre
+  rotas, grade lado a lado em `/comparar`. Decora o DOM depois que
+  `renderCityView`/`renderListingDetail` já rodaram — `render.js`
+  (compartilhado com o minisite) fica intocado, portal-only por design
+  (comparar vários imóveis não faz sentido dentro de um minisite de um
+  único corretor).
+- `frontend/portal/router.js`: nova rota `/comparar`, sem parâmetros — a
+  seleção não vai para a URL (é estado do dispositivo/visitante).
+- `frontend/portal/app.js`: `renderComparisonRoute` poda slugs órfãos
+  (imóvel removido/despublicado, §77); barra montada uma vez fora do
+  container que o router recria a cada navegação.
+- `frontend/portal/styles/main.css`: estilos do toggle/barra/tabela.
+
+Testes cobrindo a lógica pura e a rota nova; camada de DOM verificada
+via `wrangler dev` + Playwright (toggle a partir do card e do imóvel
+completo, barra persistindo entre rotas, grade com os 11 campos,
+remover/limpar) — nenhum erro de console.
+
+### Pendências abertas
+
+- Sem persistência entre dispositivos/navegadores (§45 descarta Worker).
+- `MAX_COMPARISON_ITEMS = 4` é estimativa, não validada com usuário real.
+- Sem indicação de "melhor valor por linha" — grade é neutra.
+
+## Etapa 9 (lote 4/N) — Módulo publications (§90, §47)
+
+§47 só define o formato do config no perfil público do corretor
+(`modules.publications: {enabled, feedUrl}`) e manda consumir feed
+externo no Browser, sem especificar formato de feed nem como `feedUrl`
+passa a existir. Decisão de produto confirmada para este lote: fonte é
+Blogger/Blogspot — o corretor cola o link do blog no painel e o módulo
+descobre o feed Atom uma única vez (padrão
+`{origin}/feeds/posts/default`, com fallback de autodiscovery via
+`<link rel="alternate" type="application/atom+xml">`); o `feedUrl` já
+resolvido é o que fica salvo. Decisões completas em
+`modules/publications/README.md`.
+
+- `modules/publications/config.js` (novo): forma/validação de
+  `{enabled, feedUrl}` — sem depender de `core/validation.js`, para
+  poder ser embutido no bundle client-side sem arrastar `ValidationError`.
+- `modules/publications/index.js` (novo): `resolveBloggerFeedUrl`
+  (descoberta, roda uma vez no painel) + `parseAtomFeed` (parsing regex
+  do Atom, sem `DOMParser` — projeto não tem `jsdom` nem dependência de
+  XML) + `renderFrontendModuleSource`.
+- `scripts/generate-publications-assets.js` (novo, `npm run
+  generate:publications`): escreve
+  `frontend/shared/publications.generated.js`.
+- `frontend/painel/`: nova seção "Publicações" no formulário de perfil
+  (checkbox `enabled` + link do blog); resolve o feed antes de gravar.
+- `frontend/minisite/`: busca o feed em paralelo com os imóveis e
+  renderiza a seção condicionalmente (só com pelo menos uma entrada) —
+  mesmo espírito de "se inexistente, componente não renderiza" (§49).
+
+### Pendências abertas
+
+- CORS do lado do Blogger não verificado em produção.
+- Só Blogger é suportado (nenhum outro provedor de blog).
+- Sem paginação nem cache do feed no minisite.
+
+## Etapa 9 (lote 3/N) — Módulo tour-360 (§90, §49)
+
+Formaliza `modules/tour-360/` (antes um placeholder): isola o
+"componente condicional" do §49 ("campo opcional na projeção pública, se
+inexistente componente não renderiza") — antes inline em
+`frontend/portal/render.js`. Diferente do `video-youtube` (§50, mesmo
+padrão de módulo), o campo `tour360` já chega pronto como `{url}` (sem
+`provider`/`id` pra extrair), então não há um `parseXId`/`buildEmbedUrl`
+equivalente aqui — só a decisão de quando o link aparece e com que
+props (`buildTour360LinkProps`), incluindo `target=_blank`/
+`rel=noreferrer` por apontar sempre pra um provider externo.
+
+O campo `tour360` do schema do anúncio (`business/listings.js`,
+`business/publishing.js`) já existia desde a Etapa 3 e continua lá, por
+§39 (MODULES → BUSINESS, nunca o inverso).
+
+`scripts/generate-tour-360-assets.js` (mesmo padrão do módulo
+video-youtube) embute a função testada em
+`frontend/shared/tour-360.generated.js`, importado por
+`frontend/portal/render.js` (e, por reexportar `renderListingDetail`,
+também pelo minisite).
+
+Decisões e pendências completas em `modules/tour-360/README.md`.
+
+## Etapa 9 (lote 2/N) — Módulo video-youtube (§90, §50)
+
+Embed de vídeo do YouTube na página de imóvel completo, a partir do
+campo `video: {provider, id}` já existente em
+`listing-public.schema.json` (§50) — `parseYoutubeId` (aceita link
+completo, `youtu.be`, ou id cru já salvo) + `buildEmbedUrl` +
+`renderFrontendModuleSource`, mesmo padrão de geração de asset dos
+demais módulos desta etapa.
+
+`buildEmbedUrl` aponta para `youtube-nocookie.com` (modo "privacidade
+reforçada"), não `youtube.com`: decisão documentada no README porque
+§50 não distingue os dois domínios — o portal é público/indexado e o
+visitante nunca deu opt-in de tracking antes de abrir a página do
+imóvel.
+
+`scripts/generate-video-youtube-assets.js` (`npm run
+generate:video-youtube`) escreve
+`frontend/shared/video-youtube.generated.js`, consumido por
+`frontend/portal/render.js`.
+
 ## Etapa 9 (lote 1/N) — Módulo pwa (§90, §48)
 
 Primeiro módulo real da Etapa 9 (§90 lista `pwa` entre os módulos

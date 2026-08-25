@@ -1,7 +1,13 @@
 // modules/appointments/routes.js
 //
-// Placeholder — módulo agendamento-visita (§41), Etapa 9.
-// Ver IMOBILIARISTA_ARQUITETURA_TECNICA_OFICIAL_JSON_R2.md. Fora do
-// escopo da Etapa 1 (Fundação, §90) deste lote.
+// Intencionalmente vazio neste lote — mesmo motivo de service.js. §41
+// lista `routes.js` na árvore do módulo, mas isso pressupõe uma rota de
+// Worker (ex. `POST /api/public/appointments`) recebendo o contato.
+//
+// Decisão confirmada com o solicitante (ver
+// modules/appointments/README.md#decisões): o contato com o corretor é
+// 100% client-side (form → `wa.me`), sem requisição nenhuma ao Worker —
+// §94 ("pode ser Browser? Se sim, não adicionar nova peça") se aplica
+// diretamente aqui. Nenhuma rota foi registrada em worker/index.js.
 
 export {};

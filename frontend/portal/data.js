@@ -58,5 +58,10 @@ export function createDataClient(baseUrl = getDataBaseUrl()) {
     cityIndex: (citySlug) => fetchJson(at(`cities/${citySlug}/index.json`)),
     cityShard: (citySlug, shardNumber) => fetchJson(at(`cities/${citySlug}/${shardFileName(shardNumber)}`)),
     listing: (slug) => fetchJson(at(`listings/${slug}.json`)),
+    // §41 (módulo appointments) — o portal não carrega o perfil do corretor
+    // por padrão (ao contrário do minisite, que já resolve o corretor pelo
+    // hostname); este fetch extra só roda na página de imóvel completo,
+    // para obter `whatsapp` (não presente em listing.broker, §15).
+    brokerProfile: (brokerSlug) => fetchJson(at(`brokers/${brokerSlug}/profile.json`)),
   };
 }
