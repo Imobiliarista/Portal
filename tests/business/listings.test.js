@@ -101,6 +101,33 @@ test("createListing rejects malformed features", async () => {
   );
 });
 
+// zipcode (§46 — added to support the OLX feed's required `zipcode` field,
+// optional here: a listing without it just isn't eligible for that feed,
+// see modules/feeds/README.md).
+test("createListing accepts and persists a valid zipcode", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput({ zipcode: "86010-000" }));
+  assert.equal(draft.zipcode, "86010-000");
+});
+
+test("createListing omits zipcode entirely when not provided (never defaults to null/empty)", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput());
+  assert.equal("zipcode" in draft, false);
+});
+
+test("createListing rejects a malformed zipcode", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => createListing(env, "broker_1", baseInput({ zipcode: "not-a-cep" })), ValidationError);
+});
+
+test("updateListing accepts a valid zipcode patch", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput());
+  const updated = await updateListing(env, "broker_1", draft.listingId, { zipcode: "86010000" });
+  assert.equal(updated.zipcode, "86010000");
+});
+
 test("createListing requires an explicit brokerId argument", async () => {
   const env = makeEnv();
   await assert.rejects(() => createListing(env, "", baseInput()), ValidationError);

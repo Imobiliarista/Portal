@@ -53,6 +53,31 @@ export async function deletePublic(env, key) {
   return bucket(env).delete(key);
 }
 
+/**
+ * Writes a raw (non-JSON) text object to the public data bucket — first
+ * real user is modules/feeds/generator.js, which writes XML, not JSON
+ * (§46). Kept here rather than in the module itself so no module ever
+ * touches `env.IMOB_DATA` directly (§69 "não espalhar env.BUCKET.get()
+ * pelo projeto inteiro") — a future sitemap.xml (§63) is the next obvious
+ * caller.
+ */
+export async function putPublicText(env, key, text, { cacheControl, contentType = "text/plain; charset=utf-8", customMetadata } = {}) {
+  return bucket(env).put(key, text, {
+    httpMetadata: {
+      contentType,
+      ...(cacheControl ? { cacheControl } : {}),
+    },
+    customMetadata,
+  });
+}
+
+/** Reads a raw text object written by `putPublicText`. Returns `null` if it doesn't exist. */
+export async function getPublicText(env, key) {
+  const object = await bucket(env).get(key);
+  if (!object) return null;
+  return object.text();
+}
+
 export async function listPublic(env, prefix, options = {}) {
   return bucket(env).list({ prefix, ...options });
 }

@@ -21,10 +21,12 @@
     "generate:financing-calculator": "node scripts/generate-financing-calculator-assets.js",
     "generate:publications": "node scripts/generate-publications-assets.js",
     "generate:appointments": "node scripts/generate-appointments-assets.js",
+    "generate:feeds": "node scripts/generate-feeds-assets.js",
     "rebuild:listing": "node scripts/rebuild-listing.js",
     "rebuild:broker": "node scripts/rebuild-broker.js",
     "rebuild:city": "node scripts/rebuild-city.js",
-    "rebuild:all": "node scripts/rebuild-all.js"
+    "rebuild:all": "node scripts/rebuild-all.js",
+    "rebuild:feeds": "node scripts/rebuild-feeds.js"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"

@@ -1,5 +1,31 @@
 # Operações
 
+## Pendências não-bloqueantes (Etapa 9, módulo feeds — "Modo Exportação")
+
+9. **Submódulo vrsync sem revisão contra a documentação oficial completa.**
+   O acesso de rede desta sessão ficou bloqueado o tempo todo para
+   `developers.grupozap.com` — a estrutura raiz e a lista de campos a
+   mapear vieram diretamente do solicitante (colada no chat), mas
+   `PropertyType` (lista completa) e o item de vídeo em `<Media>` vieram
+   de WebSearch com exemplos citados, não da página em si. Antes de
+   cadastrar `https://dados.imobiliarista.net/feeds/vrsync.xml` num
+   portal de verdade (OLX/ZAP/VivaReal), reabrir
+   `developers.grupozap.com/feeds/vrsync/elements/` de um ambiente com
+   rede liberada e diferenciar contra `modules/feeds/formatters/vrsync.js`
+   (ver `modules/feeds/README.md#decisões` para o que especificamente
+   ficou pendente).
+10. **`FEED_CONTACT_EMAIL`/`FEED_CONTACT_PHONE`**: vars opcionais (não
+    segredo) lidas por `modules/feeds/generator.js#buildFeedHeader` para o
+    `<Header>` do XML — sem elas, o feed sai com um e-mail placeholder e
+    sem telefone. Configurar em `[vars]` no `wrangler.toml` antes de
+    produção.
+11. **Custom Domain de R2 DATA** (mesma pendência bloqueante 3 abaixo) é
+    também o que torna o feed alcançável pelo robô do portal — sem ele,
+    `feeds/vrsync.xml` existe no bucket mas não tem URL pública nenhuma.
+12. **Só o submódulo `vrsync` existe.** A arquitetura de registry
+    (`modules/feeds/registry.js`) já deixa claro onde um submódulo novo
+    entraria, mas nenhum outro foi implementado neste lote.
+
 ## Pendências não-bloqueantes (Etapa 8a)
 
 5. **Provisionamento do primeiro SuperAdmin**: não existe rota HTTP de
@@ -140,4 +166,9 @@ npm run rebuild:listing -- <listingId>
 npm run rebuild:broker -- <brokerId>
 npm run rebuild:city -- <citySlug>
 npm run rebuild:all            # 1 lote e para; use -- --all para processar até terminar
+
+# Etapa 9 — módulo feeds, "Modo Exportação" (§46)
+npm run generate:feeds              # regenera frontend/shared/feeds.generated.js (bundle do painel)
+npm run rebuild:feeds               # regenera feeds/{submódulo}.xml em R2 DATA (todos os submódulos registrados)
+npm run rebuild:feeds -- vrsync     # só um submódulo
 ```

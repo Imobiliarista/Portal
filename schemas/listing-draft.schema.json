@@ -37,6 +37,7 @@
     "condominium": { "type": ["number", "null"], "minimum": 0 },
     "iptu": { "type": ["number", "null"], "minimum": 0 },
     "district": { "type": "string" },
+    "zipcode": { "type": "string", "description": "CEP (§46, formatters/olx.js#zipcode) — opcional aqui (só o feed OLX exige), NNNNN-NNN ou NNNNNNNN." },
     "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
     "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
     "features": {

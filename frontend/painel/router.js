@@ -6,8 +6,9 @@
 // frontend/portal/router.js.
 //
 // Routes: "/" (dashboard/perfil), "/perfil", "/imoveis", "/imoveis/novo",
-// "/imoveis/:id". Auth gating (login screen vs. these routes) is decided
-// by frontend/painel/app.js from session state, not by this module — a
+// "/imoveis/:id", "/exportacao" (§46, "Modo Exportação" — Etapa 9). Auth
+// gating (login screen vs. these routes) is decided by
+// frontend/painel/app.js from session state, not by this module — a
 // route here doesn't imply the viewer is authenticated.
 
 export function parseRoute(pathname) {
@@ -18,6 +19,9 @@ export function parseRoute(pathname) {
   }
   if (segments[0] === "perfil" && segments.length === 1) {
     return { name: "profile" };
+  }
+  if (segments[0] === "exportacao" && segments.length === 1) {
+    return { name: "export" };
   }
   if (segments[0] === "imoveis" && segments.length === 1) {
     return { name: "listings" };

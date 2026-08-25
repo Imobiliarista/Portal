@@ -171,6 +171,18 @@ export const dataKeys = {
   exportCity(citySlug) {
     return `exports/cities/${assertSafeSegment(citySlug, "citySlug")}.json`;
   },
+  /**
+   * Static feed file for an external portal (OLX/ZAP, §46) — one XML file
+   * per portal, rebuilt whole from private state by
+   * modules/feeds/generator.js#regenerateFeeds and served straight off this
+   * R2 DATA key via the same Custom Domain that already exposes the rest of
+   * R2 DATA (§59, docs/OPERATIONS.md pendência 3). No Worker route ever
+   * computes this on request — the external portal's crawler fetches the
+   * object directly (§94, §101 "Worker somente privado/transacional").
+   */
+  feed(portalId) {
+    return `feeds/${assertSafeSegment(portalId, "portalId")}.xml`;
+  },
 };
 
 // ---------------------------------------------------------------------------
