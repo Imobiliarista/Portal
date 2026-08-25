@@ -18,7 +18,14 @@ import { getPrivate, putPrivate, deletePrivate } from "./private.js";
 // Deliberately a different secret than PASSWORD_PEPPER — different job
 // (this one protects the *lookup index*, not the password verifier), so
 // rotating one never forces rotating the other.
-async function hmacSha256Hex(value, secret) {
+//
+// Exported (Etapa 9, §43, módulo saved-search): `modules/saved-search/
+// service.js` reuses this exact primitive, keyed by its own
+// SAVED_SEARCH_TOKEN_SECRET, to hash the visitor IP behind the anti-abuse
+// rate limit — a disjoint message-space prefix (`saved-search-ip:...`
+// vs. a bare login identifier) makes secret reuse across purposes safe,
+// same reasoning already used by core/auth.js#hmac for PASSWORD_PEPPER.
+export async function hmacSha256Hex(value, secret) {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -242,4 +249,31 @@ export async function deregisterPlanId(env, planId) {
   const planIds = (await getKnownPlanIds(env)).filter((id) => id !== planId);
   await putPrivate(env, privateKeys.planRegistry(), { planIds });
   return planIds;
+}
+
+// --- saved-search city index (Etapa 9, §43, módulo saved-search) ----------
+// savedSearchIds with a CONFIRMED, still-subscribed alert for a city.
+// Populated on confirm, pruned on unsubscribe — unlike the registries
+// above (city/broker/plan), membership here is NOT permanent: an
+// unsubscribed search must actually stop matching future listings, so it
+// is removed rather than just marked inactive in place.
+
+export async function getSavedSearchIdsForCity(env, citySlug) {
+  const index = await getPrivate(env, privateKeys.savedSearchCityIndex(citySlug));
+  return index?.savedSearchIds ?? [];
+}
+
+export async function addSavedSearchToCityIndex(env, citySlug, savedSearchId) {
+  const savedSearchIds = await getSavedSearchIdsForCity(env, citySlug);
+  if (!savedSearchIds.includes(savedSearchId)) {
+    savedSearchIds.push(savedSearchId);
+    await putPrivate(env, privateKeys.savedSearchCityIndex(citySlug), { savedSearchIds });
+  }
+  return savedSearchIds;
+}
+
+export async function removeSavedSearchFromCityIndex(env, citySlug, savedSearchId) {
+  const savedSearchIds = (await getSavedSearchIdsForCity(env, citySlug)).filter((id) => id !== savedSearchId);
+  await putPrivate(env, privateKeys.savedSearchCityIndex(citySlug), { savedSearchIds });
+  return savedSearchIds;
 }
