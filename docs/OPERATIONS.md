@@ -315,6 +315,47 @@ até ele existir).
    não existe por padrão. TTLs alvo por tipo de objeto estão centralizados
    em `storage/cache.js` (`CACHE_TTL_SECONDS`); a Cache Rule no painel deve
    refletir esses mesmos valores.
+4. **CORS no Custom Domain de R2 DATA/MEDIA** (§80) — mesma categoria do
+   item 3 (config manual no painel Cloudflare, nunca existiu por padrão),
+   mas nunca tinha sido listada aqui. `core/security.js#PUBLIC_READ_CORS_HEADERS`/
+   `buildCorsHeaders` são a definição canônica, testada
+   (`tests/core/security.test.js`), mas **não têm nenhum call site** —
+   R2 DATA/MEDIA são lidos direto do Custom Domain, nunca através deste
+   Worker (§73/§89), então nenhuma resposta deste Worker corresponde a
+   uma leitura de R2. A política real (GET/HEAD/OPTIONS, header
+   `Content-Type`, origem restrita à allowlist de hoje —
+   `portal.imobiliarista.net`/`painel.imobiliarista.net`/
+   `admin.imobiliarista.net`/minisites por corretor) precisa ser
+   replicada na configuração de CORS do bucket/Custom Domain no painel
+   Cloudflare, espelhando essa constante.
+
+## Pendências não-bloqueantes (Etapa 11, sub-lote 5 — revisão headers/CORS/cache)
+
+5. **`SECURITY_HEADERS` (CSP/§81) nunca alcança as páginas reais do
+   portal/painel/admin/minisite** — só respostas que este Worker constrói
+   (`/api/*` + as 3 páginas HTML públicas de
+   `modules/saved-search/index.js`) passam por
+   `core/app.js`/`applySecurityHeaders`. As páginas de fato servidas por
+   Workers Static Assets (`wrangler.toml` `run_worker_first = ["/api/*"]`,
+   §73/§89 "estático nunca invoca o Worker") nunca recebem CSP/HSTS/etc.
+   hoje. Cloudflare Workers Static Assets suporta um arquivo `_headers`
+   na raiz de `frontend/` para isso — não adicionado neste lote porque o
+   `connect-src` da CSP atual é incompatível com um recurso já em
+   produção: `modules/publications/index.js#resolveBloggerFeedUrl`/
+   `parseAtomFeed` fazem `fetch()` cross-origin direto do Browser para um
+   domínio Blogger arbitrário informado pelo corretor (`*.blogspot.com`
+   ou um domínio customizado apontado para o Blogger) —
+   `modules/publications/README.md#pendências` já registrava que a CSP
+   "não alcança" essas páginas, mas não que isso deixaria de ser
+   verdade ao adicionar um `_headers`. Decisão de produto necessária
+   antes de ligar isso: permitir `https://*.blogspot.com` no `connect-src`
+   cobre o caso comum mas quebra um domínio customizado; deixar
+   `connect-src` sem restrição só no minisite é a alternativa mais
+   simples, mas reduz a proteção da CSP ali. `frame-src
+   https://www.youtube-nocookie.com` (necessário pelo iframe de
+   `modules/video-youtube`, §50) já foi adicionado à definição em
+   `core/security.js` neste lote — só não estava lá porque, com a CSP
+   nunca alcançando o portal, nada notava a falta.
 
 ## Segredos
 
