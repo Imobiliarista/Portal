@@ -1,5 +1,86 @@
 # Changelog
 
+## Etapa 11 (sub-lote 2/N) — Cobertura de teste para módulos sem teste (§90)
+
+Levantamento antes de escrever qualquer teste: `node --test` na baseline
+pós sub-lote 1 (480 testes, 0 falhas) cruzado contra todo `business/`,
+`core/`, `modules/`, `worker/` por import real (não por nome de arquivo).
+Placeholders sem lógica (`export {}`) — `business/{exports,media,
+taxonomy}.js`, `worker/cron.js`, `modules/ai-search/*`,
+`modules/appointments/{routes,service}.js` — não geraram teste.
+`modules/financing-calculator/config.js` (constante de dados) já era
+exercitado indiretamente pelo teste de `index.js`.
+
+Cobertura nova, priorizada por risco (auth/sessão e fluxos financeiros
+primeiro, por instrução do solicitante):
+
+- `modules/financial/{provider,checkout,payments,webhook,index}.js` +
+  `worker/financial.js`: kill-switch `FINANCIAL_ENABLED`, criação de
+  cliente/cobrança no Asaas (com reaproveitamento de
+  `providerCustomerId`), mapeamento de status, webhook autenticado +
+  idempotente (dedupe por `eventId`), isolamento entre corretores
+  (§55). `fetch` sempre mockado — nenhuma chamada real ao Asaas/sandbox.
+- `modules/plans/eligibility.js` (+ um teste leve garantindo que o
+  re-export chain de `catalog.js`/`index.js`/`features.js` não está
+  quebrado, já que nada em produção importa por ali ainda).
+- `modules/saved-search/{service,notifications,index}.js`: double
+  opt-in, rate-limit por IP/dia, tokens HMAC assinados
+  (confirm/unsubscribe), `matchesCriteria` (pura), hook de notificação
+  em publicação (`checkSavedSearchesForListing`) — inclusive falha de
+  envio sendo engolida sem derrubar a resposta do corretor. `fetch`
+  sempre mockado — nenhuma chamada real ao Resend.
+- `core/app.js`: composição router → tratamento de erro → security
+  headers, incluindo o mapeamento de `ValidationError`/
+  `UnauthorizedError`/`ForbiddenError`/`TenantMismatchError` para a
+  resposta HTTP correspondente.
+- `worker/index.js`: smoke test do wiring de rotas via `fetch(request,
+  env)` real (health check, catch-all 501/404, uma rota autenticada
+  surgindo como 401 em vez de crashar).
+- `modules/feeds/index.js#renderFrontendModuleSource`: única função
+  deste arquivo que ainda não tinha teste próprio.
+
+**Nenhum bug de produção foi encontrado.** Ajustes foram só nos próprios
+testes novos (escaping de regex para nomes com parênteses, ordem de mock
+de `fetch` para não vazar tentativa de rede real durante o setup de um
+teste). Nenhum teste existente nem código de produção foi alterado.
+
+Arquivos criados: `tests/modules/financial/{provider,checkout,payments,
+webhook}.test.js`, `tests/security/financial-api.test.js`,
+`tests/modules/plans/{eligibility,index}.test.js`,
+`tests/modules/saved-search/{service,notifications,index}.test.js`,
+`tests/core/app.test.js`, `tests/worker/index.test.js`,
+`tests/modules/feeds/index.test.js`.
+
+Resultado: 99 testes novos — suíte inteira (480 + 99 = 579) passando
+100%. PR: #24.
+
+## Etapa 11 (sub-lote 1/N) — Conserta testes quebrados pelo hotfix de auth (§90, §27)
+
+`node --test` estava com 128 de 472 testes falhando (ver
+`docs/OPERATIONS.md` pendência 14) — raiz única: os fixtures ainda
+simulavam o fluxo de login por e-mail+senha (hash server-side) que o
+hotfix #27 (PBKDF2 no navegador, PR #19) substituiu por CPF + PBKDF2
+client-side + pepper HMAC, e `storage/indexes.js#loginIdentifierHash`
+(e o que depende dela) passou a exigir `LOGIN_INDEX_SECRET`, que os
+testes nunca passavam.
+
+**Nenhum código de produção foi alterado** — só fixtures/mocks de teste,
+reescritos para o contrato atual: `tests/core/auth.test.js` (funções
+`hashPassword`/`verifyPassword` removidas no hotfix, cobertura reescrita
+para `generateSalt`/`deriveDummySalt`/`buildSaltPayload`/
+`hashPbkdf2Result`/`verifyPbkdf2Result`/`deriveClientPbkdf2`),
+`tests/business/auth.test.js` (login via CPF + `pbkdf2Result` derivado
+com `deriveClientPbkdf2` contra o salt real do registro),
+`tests/business/{brokers,plans,listings}.test.js`,
+`tests/publishing/{publishing,sharding}.test.js`,
+`tests/modules/feeds/generator.test.js` (`createBroker`/
+`updateBrokerProfile` agora exigem `cpf`/`{ loginIndexSecret }`),
+`tests/security/{auth-flow,admin-api,painel-api}.test.js`,
+`tests/storage/indexes.test.js` (`loginIdentifierHash`/
+`resolveBrokerByCpf`/etc. agora exigem o parâmetro `secret`).
+
+Resultado: 472 testes, 0 falhas. PR: #23.
+
 ## Etapa 10 (lote 2/N, fecha a etapa) — Módulo financial: Asaas sandbox (§90, §51)
 
 **Sem testes neste lote** — pedido explícito do solicitante (mesma

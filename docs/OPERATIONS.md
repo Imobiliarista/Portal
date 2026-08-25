@@ -8,32 +8,15 @@
     `/api/auth/login` ficam fora do ar (falha explícita, não um 500
     silencioso). Ver `core/auth.js` e `business/auth.js` para onde o
     secret é consumido.
-14. **Sem testes neste lote** (pedido explícito do solicitante — etapa
-    dedicada de testes fica para o final do projeto). `npm test` vai
-    quebrar até lá — rodado após os 3 lotes deste hotfix (§27 pt.1-3):
-    **128 de 472 testes falham, em 12 arquivos**
-    (`node --test "tests/**/*.test.js"`, checado nesta sessão):
-    `tests/core/auth.test.js` (1 falha — ainda testa
-    `hashPassword`/`verifyPassword`, removidos),
-    `tests/business/auth.test.js` (9),
-    `tests/business/brokers.test.js` (19),
-    `tests/business/listings.test.js` (1),
-    `tests/business/plans.test.js` (5),
-    `tests/modules/feeds/generator.test.js` (12),
-    `tests/publishing/publishing.test.js` (24),
-    `tests/publishing/sharding.test.js` (3),
-    `tests/security/admin-api.test.js` (22),
-    `tests/security/auth-flow.test.js` (5),
-    `tests/security/painel-api.test.js` (21),
-    `tests/storage/indexes.test.js` (6). A maioria não é sobre auth
-    diretamente — são testes de listings/plans/feeds/publishing/admin-api
-    cujo helper `makeBroker`-style chama `createBroker`/`updateBrokerProfile`
-    (agora exigem `cpf`/`{ loginIndexSecret }`) ou testes de
-    `storage/indexes.js` chamando `loginIdentifierHash`/`resolveBrokerByCpf`/
-    etc. sem o novo parâmetro `secret` (agora obrigatório, §27 hotfix pt.3).
-    Reescrever para o novo contrato (identifier CPF/MASTER/TESTE +
-    PBKDF2-no-navegador + HMAC-PASSWORD_PEPPER + HMAC-LOGIN_INDEX_SECRET)
-    faz parte dessa etapa dedicada.
+14. ~~Sem testes neste lote~~ **Resolvido na Etapa 11.** Este hotfix
+    (§27) quebrou 128 de 472 testes (fixtures simulando o fluxo de login
+    antigo por e-mail+senha) — consertado no sub-lote 1/N da Etapa 11
+    (PR #23, ver `docs/CHANGELOG.md`), que reescreveu os fixtures para o
+    contrato atual (CPF + PBKDF2 client-side + HMAC) sem tocar código de
+    produção. O sub-lote 2/N (PR #24) foi além e cobriu módulos que nunca
+    tinham tido teste nenhum (`modules/financial`, `modules/saved-search`,
+    `modules/plans/eligibility.js`, `core/app.js`, `worker/index.js`).
+    Estado atual: 579 testes, 0 falhas.
 15. **Sem rota de autocadastro/definição de senha via HTTP ainda** —
     `setAuthPassword` continua só provisionamento admin/script (roda o
     PBKDF2 localmente, fora de um handler do Worker). Um futuro fluxo de
@@ -372,10 +355,14 @@ lançam em vez de um 500 silencioso (mesmo espírito de falha explícita do
 
 ## Pendências não-bloqueantes — módulo saved-search (§43)
 
-1. **Sem testes neste lote** (pedido explícito do solicitante, mesma
-   condição de todos os lotes desta etapa). `npm test` não cobre
-   `modules/saved-search/*` nem os handlers novos em `worker/index.js`/
-   `worker/api.js`.
+1. ~~Sem testes neste lote~~ **Coberto na Etapa 11 (sub-lote 2/N, PR #24)**:
+   `tests/modules/saved-search/{service,notifications,index}.test.js`
+   cobrem `modules/saved-search/*` inteiro (double opt-in, rate-limit,
+   tokens, `matchesCriteria`, handlers HTTP). Ainda sem teste: o wiring
+   em si dentro de `worker/api.js` (`checkSavedSearchesForListing`
+   chamado logo após `publishListing`) — coberto só indiretamente, via
+   chamada direta à função em isolamento, não através de um
+   `POST /api/me/listings` real.
 2. **Sem frontend** — nenhuma tela/formulário em `frontend/portal/` ou
    `frontend/minisite/` para o visitante realmente salvar uma busca. O
    pedido deste lote listou só "salvar critério de busca + destinatário,
