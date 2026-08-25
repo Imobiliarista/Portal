@@ -1,13 +1,14 @@
 // frontend/portal/components/appointments.js
 //
-// Camada de DOM do módulo appointments (§41) — um formulário (nome,
-// telefone, e-mail opcional, data, horário, mensagem opcional) na página
-// de imóvel completo que, ao ser enviado, abre o WhatsApp do corretor com
-// a mensagem pronta (ver decisão 1 de modules/appointments/README.md).
-// Lógica pura (validação, montagem da mensagem/URL) vive em
-// modules/appointments/index.js + validation.js e chega ao browser como
-// frontend/shared/appointments.generated.js — mesma divisão de
-// responsabilidade dos módulos comparison/financing-calculator.
+// Camada de DOM do módulo appointments (§41) — um formulário de contato
+// geral (nome, telefone, e-mail opcional, mensagem pré-preenchida e
+// editável) na página de imóvel completo que, ao ser enviado, abre o
+// WhatsApp do corretor com a mensagem pronta (mesmo padrão do template
+// Houzez — ver decisão 1 de modules/appointments/README.md; não é um
+// agendamento com data/horário). Lógica pura (validação, montagem da
+// mensagem/URL) vive em modules/appointments/index.js + validation.js e
+// chega ao browser como frontend/shared/appointments.generated.js — mesma
+// divisão de responsabilidade dos módulos comparison/financing-calculator.
 //
 // Deliberadamente fora de ../render.js#renderListingDetail (que
 // frontend/minisite/app.js também chama): montado depois, via
@@ -20,7 +21,11 @@
 // components/financing-calculator.js — verificado visualmente via
 // `wrangler dev` (§90 Etapa 2).
 
-import { buildAppointmentWhatsAppUrl, normalizeWhatsAppNumber } from "../../shared/appointments.generated.js";
+import {
+  buildAppointmentWhatsAppUrl,
+  buildDefaultAppointmentMessage,
+  normalizeWhatsAppNumber,
+} from "../../shared/appointments.generated.js";
 
 function el(tag, { className, text, attrs } = {}, children = []) {
   const node = document.createElement(tag);
@@ -31,8 +36,8 @@ function el(tag, { className, text, attrs } = {}, children = []) {
   return node;
 }
 
-function field(labelText, inputAttrs) {
-  const input = el("input", { className: "imob-appointments__input", attrs: inputAttrs });
+function field(labelText, tag, inputAttrs) {
+  const input = el(tag, { className: "imob-appointments__input", attrs: inputAttrs });
   const errorEl = el("p", { className: "imob-appointments__error" });
   const wrapper = el("label", { className: "imob-appointments__field" }, [
     el("span", { text: labelText }),
@@ -47,8 +52,6 @@ function readInputValues(fields) {
     visitorName: fields.visitorName.input.value,
     visitorPhone: fields.visitorPhone.input.value,
     visitorEmail: fields.visitorEmail.input.value,
-    preferredDate: fields.preferredDate.input.value,
-    preferredTime: fields.preferredTime.input.value,
     message: fields.message.input.value,
   };
 }
@@ -61,9 +64,9 @@ function paintErrors(fields, errors) {
 }
 
 /**
- * Monta a seção "Agendar visita" e a anexa a `container` (imóvel
+ * Monta a seção "Fale com o corretor" e a anexa a `container` (imóvel
  * completo). `listing` é o `listings/{slug}.json` já carregado pela
- * página (§15) — a referência do imóvel no agendamento é sempre
+ * página (§15) — a referência do imóvel no contato é sempre
  * `listing.slug`, nunca um identificador novo (consome business/listings.js
  * indiretamente, via a mesma projeção pública que a página já usa).
  * `brokerWhatsapp` é `broker.whatsapp` do perfil público do corretor dono
@@ -81,17 +84,17 @@ export function mountAppointmentForm(container, { listing, brokerWhatsapp } = {}
   const listingUrl = typeof location !== "undefined" ? `${location.origin}/imovel/${listing.slug}` : "";
 
   const fields = {
-    visitorName: field("Seu nome", { type: "text", required: "true" }),
-    visitorPhone: field("Seu telefone (WhatsApp)", { type: "tel", required: "true" }),
-    visitorEmail: field("Seu e-mail (opcional)", { type: "email" }),
-    preferredDate: field("Data pretendida", { type: "date", required: "true" }),
-    preferredTime: field("Horário pretendido", { type: "time", required: "true" }),
-    message: field("Mensagem (opcional)", { type: "text" }),
+    visitorName: field("Seu nome", "input", { type: "text" }),
+    visitorPhone: field("Seu telefone (WhatsApp)", "input", { type: "tel" }),
+    visitorEmail: field("Seu e-mail (opcional)", "input", { type: "email" }),
+    message: field("Mensagem", "textarea", { rows: "4" }),
   };
+  fields.message.input.value = buildDefaultAppointmentMessage(listing.title);
+  fields.message.wrapper.classList.add("imob-appointments__field--full");
 
   const submitButton = el("button", {
     className: "imob-appointments__submit",
-    text: "Agendar visita via WhatsApp",
+    text: "Falar com o corretor via WhatsApp",
     attrs: { type: "submit" },
   });
 
@@ -102,8 +105,6 @@ export function mountAppointmentForm(container, { listing, brokerWhatsapp } = {}
       fields.visitorName.wrapper,
       fields.visitorPhone.wrapper,
       fields.visitorEmail.wrapper,
-      fields.preferredDate.wrapper,
-      fields.preferredTime.wrapper,
       fields.message.wrapper,
       submitButton,
     ],
@@ -112,18 +113,14 @@ export function mountAppointmentForm(container, { listing, brokerWhatsapp } = {}
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = { ...readInputValues(fields), listingSlug: listing.slug };
-    const result = buildAppointmentWhatsAppUrl(input, {
-      brokerWhatsapp,
-      listingTitle: listing.title,
-      listingUrl,
-    });
+    const result = buildAppointmentWhatsAppUrl(input, { brokerWhatsapp, listingUrl });
     paintErrors(fields, result.errors);
     if (!result.valid) return;
     window.open(result.url, "_blank", "noopener");
   });
 
   const section = el("section", { className: "imob-appointments" }, [
-    el("h2", { text: "Agendar visita" }),
+    el("h2", { text: "Fale com o corretor" }),
     form,
   ]);
 

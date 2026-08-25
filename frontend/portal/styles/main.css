@@ -390,12 +390,22 @@ a {
   color: var(--imob-muted);
 }
 
+.imob-appointments__field--full {
+  grid-column: 1 / -1;
+}
+
 .imob-appointments__input {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--imob-border);
   border-radius: 0.4rem;
   font-size: 1rem;
   color: var(--imob-fg);
+  font-family: inherit;
+}
+
+textarea.imob-appointments__input {
+  resize: vertical;
+  min-height: 5.5rem;
 }
 
 .imob-appointments__input.is-invalid {

@@ -18,7 +18,7 @@ arquivos de cada um) — nenhuma lógica de negócio foi implementada neles.
 
 | Módulo | Etapa prevista | Status | Observação |
 | --- | --- | --- | --- |
-| `appointments` (agendamento-visita) | 9 | **implementado** | 100% client-side, redireciona para o WhatsApp do corretor — sem persistência em R2/Worker (§41, ver `modules/appointments/README.md`) |
+| `appointments` (agendamento-visita) | 9 | **implementado** | Na prática é um formulário de contato geral (sem data/horário), 100% client-side, redireciona para o WhatsApp do corretor — sem persistência em R2/Worker (§41, ver `modules/appointments/README.md`) |
 | `ai-search` (busca-ia) | 9 | placeholder | IA não é dependência da busca básica (§42) |
 | `saved-search` (busca-salva-email) | 9 | placeholder | — |
 | `financing-calculator` (calculadora-financiamento) | 9 | placeholder | Preferir client-side (§44) |
@@ -36,15 +36,19 @@ arquivos de cada um) — nenhuma lógica de negócio foi implementada neles.
 ### `appointments` (§41) — escopo real implementado
 
 §41 é só a árvore de arquivos do módulo, sem definir o fluxo. Confirmado
-com o solicitante antes deste lote: o site já usa um formulário que abre
-o WhatsApp do corretor (padrão comum de "agende sua visita" em sites
-imobiliários) — não há aprovação/confirmação dentro da plataforma, e não
-existe (nem foi adicionada) infraestrutura de e-mail no projeto. O
-módulo é 100% client-side: um formulário na página de imóvel completo
-monta `https://wa.me/{whatsapp-do-corretor}?text=...` a partir do
-`whatsapp` já existente no perfil público do corretor (§16). Sem nada
-para persistir, não há gaveta em R2 PRIVATE, rota de Worker, nem tela de
-"agendamentos recebidos" no painel — decisões completas em
+com o solicitante antes deste lote — e corrigido por ele já durante o
+lote, depois de uma primeira leitura errada como "agendamento com data/
+horário": **não há marcação de data/hora nenhuma**. O que existe é um
+formulário de contato geral com o corretor a partir de um imóvel (nome,
+telefone, e-mail, mensagem pré-preenchida e editável), mesmo padrão do
+template Houzez (WordPress) usado no mercado imobiliário — não há
+aprovação/confirmação dentro da plataforma, e não existe (nem foi
+adicionada) infraestrutura de e-mail no projeto. O módulo é 100%
+client-side: o formulário monta `https://wa.me/{whatsapp-do-corretor}?text=...`
+a partir do `whatsapp` já existente no perfil público do corretor (§16,
+já suportado por `business/brokers.js` desde a Etapa 3). Sem nada para
+persistir, não há gaveta em R2 PRIVATE, rota de Worker, nem tela de
+"contatos recebidos" no painel — decisões completas em
 `modules/appointments/README.md`.
 
 ### `pwa` (§48) — escopo real implementado

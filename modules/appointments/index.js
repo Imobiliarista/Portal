@@ -1,32 +1,36 @@
 // modules/appointments/index.js
 //
-// Módulo appointments (§41, agendamento-visita) — ponto de entrada.
+// Módulo appointments (§41) — ponto de entrada.
 //
 // §41 no documento normativo é só a árvore de arquivos do módulo, sem
-// nenhuma linha sobre o fluxo em si. Duas decisões de produto que o
-// documento não cobria foram confirmadas com o solicitante antes deste
-// lote (ver modules/appointments/README.md#decisões para o texto
-// completo):
+// nenhuma linha sobre o fluxo em si. Decisões de produto confirmadas com
+// o solicitante antes deste lote (ver modules/appointments/README.md#decisões
+// para o texto completo — inclui uma correção feita já durante o lote,
+// depois de uma primeira leitura errada de "agendamento" como marcação de
+// data/horário):
 //
-//   1. O agendamento não é uma aprovação/recusa dentro do sistema — hoje
-//      o site do corretor já usa um formulário que, ao ser enviado, abre
-//      o WhatsApp do corretor com a mensagem pronta (padrão comum de
-//      "agende sua visita" em sites imobiliários, ex. addons Houzez). Este
-//      módulo reproduz exatamente esse fluxo: 100% client-side, um link
-//      `https://wa.me/{numero}?text=...` — nenhuma aprovação/confirmação
-//      dentro da plataforma, nenhum estado "pendente"/"confirmado".
-//   2. Não existe (e não foi adicionada) nenhuma infraestrutura de e-mail
+//   1. Não é um agendamento com data/horário — é um formulário de
+//      **contato geral** com o corretor a partir de um imóvel, mesmo
+//      padrão do template Houzez: nome, telefone, e-mail, mensagem
+//      pré-preenchida ("Tenho interesse em {título}") e livremente
+//      editável pelo visitante. Sem campo de data/horário — prática de
+//      mercado atual, não uma leitura literal de "agendamento".
+//   2. Ao enviar, o formulário monta a mensagem e abre
+//      `https://wa.me/{numero-do-corretor}?text=...` — 100% client-side,
+//      nenhuma aprovação/confirmação dentro da plataforma, nenhum estado
+//      "pendente"/"confirmado".
+//   3. Não existe (e não foi adicionada) nenhuma infraestrutura de e-mail
 //      no projeto — a notificação do corretor é só esse redirecionamento
 //      para o WhatsApp dele, usando o campo `whatsapp` que já existe no
-//      perfil público do corretor (§16, schemas/broker-public.schema.json).
-//      Nenhuma API/integração de WhatsApp Business foi adicionada.
+//      perfil público do corretor (§16, schemas/broker-public.schema.json,
+//      já suportado por business/brokers.js desde a Etapa 3 — nenhuma
+//      mudança necessária ali). Nenhuma API/integração de WhatsApp
+//      Business foi adicionada.
 //
-// Consequência arquitetural: como não há nada para persistir (§41 sugeria
-// "provavelmente uma gaveta nova em R2", mas isso pressupõe o corretor
-// aprovando/visualizando agendamentos dentro do painel — não é o fluxo
-// real confirmado), este módulo não tem rota de Worker nem gaveta em R2
-// PRIVATE. Mesmo espírito de simplicidade dos módulos comparison/
-// financing-calculator (§94: "pode ser Browser?" — aqui, sim).
+// Consequência arquitetural: como não há nada para persistir, este
+// módulo não tem rota de Worker nem gaveta em R2 PRIVATE. Mesmo espírito
+// de simplicidade dos módulos comparison/financing-calculator (§94: "pode
+// ser Browser?" — aqui, sim).
 //
 // Como o browser só alcança `frontend/` (Static Assets — wrangler.toml
 // `[assets] directory = "frontend"`; mesma restrição documentada em
@@ -43,10 +47,7 @@ import {
   APPOINTMENT_MESSAGE_MAX_LENGTH,
   SLUG_PATTERN,
   EMAIL_PATTERN,
-  DATE_PATTERN,
-  TIME_PATTERN,
   isNonEmptyString,
-  isTodayOrLater,
 } from "./validation.js";
 
 export { validateAppointmentInput, APPOINTMENT_VISITOR_NAME_MAX_LENGTH, APPOINTMENT_MESSAGE_MAX_LENGTH };
@@ -58,7 +59,7 @@ export { validateAppointmentInput, APPOINTMENT_VISITOR_NAME_MAX_LENGTH, APPOINTM
  * 99999-9999") a só dígitos, prefixando o código do Brasil (55) quando
  * ausente. Devolve `null` para entrada claramente inválida (poucos
  * dígitos) em vez de lançar — um corretor sem WhatsApp válido no perfil
- * simplesmente não pode receber agendamento por este canal (ver
+ * simplesmente não pode receber contato por este canal (ver
  * mountAppointmentForm no componente de UI, que não renderiza o formulário
  * nesse caso — mesmo espírito de "§49 se inexistente, componente não
  * renderiza").
@@ -73,41 +74,27 @@ export function normalizeWhatsAppNumber(raw) {
 }
 
 /**
- * Monta o texto da mensagem de WhatsApp a partir dos dados do formulário
- * (já validados) e do contexto do imóvel/visitante. `listingUrl` é
- * resolvida pela UI (portal e minisite têm hosts diferentes, §18/§74) —
- * este módulo não assume nenhum host.
+ * Texto padrão que a UI usa para pré-preencher o campo de mensagem —
+ * puro e testável para não duplicar a string em frontend/portal/
+ * components/appointments.js. O visitante pode reescrever livremente
+ * (decisão 1 do README); isto é só o valor inicial do campo.
  */
-export function buildAppointmentMessage({
-  listingTitle,
-  listingUrl,
-  visitorName,
-  visitorPhone,
-  visitorEmail,
-  preferredDate,
-  preferredTime,
-  message,
-}) {
-  const [year, month, day] = preferredDate.split("-");
-  const dateLabel = `${day}/${month}/${year}`;
+export function buildDefaultAppointmentMessage(listingTitle) {
+  return `Tenho interesse em ${listingTitle}`;
+}
 
-  const lines = [
-    "Olá! Tenho interesse em agendar uma visita.",
-    "",
-    `Imóvel: ${listingTitle}`,
-  ];
-  if (listingUrl) lines.push(listingUrl);
-  lines.push(
-    "",
-    `Data pretendida: ${dateLabel}`,
-    `Horário pretendido: ${preferredTime}`,
-    "",
-    `Meu nome: ${visitorName}`,
-    `Meu telefone: ${visitorPhone}`,
-  );
-  if (visitorEmail) lines.push(`Meu e-mail: ${visitorEmail}`);
-  if (message) lines.push("", `Mensagem: ${message}`);
-
+/**
+ * Monta o texto final enviado ao WhatsApp a partir dos dados do
+ * formulário (já validados) — a mensagem do visitante primeiro (já traz
+ * o contexto do imóvel, via buildDefaultAppointmentMessage ou reescrita
+ * livre), seguida dos dados de contato e do link do imóvel.
+ * `listingUrl` é resolvida pela UI (portal e minisite têm hosts
+ * diferentes, §18/§74) — este módulo não assume nenhum host.
+ */
+export function buildAppointmentMessage({ listingUrl, visitorName, visitorPhone, visitorEmail, message }) {
+  const lines = [message, "", `Nome: ${visitorName}`, `Telefone: ${visitorPhone}`];
+  if (visitorEmail) lines.push(`E-mail: ${visitorEmail}`);
+  if (listingUrl) lines.push(`Imóvel: ${listingUrl}`);
   return lines.join("\n");
 }
 
@@ -116,11 +103,9 @@ export function buildAppointmentMessage({
  * o corretor tiver um WhatsApp resolvível, monta a URL `https://wa.me/...`
  * pronta para `window.open`. Nunca lança — `{ valid: false, errors }` cobre
  * tanto erro de campo quanto "corretor sem WhatsApp válido" (`errors.whatsapp`).
- * `now` é repassado a `validateAppointmentInput` (injetável nos testes,
- * default `new Date()`).
  */
-export function buildAppointmentWhatsAppUrl(input, { brokerWhatsapp, listingTitle, listingUrl, now } = {}) {
-  const { valid, errors } = validateAppointmentInput(input, { now });
+export function buildAppointmentWhatsAppUrl(input, { brokerWhatsapp, listingUrl } = {}) {
+  const { valid, errors } = validateAppointmentInput(input);
 
   const brokerDigits = normalizeWhatsAppNumber(brokerWhatsapp);
   if (!brokerDigits) {
@@ -130,14 +115,11 @@ export function buildAppointmentWhatsAppUrl(input, { brokerWhatsapp, listingTitl
   if (!valid) return { valid: false, errors };
 
   const text = buildAppointmentMessage({
-    listingTitle: listingTitle || input.listingSlug,
     listingUrl,
     visitorName: input.visitorName,
     visitorPhone: input.visitorPhone,
     visitorEmail: input.visitorEmail || null,
-    preferredDate: input.preferredDate,
-    preferredTime: input.preferredTime,
-    message: input.message || null,
+    message: input.message,
   });
 
   return {
@@ -166,16 +148,14 @@ export const APPOINTMENT_MESSAGE_MAX_LENGTH = ${JSON.stringify(APPOINTMENT_MESSA
 
 const SLUG_PATTERN = ${SLUG_PATTERN.toString()};
 const EMAIL_PATTERN = ${EMAIL_PATTERN.toString()};
-const DATE_PATTERN = ${DATE_PATTERN.toString()};
-const TIME_PATTERN = ${TIME_PATTERN.toString()};
 
 ${isNonEmptyString.toString()}
-
-${isTodayOrLater.toString()}
 
 export ${validateAppointmentInput.toString()}
 
 export ${normalizeWhatsAppNumber.toString()}
+
+export ${buildDefaultAppointmentMessage.toString()}
 
 export ${buildAppointmentMessage.toString()}
 
