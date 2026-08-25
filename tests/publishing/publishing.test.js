@@ -95,6 +95,30 @@ test("publishListing writes the full listing, its card, the city index entry, an
   assert.equal(manifest.city.uf, "PR");
 });
 
+// §46 — zipcode is optional on the draft (business/listings.js) but, when
+// present, must reach the public projection: it's what
+// modules/feeds/generator.js needs to include a listing in the OLX feed
+// (required there, not here).
+test("publishListing carries zipcode through to location.zipcode when the draft has one", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active", zipcode: "86010-000" }));
+
+  await publishListing(env, draft.listingId);
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+  assert.equal(listingPublic.location.zipcode, "86010-000");
+});
+
+test("publishListing omits location.zipcode entirely when the draft has none", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+
+  await publishListing(env, draft.listingId);
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+  assert.equal("zipcode" in listingPublic.location, false);
+});
+
 test("publishListing only touches the affected city's shard — other cities are untouched", async () => {
   const env = makeEnv();
   const broker = await makeBroker(env);

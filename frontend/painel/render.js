@@ -255,6 +255,7 @@ export function renderListingForm(content, { listing, mode, saving, error, uploa
     mode === "edit" ? select("Status", "status", STATUSES, listing?.status) : null,
     field("Cidade", "city", listing?.city),
     field("Bairro", "district", listing?.district),
+    field("CEP", "zipcode", listing?.zipcode),
     field("Preço", "price", listing?.price, "number"),
     field("Condomínio", "condominium", listing?.condominium, "number"),
     field("IPTU", "iptu", listing?.iptu, "number"),

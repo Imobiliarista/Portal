@@ -52,6 +52,11 @@ export function isLongitude(value) {
   return typeof value === "number" && value >= -180 && value <= 180;
 }
 
+/** Brazilian CEP — 8 digits, hyphen after the 5th optional (corretor may type either form; the OLX feed formatter strips non-digits itself per its own spec, so storage/business keeps whatever was typed as-is). */
+export function isZipcode(value) {
+  return typeof value === "string" && /^\d{5}-?\d{3}$/.test(value);
+}
+
 export function isUrl(value, { protocols = ["https:", "http:"] } = {}) {
   if (typeof value !== "string") return false;
   try {

@@ -6,6 +6,7 @@ import {
   isPrice,
   isLatitude,
   isLongitude,
+  isZipcode,
   isUrl,
   isEnum,
   pickAllowed,
@@ -38,6 +39,14 @@ test("isLatitude/isLongitude enforce ranges", () => {
   assert.equal(isLatitude(91), false);
   assert.equal(isLongitude(-51.2), true);
   assert.equal(isLongitude(-181), false);
+});
+
+test("isZipcode accepts both CEP forms (NNNNN-NNN and NNNNNNNN), rejects the rest", () => {
+  assert.equal(isZipcode("86010-000"), true);
+  assert.equal(isZipcode("86010000"), true);
+  assert.equal(isZipcode("86010"), false);
+  assert.equal(isZipcode("abcde-123"), false);
+  assert.equal(isZipcode(86010000), false);
 });
 
 test("isUrl only allows http(s) by default", () => {

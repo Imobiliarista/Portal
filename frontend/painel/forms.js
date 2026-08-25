@@ -49,6 +49,7 @@ export function buildListingPayload(formData) {
   setStr("type");
   setStr("city");
   setStr("district");
+  setStr("zipcode");
   setNum("price");
   setNum("condominium");
   setNum("iptu");

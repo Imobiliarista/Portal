@@ -43,7 +43,8 @@
         "city": { "type": "string", "minLength": 1 },
         "district": { "type": "string", "minLength": 1 },
         "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
-        "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "zipcode": { "type": "string", "description": "CEP (§46) — opcional; um anúncio sem CEP não entra no feed OLX (zipcode é obrigatório na spec da OLX), mas continua normal no portal/minisite." }
       }
     },
     "features": {

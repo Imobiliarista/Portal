@@ -168,6 +168,7 @@ export function normalizeListingForPublic(draft, status, broker, publicationVers
   };
   if (draft.latitude !== undefined && draft.latitude !== null) location.latitude = draft.latitude;
   if (draft.longitude !== undefined && draft.longitude !== null) location.longitude = draft.longitude;
+  if (draft.zipcode !== undefined && draft.zipcode !== null) location.zipcode = draft.zipcode;
 
   return {
     schemaVersion: 1,
