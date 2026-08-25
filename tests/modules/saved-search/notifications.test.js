@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sendEmail, sendConfirmationEmail, sendMatchNotificationEmail } from "../../../modules/saved-search/notifications.js";
+import { sendEmail, sendConfirmationEmail, sendMatchNotificationEmail, ResendApiError } from "../../../modules/saved-search/notifications.js";
 
 const ENV = { RESEND_API_KEY: "resend-test-key" };
 
@@ -42,12 +42,23 @@ test("sendEmail POSTs to the Resend API with a Bearer token and the given fields
   }
 });
 
-test("sendEmail throws with the response status/body when Resend answers non-2xx", async () => {
-  const mock = mockFetchOnce({ status: 422, body: "invalid `to` field" });
+test("sendEmail throws a ResendApiError carrying the status, with the raw response body kept OFF .message", async () => {
+  // §79/observabilidade (Etapa 11 sub-lote 4): a Resend validation error
+  // routinely echoes back the rejected field's value (here, standing in
+  // for a visitor's e-mail address) — and every caller of sendEmail logs
+  // via `{ message: error?.message }` (core/logger.js redacts by field
+  // NAME, not by content), so that value must never ride inside .message.
+  const mock = mockFetchOnce({ status: 422, body: "invalid `to` field: visitante@example.com" });
   try {
     await assert.rejects(
-      () => sendEmail(ENV, { to: "bad", subject: "x", html: "x" }),
-      /422/,
+      () => sendEmail(ENV, { to: "visitante@example.com", subject: "x", html: "x" }),
+      (error) => {
+        assert.ok(error instanceof ResendApiError);
+        assert.equal(error.status, 422);
+        assert.doesNotMatch(error.message, /visitante@example\.com/, ".message must never carry the raw Resend response body");
+        assert.match(error.responseBody, /visitante@example\.com/, "the raw body is still available off .message, for a caller that opts in");
+        return true;
+      },
     );
   } finally {
     mock.restore();

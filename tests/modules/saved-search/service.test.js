@@ -140,6 +140,41 @@ test("createSavedSearch with no IP available (e.g. local dev) skips the rate lim
   }
 });
 
+// --- observabilidade (§79, Etapa 11 sub-lote 4): o visitante nunca vaza em log ---
+// createSavedSearch nunca lança por falha no envio do e-mail de confirmação
+// (best-effort, só logado — ver o header deste arquivo/service.js) — mas
+// isso significa que o e-mail do visitante passa perto de um
+// `logger.error(..., { message: error?.message })`, e core/logger.js
+// redige por NOME de campo, não por conteúdo. Antes da correção da Etapa 11
+// sub-lote 4, um erro do Resend que ecoasse o `to` rejeitado de volta
+// vazaria o e-mail do visitante para o log através desse `message`.
+test("createSavedSearch never leaks the visitor's e-mail into the log when the confirmation e-mail provider fails", async () => {
+  const env = { ...makeEnv(), RESEND_API_KEY: "resend-test-key" };
+  const visitorEmail = "visitante-sensivel@example.com";
+
+  const previousFetch = globalThis.fetch;
+  // Simulates a Resend validation error that echoes the rejected `to`
+  // field back in its response body — the exact shape that used to leak.
+  globalThis.fetch = async () =>
+    new Response(`{"message":"Invalid \`to\` field: ${visitorEmail} is not verified"}`, { status: 422 });
+
+  const previousConsoleError = console.error;
+  const loggedLines = [];
+  console.error = (line) => loggedLines.push(line);
+
+  try {
+    await createSavedSearch(env, { email: visitorEmail, criteria: { city: "londrina" } }, { ip: "1.2.3.4", requestOrigin: ORIGIN });
+  } finally {
+    globalThis.fetch = previousFetch;
+    console.error = previousConsoleError;
+  }
+
+  assert.ok(loggedLines.length > 0, "the failed send must still be logged (observability, not silence)");
+  for (const line of loggedLines) {
+    assert.doesNotMatch(line, new RegExp(visitorEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
 // --- confirmSavedSearch / unsubscribeSavedSearch -----------------------------
 
 async function createAndExtractToken(env, overrides = {}) {

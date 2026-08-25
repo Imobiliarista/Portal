@@ -14,6 +14,28 @@
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const FROM_ADDRESS = "Imobiliarista <alertas@imobiliarista.net>";
 
+/**
+ * Erro de resposta não-2xx do Resend. `.message` nunca inclui o corpo cru
+ * da resposta (§79/observabilidade, Etapa 11 sub-lote 4) — um erro de
+ * validação do Resend rotineiramente ecoa de volta o campo rejeitado (ex.
+ * `to`), e este é o único ponto do módulo cujo erro chega a
+ * `modules/saved-search/service.js#createSavedSearch`/`notifyIfMatch`
+ * como `logger.error(..., { message: error?.message })` — `core/logger.js`
+ * redige por NOME de campo, não por conteúdo, então um e-mail de visitante
+ * embutido em `.message` vazaria para o log sem essa separação. O corpo
+ * cru fica em `.responseBody`, nunca logado por nenhum chamador atual —
+ * mesmo padrão que `modules/financial/provider.js#AsaasApiError` já usa
+ * para o corpo de erro do Asaas.
+ */
+export class ResendApiError extends Error {
+  constructor(status, responseBody) {
+    super(`Resend respondeu ${status} ao enviar e-mail.`);
+    this.name = "ResendApiError";
+    this.status = status;
+    this.responseBody = responseBody;
+  }
+}
+
 function resendApiKey(env) {
   if (!env?.RESEND_API_KEY) {
     throw new Error("modules/saved-search: binding RESEND_API_KEY ausente em env.");
@@ -43,7 +65,7 @@ export async function sendEmail(env, { to, subject, html }) {
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`Resend respondeu ${response.status} ao enviar e-mail: ${body.slice(0, 500)}`);
+    throw new ResendApiError(response.status, body.slice(0, 500));
   }
   return response.json();
 }
