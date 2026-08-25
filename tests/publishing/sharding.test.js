@@ -13,20 +13,30 @@ import { getPublic } from "../../storage/public.js";
 import { getPrivate } from "../../storage/private.js";
 import { MAX_CARDS_PER_SHARD } from "../../storage/keys.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF plus the live
+// LOGIN_INDEX_SECRET to key it (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket(), IMOB_DATA: new FakeR2Bucket() };
 }
 
 async function makeBroker(env) {
-  return createBroker(env, {
-    userId: "user_1",
-    slug: "joao",
-    name: "João Imóveis",
-    plan: "premium",
-    status: "active",
-    creci: "12345-F",
-  });
+  return createBroker(
+    env,
+    {
+      userId: "user_1",
+      slug: "joao",
+      name: "João Imóveis",
+      plan: "premium",
+      status: "active",
+      creci: "12345-F",
+      cpf: nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
 }
 
 async function publishNewActiveListing(env, brokerId, { city, slug, index }) {

@@ -15,6 +15,12 @@ import {
 } from "../../business/brokers.js";
 import { ValidationError } from "../../core/validation.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF (the login
+// identifier) and, whenever cpf/email is set, the live LOGIN_INDEX_SECRET
+// to key their private indexes (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket() };
@@ -27,13 +33,14 @@ function baseInput(overrides = {}) {
     name: "João Imóveis",
     plan: "premium",
     email: "joao@imobiliarista.net",
+    cpf: nextCpf(),
     ...overrides,
   };
 }
 
 test("createBroker persists a profile matching broker.schema.json's required shape", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   assert.equal(broker.schemaVersion, 1);
   assert.match(broker.brokerId, /^broker_/);
@@ -47,7 +54,7 @@ test("createBroker persists a profile matching broker.schema.json's required sha
 
 test("createBroker writes a separate manifest object (§29) alongside the profile draft", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   const manifestRaw = await env.IMOB_PRIVATE.get(`brokers/${broker.brokerId}/manifest.json`);
   const manifest = await manifestRaw.json();
@@ -59,26 +66,32 @@ test("createBroker writes a separate manifest object (§29) alongside the profil
 
 test("createBroker registers the broker in the slug and email indexes", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   assert.deepEqual(await getBrokerBySlug(env, "joao"), broker);
-  assert.deepEqual(await getBrokerByEmail(env, "JOAO@imobiliarista.net"), broker);
+  assert.deepEqual(await getBrokerByEmail(env, "JOAO@imobiliarista.net", LOGIN_INDEX_SECRET), broker);
 });
 
 test("createBroker rejects a duplicate slug", async () => {
   const env = makeEnv();
-  await createBroker(env, baseInput());
+  await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(
-    () => createBroker(env, baseInput({ userId: "user_2", email: "outro@imobiliarista.net" })),
+    () =>
+      createBroker(env, baseInput({ userId: "user_2", email: "outro@imobiliarista.net" }), {
+        loginIndexSecret: LOGIN_INDEX_SECRET,
+      }),
     BrokerConflictError,
   );
 });
 
 test("createBroker rejects a duplicate email", async () => {
   const env = makeEnv();
-  await createBroker(env, baseInput());
+  await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(
-    () => createBroker(env, baseInput({ slug: "maria", userId: "user_2" })),
+    () =>
+      createBroker(env, baseInput({ slug: "maria", userId: "user_2" }), {
+        loginIndexSecret: LOGIN_INDEX_SECRET,
+      }),
     BrokerConflictError,
   );
 });
@@ -90,10 +103,15 @@ test("createBroker rejects missing required fields", async () => {
 
 test("createBroker accepts an explicit status but rejects an invalid enum value", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
   assert.equal(broker.status, "active");
   await assert.rejects(
-    () => createBroker(env, baseInput({ slug: "outro", email: "outro@x.net", status: "not-a-status" })),
+    () =>
+      createBroker(env, baseInput({ slug: "outro", email: "outro@x.net", status: "not-a-status" }), {
+        loginIndexSecret: LOGIN_INDEX_SECRET,
+      }),
     ValidationError,
   );
 });
@@ -112,7 +130,7 @@ test("getBrokerBySlug returns null when the slug belongs to a listing, not a bro
 
 test("updateBrokerProfile updates only allowlisted fields and bumps updatedAt", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
   const before = broker.updatedAt;
 
   const updated = await updateBrokerProfile(env, broker.brokerId, {
@@ -128,7 +146,7 @@ test("updateBrokerProfile updates only allowlisted fields and bumps updatedAt", 
 
 test("updateBrokerProfile never lets the patch override brokerId, userId, slug, status or plan (§55)", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   const updated = await updateBrokerProfile(env, broker.brokerId, {
     brokerId: "broker_someone_else",
@@ -149,22 +167,35 @@ test("updateBrokerProfile never lets the patch override brokerId, userId, slug, 
 
 test("updateBrokerProfile moves the email index and frees the old address", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
-  await updateBrokerProfile(env, broker.brokerId, { email: "novo@imobiliarista.net" });
+  await updateBrokerProfile(
+    env,
+    broker.brokerId,
+    { email: "novo@imobiliarista.net" },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
 
-  assert.equal(await getBrokerByEmail(env, "joao@imobiliarista.net"), null);
+  assert.equal(await getBrokerByEmail(env, "joao@imobiliarista.net", LOGIN_INDEX_SECRET), null);
   const bySlug = await getBrokerBySlug(env, "joao");
   assert.equal(bySlug.email, "novo@imobiliarista.net");
 });
 
 test("updateBrokerProfile rejects an email already used by another broker", async () => {
   const env = makeEnv();
-  await createBroker(env, baseInput());
-  const other = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net" }));
+  await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  const other = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
 
   await assert.rejects(
-    () => updateBrokerProfile(env, other.brokerId, { email: "joao@imobiliarista.net" }),
+    () =>
+      updateBrokerProfile(
+        env,
+        other.brokerId,
+        { email: "joao@imobiliarista.net" },
+        { loginIndexSecret: LOGIN_INDEX_SECRET },
+      ),
     BrokerConflictError,
   );
 });
@@ -183,7 +214,7 @@ test("updateBrokerProfile requires an explicit brokerId argument", async () => {
 
 test("approveBroker moves a pending broker to active and refreshes updatedAt", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
   assert.equal(broker.status, "pending");
 
   const approved = await approveBroker(env, broker.brokerId);
@@ -200,7 +231,7 @@ test("approveBroker moves a pending broker to active and refreshes updatedAt", a
 
 test("approveBroker rejects a broker that isn't pending", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(() => approveBroker(env, broker.brokerId), BrokerConflictError);
 });
 
@@ -211,7 +242,7 @@ test("approveBroker throws BrokerNotFoundError for an unknown brokerId", async (
 
 test("suspendBroker moves an active broker to suspended", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   const suspended = await suspendBroker(env, broker.brokerId);
   assert.equal(suspended.status, "suspended");
@@ -220,7 +251,7 @@ test("suspendBroker moves an active broker to suspended", async () => {
 
 test("suspendBroker also accepts a still-pending broker (blocking an obviously fraudulent cadastro before approval)", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput());
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
   assert.equal(broker.status, "pending");
 
   const suspended = await suspendBroker(env, broker.brokerId);
@@ -229,14 +260,14 @@ test("suspendBroker also accepts a still-pending broker (blocking an obviously f
 
 test("suspendBroker rejects a broker that's already suspended", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await suspendBroker(env, broker.brokerId);
   await assert.rejects(() => suspendBroker(env, broker.brokerId), BrokerConflictError);
 });
 
 test("reactivateBroker moves a suspended broker back to active", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await suspendBroker(env, broker.brokerId);
 
   const reactivated = await reactivateBroker(env, broker.brokerId);
@@ -245,7 +276,7 @@ test("reactivateBroker moves a suspended broker back to active", async () => {
 
 test("reactivateBroker rejects a broker that isn't suspended", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, baseInput({ status: "active" }));
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(() => reactivateBroker(env, broker.brokerId), BrokerConflictError);
 });
 
@@ -253,8 +284,10 @@ test("reactivateBroker rejects a broker that isn't suspended", async () => {
 
 test("listBrokers returns every known broker regardless of status, via the broker registry (no bucket scan)", async () => {
   const env = makeEnv();
-  const a = await createBroker(env, baseInput());
-  const b = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }));
+  const a = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  const b = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
 
   const all = await listBrokers(env);
   assert.equal(all.length, 2);
@@ -266,8 +299,10 @@ test("listBrokers returns every known broker regardless of status, via the broke
 
 test("listBrokers filters by status when given", async () => {
   const env = makeEnv();
-  await createBroker(env, baseInput());
-  const active = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }));
+  await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  const active = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
 
   const pendingOnly = await listBrokers(env, { status: "pending" });
   assert.equal(pendingOnly.length, 1);

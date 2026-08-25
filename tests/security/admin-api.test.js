@@ -26,54 +26,70 @@ import {
 import { handleCreateListing } from "../../worker/api.js";
 import { login, setAuthPassword } from "../../business/auth.js";
 import { createBroker, getBrokerById } from "../../business/brokers.js";
+import { deriveClientPbkdf2 } from "../../core/auth.js";
 import { SESSION_COOKIE_NAME } from "../../core/session.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
 
-const SECRET = "test-secret-do-not-use-in-prod";
+const SESSION_SECRET = "test-session-secret-do-not-use-in-prod";
+const PASSWORD_PEPPER = "test-pepper-do-not-use-in-prod";
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
+const SECRETS = { sessionSecret: SESSION_SECRET, pepper: PASSWORD_PEPPER, loginIndexSecret: LOGIN_INDEX_SECRET };
 const ORIGIN = "https://admin.imobiliarista.net";
 
 function makeEnv() {
   return {
     IMOB_PRIVATE: new FakeR2Bucket(),
     IMOB_DATA: new FakeR2Bucket(),
-    SESSION_SECRET: SECRET,
+    SESSION_SECRET,
   };
 }
 
+// §27 hotfix (PR #19) — CPF + browser-side PBKDF2 replaced e-mail+password;
+// mint a real session the same way the browser would (deriveClientPbkdf2
+// against the record's real salt), never by faking claims directly.
+async function makeSession(env, { userId, slug, name, plan, status, cpf, password, role }) {
+  const broker = await createBroker(
+    env,
+    { userId, slug, name, plan, status, cpf: cpf ?? nextCpf() },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
+  const authRecord = await setAuthPassword(env, broker.userId, password ?? "correct horse battery staple", {
+    pepper: PASSWORD_PEPPER,
+    ...(role ? { role } : {}),
+  });
+  const pbkdf2Result = await deriveClientPbkdf2(
+    password ?? "correct horse battery staple",
+    authRecord.pbkdf2Salt,
+    authRecord.pbkdf2Iterations,
+  );
+  const { token } = await login(env, { identifier: broker.cpf, pbkdf2Result }, SECRETS);
+  return { broker, cookie: `${SESSION_COOKIE_NAME}=${token}` };
+}
+
 async function makeBrokerSession(env, overrides = {}) {
-  const broker = await createBroker(env, {
+  return makeSession(env, {
     userId: overrides.userId ?? "user_000789",
     slug: overrides.slug ?? "joao",
     name: overrides.name ?? "João Imóveis",
     plan: "premium",
     status: overrides.status ?? "pending",
-    email: overrides.email ?? "joao@imobiliarista.net",
+    cpf: overrides.cpf,
+    password: overrides.password,
   });
-  await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple");
-  const { token } = await login(
-    env,
-    { email: overrides.email ?? "joao@imobiliarista.net", password: overrides.password ?? "correct horse battery staple" },
-    SECRET,
-  );
-  return { broker, cookie: `${SESSION_COOKIE_NAME}=${token}` };
 }
 
 async function makeSuperadminSession(env, overrides = {}) {
-  const broker = await createBroker(env, {
+  return makeSession(env, {
     userId: overrides.userId ?? "user_admin",
     slug: overrides.slug ?? "admin",
     name: overrides.name ?? "Admin",
     plan: overrides.plan ?? "internal",
     status: "active",
-    email: overrides.email ?? "admin@imobiliarista.net",
+    cpf: overrides.cpf,
+    password: overrides.password,
+    role: "superadmin",
   });
-  await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple", { role: "superadmin" });
-  const { token } = await login(
-    env,
-    { email: overrides.email ?? "admin@imobiliarista.net", password: overrides.password ?? "correct horse battery staple" },
-    SECRET,
-  );
-  return { broker, cookie: `${SESSION_COOKIE_NAME}=${token}` };
 }
 
 function req(path, { method = "GET", cookie, body, headers = {} } = {}) {
