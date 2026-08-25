@@ -4,34 +4,68 @@
 // goes through: HTTP handler -> business/auth -> core/session -> the
 // worker/auth.js middleware a private handler would call next -> core/tenant
 // -> core/permissions.
+//
+// §27 hotfix (PR #19): the HTTP login request body carries `identifier`
+// (a CPF) + `pbkdf2Result` — the PBKDF2 derivation itself runs in the
+// browser against the salt from POST /api/auth/salt, never here. Tests
+// below reproduce that by deriving locally with core/auth.js's
+// deriveClientPbkdf2, the same primitive frontend/painel/auth.js uses.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleLogin, handleLogout, getSession, requireSession, requireTenant } from "../../worker/auth.js";
 import { login, setAuthPassword } from "../../business/auth.js";
 import { createBroker } from "../../business/brokers.js";
+import { deriveClientPbkdf2 } from "../../core/auth.js";
 import { createListing, updateListing } from "../../business/listings.js";
 import { SESSION_COOKIE_NAME, createSessionToken, UnauthorizedError } from "../../core/session.js";
 import { assertTenantMatch, TenantMismatchError } from "../../core/tenant.js";
 import { requireRole, ROLES, ForbiddenError } from "../../core/permissions.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
 
-const SECRET = "test-secret-do-not-use-in-prod";
+const SESSION_SECRET = "test-session-secret-do-not-use-in-prod";
+const PASSWORD_PEPPER = "test-pepper-do-not-use-in-prod";
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
+const SECRETS = { sessionSecret: SESSION_SECRET, pepper: PASSWORD_PEPPER, loginIndexSecret: LOGIN_INDEX_SECRET };
 
 function makeEnv() {
-  return { IMOB_PRIVATE: new FakeR2Bucket(), SESSION_SECRET: SECRET };
+  return {
+    IMOB_PRIVATE: new FakeR2Bucket(),
+    SESSION_SECRET,
+    PASSWORD_PEPPER,
+    LOGIN_INDEX_SECRET,
+  };
 }
 
 async function makeBroker(env, overrides = {}) {
-  const broker = await createBroker(env, {
-    userId: overrides.userId ?? "user_000789",
-    slug: overrides.slug ?? "joao",
-    name: overrides.name ?? "João Imóveis",
-    plan: "premium",
-    email: overrides.email ?? "joao@imobiliarista.net",
+  const broker = await createBroker(
+    env,
+    {
+      userId: overrides.userId ?? "user_000789",
+      slug: overrides.slug ?? "joao",
+      name: overrides.name ?? "João Imóveis",
+      plan: "premium",
+      cpf: overrides.cpf ?? nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
+  const authRecord = await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple", {
+    pepper: PASSWORD_PEPPER,
   });
-  await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple");
-  return broker;
+  return { broker, authRecord };
+}
+
+/** Mirrors the browser: derive the PBKDF2 result locally against the record's real salt. */
+async function pbkdf2ResultFor(authRecord, password) {
+  return deriveClientPbkdf2(password, authRecord.pbkdf2Salt, authRecord.pbkdf2Iterations);
+}
+
+function loginRequest(identifier, pbkdf2Result) {
+  return new Request("https://painel.imobiliarista.net/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ identifier, pbkdf2Result }),
+  });
 }
 
 function requestWithCookie(cookieValue) {
@@ -42,14 +76,12 @@ function requestWithCookie(cookieValue) {
 
 test("POST /api/auth/login succeeds with correct credentials and sets a session cookie", async () => {
   const env = makeEnv();
-  const broker = await makeBroker(env);
+  const { broker, authRecord } = await makeBroker(env);
 
-  const request = new Request("https://painel.imobiliarista.net/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: "joao@imobiliarista.net", password: "correct horse battery staple" }),
-  });
-
-  const response = await handleLogin(request, env);
+  const response = await handleLogin(
+    loginRequest(broker.cpf, await pbkdf2ResultFor(authRecord, "correct horse battery staple")),
+    env,
+  );
   assert.equal(response.status, 200);
 
   const body = await response.json();
@@ -64,29 +96,19 @@ test("POST /api/auth/login succeeds with correct credentials and sets a session 
 
 test("POST /api/auth/login fails with a wrong password (generic 401, never plaintext-compared)", async () => {
   const env = makeEnv();
-  await makeBroker(env);
+  const { broker, authRecord } = await makeBroker(env);
 
-  const request = new Request("https://painel.imobiliarista.net/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: "joao@imobiliarista.net", password: "senha-errada" }),
-  });
-
-  const response = await handleLogin(request, env);
+  const response = await handleLogin(loginRequest(broker.cpf, await pbkdf2ResultFor(authRecord, "senha-errada")), env);
   assert.equal(response.status, 401);
   const body = await response.json();
   assert.equal(body.ok, false);
   assert.equal(body.error.code, "unauthorized");
 });
 
-test("POST /api/auth/login fails with an unknown e-mail using the exact same response shape", async () => {
+test("POST /api/auth/login fails with an unknown CPF using the exact same response shape", async () => {
   const env = makeEnv();
 
-  const request = new Request("https://painel.imobiliarista.net/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: "ninguem@imobiliarista.net", password: "qualquer-coisa" }),
-  });
-
-  const response = await handleLogin(request, env);
+  const response = await handleLogin(loginRequest(nextCpf(), "qualquer-coisa"), env);
   assert.equal(response.status, 401);
   const body = await response.json();
   assert.equal(body.error.code, "unauthorized");
@@ -111,13 +133,10 @@ test("POST /api/auth/logout expires the session cookie (stateless — no server-
 
 test("getSession/requireSession accept a session minted by a real login", async () => {
   const env = makeEnv();
-  const broker = await makeBroker(env);
+  const { broker, authRecord } = await makeBroker(env);
 
   const loginResponse = await handleLogin(
-    new Request("https://painel.imobiliarista.net/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email: "joao@imobiliarista.net", password: "correct horse battery staple" }),
-    }),
+    loginRequest(broker.cpf, await pbkdf2ResultFor(authRecord, "correct horse battery staple")),
     env,
   );
   const token = loginResponse.headers.get("Set-Cookie").split(";")[0].split("=").slice(1).join("=");
@@ -141,7 +160,7 @@ test("getSession returns null and requireSession throws UnauthorizedError withou
 
 test("requireSession rejects an expired session (§28 TTL already enforced by core/session.js)", async () => {
   const env = makeEnv();
-  const expiredToken = await createSessionToken({ userId: "u1", brokerId: "b1", role: "broker" }, SECRET, {
+  const expiredToken = await createSessionToken({ userId: "u1", brokerId: "b1", role: "broker" }, SESSION_SECRET, {
     ttlSeconds: -10,
   });
 
@@ -150,7 +169,7 @@ test("requireSession rejects an expired session (§28 TTL already enforced by co
 
 test("requireSession rejects a tampered session cookie", async () => {
   const env = makeEnv();
-  const token = await createSessionToken({ userId: "u1", brokerId: "b1", role: "broker" }, SECRET);
+  const token = await createSessionToken({ userId: "u1", brokerId: "b1", role: "broker" }, SESSION_SECRET);
   const [payload, signature] = token.split(".");
   const tampered = `${payload}x.${signature}`;
 
@@ -159,8 +178,8 @@ test("requireSession rejects a tampered session cookie", async () => {
 
 test("cross-tenant write is blocked even with a valid session for a different broker (§55)", async () => {
   const env = makeEnv();
-  const brokerA = await makeBroker(env, { userId: "user_a", slug: "joao", email: "joao@imobiliarista.net" });
-  const brokerB = await makeBroker(env, { userId: "user_b", slug: "maria", email: "maria@imobiliarista.net" });
+  const { broker: brokerA, authRecord: authRecordA } = await makeBroker(env, { userId: "user_a", slug: "joao" });
+  const { broker: brokerB } = await makeBroker(env, { userId: "user_b", slug: "maria" });
 
   const listingB = await createListing(env, brokerB.brokerId, {
     city: "londrina",
@@ -174,8 +193,8 @@ test("cross-tenant write is blocked even with a valid session for a different br
 
   const { claims: sessionA } = await login(
     env,
-    { email: "joao@imobiliarista.net", password: "correct horse battery staple" },
-    SECRET,
+    { identifier: brokerA.cpf, pbkdf2Result: await pbkdf2ResultFor(authRecordA, "correct horse battery staple") },
+    SECRETS,
   );
 
   assert.throws(() => assertTenantMatch(sessionA, listingB.brokerId), TenantMismatchError);

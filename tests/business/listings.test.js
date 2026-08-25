@@ -13,6 +13,11 @@ import { createPlan } from "../../business/plans.js";
 import { ValidationError } from "../../core/validation.js";
 import { TenantMismatchError } from "../../core/tenant.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF plus the live
+// LOGIN_INDEX_SECRET to key it (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 // Etapa 8b (§52/§53): the gallery cap now comes from business/plans.js's
 // seeded default plan (DEFAULT_PLAN_ID, maxGalleryItems 50) whenever the
@@ -232,13 +237,18 @@ test("updateListing respects a higher limit from a broker's actual assigned plan
   const env = makeEnv();
   const { createBroker } = await import("../../business/brokers.js");
   await createPlan(env, { planId: "premium", name: "Premium", maxGalleryItems: 80 });
-  const broker = await createBroker(env, {
-    userId: "user_1",
-    slug: "joao",
-    name: "João",
-    plan: "premium",
-    email: "joao@imobiliarista.net",
-  });
+  const broker = await createBroker(
+    env,
+    {
+      userId: "user_1",
+      slug: "joao",
+      name: "João",
+      plan: "premium",
+      email: "joao@imobiliarista.net",
+      cpf: nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
 
   const draft = await createListing(env, broker.brokerId, baseInput({ slug: "outro-imovel" }));
   const galleryUrl = (i) => `https://media.imobiliarista.net/listings/${draft.listingId}/gallery/${i}.webp`;

@@ -15,6 +15,11 @@ import {
 import { createBroker, getBrokerById, BrokerNotFoundError } from "../../business/brokers.js";
 import { ValidationError } from "../../core/validation.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF plus the live
+// LOGIN_INDEX_SECRET to key it (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket() };
@@ -106,7 +111,8 @@ test("deletePlan refuses to remove a plan currently assigned to a broker", async
     name: "João",
     plan: "premium",
     email: "joao@imobiliarista.net",
-  });
+    cpf: nextCpf(),
+  }, { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assignBrokerPlan(env, broker.brokerId, "premium");
 
   await assert.rejects(() => deletePlan(env, "premium"), PlanConflictError);
@@ -128,7 +134,8 @@ test("assignBrokerPlan sets the broker's plan and mirrors it onto the manifest",
     name: "João",
     plan: "algum-texto-livre-antigo",
     email: "joao@imobiliarista.net",
-  });
+    cpf: nextCpf(),
+  }, { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   const updated = await assignBrokerPlan(env, broker.brokerId, "premium");
   assert.equal(updated.plan, "premium");
@@ -147,7 +154,8 @@ test("assignBrokerPlan throws PlanNotFoundError for an unknown planId", async ()
     name: "João",
     plan: "free",
     email: "joao@imobiliarista.net",
-  });
+    cpf: nextCpf(),
+  }, { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(() => assignBrokerPlan(env, broker.brokerId, "ghost"), PlanNotFoundError);
 });
 
@@ -178,7 +186,8 @@ test("getGalleryLimitForBroker returns the broker's actually assigned plan limit
     name: "João",
     plan: "premium",
     email: "joao@imobiliarista.net",
-  });
+    cpf: nextCpf(),
+  }, { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   assert.equal(await getGalleryLimitForBroker(env, broker.brokerId), 200);
 });
@@ -191,7 +200,8 @@ test("getGalleryLimitForBroker falls back to the default plan when the broker's 
     name: "João",
     plan: "um-plano-que-nunca-foi-criado",
     email: "joao@imobiliarista.net",
-  });
+    cpf: nextCpf(),
+  }, { loginIndexSecret: LOGIN_INDEX_SECRET });
 
   assert.equal(await getGalleryLimitForBroker(env, broker.brokerId), 50);
 });

@@ -21,20 +21,30 @@ import { createListing, updateListing } from "../../business/listings.js";
 import { getPublic, putPublic } from "../../storage/public.js";
 import { getPrivate } from "../../storage/private.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF plus the live
+// LOGIN_INDEX_SECRET to key it (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket(), IMOB_DATA: new FakeR2Bucket() };
 }
 
 async function makeBroker(env, overrides = {}) {
-  return createBroker(env, {
-    userId: overrides.userId ?? "user_1",
-    slug: overrides.slug ?? "joao",
-    name: overrides.name ?? "João Imóveis",
-    plan: "premium",
-    status: overrides.status ?? "active",
-    creci: overrides.creci ?? "12345-F",
-  });
+  return createBroker(
+    env,
+    {
+      userId: overrides.userId ?? "user_1",
+      slug: overrides.slug ?? "joao",
+      name: overrides.name ?? "João Imóveis",
+      plan: "premium",
+      status: overrides.status ?? "active",
+      creci: overrides.creci ?? "12345-F",
+      cpf: overrides.cpf ?? nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
 }
 
 function baseListingInput(overrides = {}) {
@@ -280,7 +290,11 @@ test("publishListing refuses to publish an active listing without a district (ga
 
 test("publishBroker no-ops while the broker is status:pending (not approved yet)", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, { userId: "user_1", slug: "joao", name: "João", plan: "free" });
+  const broker = await createBroker(
+    env,
+    { userId: "user_1", slug: "joao", name: "João", plan: "free", cpf: nextCpf() },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
   const result = await publishBroker(env, broker.brokerId);
   assert.equal(result.published, false);
   assert.equal(result.reason, "pending");

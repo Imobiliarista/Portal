@@ -20,10 +20,15 @@ import { login, setAuthPassword } from "../../business/auth.js";
 import { createBroker, suspendBroker } from "../../business/brokers.js";
 import { createListing } from "../../business/listings.js";
 import { createPlan, assignBrokerPlan } from "../../business/plans.js";
+import { deriveClientPbkdf2 } from "../../core/auth.js";
 import { SESSION_COOKIE_NAME } from "../../core/session.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
+import { nextCpf } from "../support/cpf.js";
 
-const SECRET = "test-secret-do-not-use-in-prod";
+const SESSION_SECRET = "test-session-secret-do-not-use-in-prod";
+const PASSWORD_PEPPER = "test-pepper-do-not-use-in-prod";
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
+const SECRETS = { sessionSecret: SESSION_SECRET, pepper: PASSWORD_PEPPER, loginIndexSecret: LOGIN_INDEX_SECRET };
 const ORIGIN = "https://painel.imobiliarista.net";
 
 function makeEnv() {
@@ -31,24 +36,34 @@ function makeEnv() {
     IMOB_PRIVATE: new FakeR2Bucket(),
     IMOB_DATA: new FakeR2Bucket(),
     IMOB_MEDIA: new FakeR2Bucket(),
-    SESSION_SECRET: SECRET,
+    SESSION_SECRET,
   };
 }
 
+// §27 hotfix (PR #19) — CPF + browser-side PBKDF2 replaced e-mail+password;
+// mint a real session the same way the browser would (deriveClientPbkdf2
+// against the record's real salt), never by faking claims directly.
 async function makeBrokerSession(env, overrides = {}) {
-  const broker = await createBroker(env, {
-    userId: overrides.userId ?? "user_000789",
-    slug: overrides.slug ?? "joao",
-    name: overrides.name ?? "João Imóveis",
-    plan: "premium",
-    email: overrides.email ?? "joao@imobiliarista.net",
-  });
-  await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple");
-  const { token } = await login(
+  const broker = await createBroker(
     env,
-    { email: overrides.email ?? "joao@imobiliarista.net", password: overrides.password ?? "correct horse battery staple" },
-    SECRET,
+    {
+      userId: overrides.userId ?? "user_000789",
+      slug: overrides.slug ?? "joao",
+      name: overrides.name ?? "João Imóveis",
+      plan: "premium",
+      cpf: overrides.cpf ?? nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
   );
+  const authRecord = await setAuthPassword(env, broker.userId, overrides.password ?? "correct horse battery staple", {
+    pepper: PASSWORD_PEPPER,
+  });
+  const pbkdf2Result = await deriveClientPbkdf2(
+    overrides.password ?? "correct horse battery staple",
+    authRecord.pbkdf2Salt,
+    authRecord.pbkdf2Iterations,
+  );
+  const { token } = await login(env, { identifier: broker.cpf, pbkdf2Result }, SECRETS);
   return { broker, cookie: `${SESSION_COOKIE_NAME}=${token}` };
 }
 

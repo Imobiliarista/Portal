@@ -18,27 +18,32 @@ import {
 } from "../../storage/indexes.js";
 import { FakeR2Bucket } from "./fake-r2-bucket.js";
 
+// §27 hotfix pt.3 (PR #19) — loginIdentifierHash and everything built on it
+// became a keyed HMAC (LOGIN_INDEX_SECRET) instead of a bare SHA-256, so
+// every call below now needs a secret.
+const SECRET = "test-login-index-secret-do-not-use-in-prod";
+
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket() };
 }
 
 test("loginIdentifierHash normalizes case and is deterministic", async () => {
-  const a = await loginIdentifierHash("Joao@Imobiliarista.net");
-  const b = await loginIdentifierHash("joao@imobiliarista.net");
+  const a = await loginIdentifierHash("Joao@Imobiliarista.net", SECRET);
+  const b = await loginIdentifierHash("joao@imobiliarista.net", SECRET);
   assert.equal(a, b);
   assert.match(a, /^[0-9a-f]{64}$/);
 });
 
 test("login index resolves without ever scanning the bucket (§26)", async () => {
   const env = makeEnv();
-  await setLoginIndex(env, "joao@imobiliarista.net", "user_000789");
-  const resolved = await resolveLogin(env, "JOAO@imobiliarista.net");
+  await setLoginIndex(env, "joao@imobiliarista.net", "user_000789", SECRET);
+  const resolved = await resolveLogin(env, "JOAO@imobiliarista.net", SECRET);
   assert.deepEqual(resolved, { userId: "user_000789" });
 });
 
 test("resolveLogin returns null for an unknown identifier", async () => {
   const env = makeEnv();
-  assert.equal(await resolveLogin(env, "ninguem@imobiliarista.net"), null);
+  assert.equal(await resolveLogin(env, "ninguem@imobiliarista.net", SECRET), null);
 });
 
 test("slug index stores type alongside id so brokers and listings can share one prefix", async () => {
@@ -55,24 +60,24 @@ test("slug index stores type alongside id so brokers and listings can share one 
 
 test("broker email index resolves case-insensitively and is distinct from the login index", async () => {
   const env = makeEnv();
-  await setBrokerEmailIndex(env, "Joao@Imobiliarista.net", "broker_000123");
+  await setBrokerEmailIndex(env, "Joao@Imobiliarista.net", "broker_000123", SECRET);
 
-  assert.deepEqual(await resolveBrokerByEmail(env, "joao@imobiliarista.net"), {
+  assert.deepEqual(await resolveBrokerByEmail(env, "joao@imobiliarista.net", SECRET), {
     brokerId: "broker_000123",
   });
-  assert.equal(await resolveLogin(env, "joao@imobiliarista.net"), null);
+  assert.equal(await resolveLogin(env, "joao@imobiliarista.net", SECRET), null);
 });
 
 test("resolveBrokerByEmail returns null for an unknown email", async () => {
   const env = makeEnv();
-  assert.equal(await resolveBrokerByEmail(env, "ninguem@imobiliarista.net"), null);
+  assert.equal(await resolveBrokerByEmail(env, "ninguem@imobiliarista.net", SECRET), null);
 });
 
 test("deleteBrokerEmailIndex removes the mapping", async () => {
   const env = makeEnv();
-  await setBrokerEmailIndex(env, "joao@imobiliarista.net", "broker_000123");
-  await deleteBrokerEmailIndex(env, "joao@imobiliarista.net");
-  assert.equal(await resolveBrokerByEmail(env, "joao@imobiliarista.net"), null);
+  await setBrokerEmailIndex(env, "joao@imobiliarista.net", "broker_000123", SECRET);
+  await deleteBrokerEmailIndex(env, "joao@imobiliarista.net", SECRET);
+  assert.equal(await resolveBrokerByEmail(env, "joao@imobiliarista.net", SECRET), null);
 });
 
 test("broker listing index add/remove stays deduplicated", async () => {

@@ -16,21 +16,31 @@ import { createListing, updateListing } from "../../../business/listings.js";
 import { publishListing, publishBroker, republishBrokerListings } from "../../../business/publishing.js";
 import { getPublicText } from "../../../storage/public.js";
 import { FakeR2Bucket } from "../../storage/fake-r2-bucket.js";
+import { nextCpf } from "../../support/cpf.js";
 
 const SUBMODULE = "vrsync";
+
+// §27 hotfix (PR #19) — createBroker now requires a real CPF plus the live
+// LOGIN_INDEX_SECRET to key it (storage/indexes.js).
+const LOGIN_INDEX_SECRET = "test-login-index-secret-do-not-use-in-prod";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket(), IMOB_DATA: new FakeR2Bucket() };
 }
 
 async function makeOptedInBroker(env, overrides = {}) {
-  const broker = await createBroker(env, {
-    userId: overrides.userId ?? "user_1",
-    slug: overrides.slug ?? "joao",
-    name: overrides.name ?? "João Imóveis",
-    plan: "premium",
-    status: "active",
-  });
+  const broker = await createBroker(
+    env,
+    {
+      userId: overrides.userId ?? "user_1",
+      slug: overrides.slug ?? "joao",
+      name: overrides.name ?? "João Imóveis",
+      plan: "premium",
+      status: "active",
+      cpf: overrides.cpf ?? nextCpf(),
+    },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
   await publishBroker(env, broker.brokerId);
   return updateBrokerProfile(env, broker.brokerId, { modules: { feeds: { [SUBMODULE]: { enabled: true } } } });
 }
@@ -61,7 +71,11 @@ async function publishedListing(env, brokerId, overrides = {}) {
 
 test("collectFeedItems excludes a broker who never enabled this submodule", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active" });
+  const broker = await createBroker(
+    env,
+    { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active", cpf: nextCpf() },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
   await publishBroker(env, broker.brokerId);
   await publishedListing(env, broker.brokerId);
 
@@ -70,7 +84,11 @@ test("collectFeedItems excludes a broker who never enabled this submodule", asyn
 
 test("collectFeedItems excludes a broker who enabled a DIFFERENT submodule, not this one", async () => {
   const env = makeEnv();
-  const broker = await createBroker(env, { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active" });
+  const broker = await createBroker(
+    env,
+    { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active", cpf: nextCpf() },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
   await publishBroker(env, broker.brokerId);
   await updateBrokerProfile(env, broker.brokerId, { modules: { feeds: { "outro-submodulo": { enabled: true } } } });
   await publishedListing(env, broker.brokerId);
@@ -148,7 +166,11 @@ test("collectFeedItems excludes listings from an opted-out broker while includin
   const optedIn = await makeOptedInBroker(env, { userId: "u1", slug: "joao" });
   await publishedListing(env, optedIn.brokerId, { slug: "do-joao" });
 
-  const optedOut = await createBroker(env, { userId: "u2", slug: "maria", name: "Maria", plan: "premium", status: "active" });
+  const optedOut = await createBroker(
+    env,
+    { userId: "u2", slug: "maria", name: "Maria", plan: "premium", status: "active", cpf: nextCpf() },
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
   await publishBroker(env, optedOut.brokerId);
   await publishedListing(env, optedOut.brokerId, { slug: "da-maria" });
 
