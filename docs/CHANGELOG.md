@@ -1,5 +1,64 @@
 # Changelog
 
+## Etapa 9 (lote 8/N) — Módulo feeds (§90, §46)
+
+Feed de anúncios para portais externos (OLX, prioridade — ZAP fica como
+pendência explícita, ver README). Diferente de todos os módulos
+client-side desta etapa: consumido por um robô de portal externo via HTTP
+direto, sem executar JavaScript — arquivo estático (`feeds/olx.xml`) em R2
+DATA, gerado pelo Publicador, servido pelo mesmo Custom Domain que já
+expõe R2 DATA hoje (§59, docs/OPERATIONS.md pendência 3). **Nenhuma rota
+de Worker nova** — decisão de produto confirmada explicitamente antes
+deste lote, reforçando §94/§101 (edge-first, Worker só onde realmente
+necessário). Decisões completas (incluindo as fontes usadas para o XML,
+já que o acesso à documentação oficial da OLX ficou bloqueado nesta
+sessão) em `modules/feeds/README.md`.
+
+- `storage/keys.js#dataKeys.feed`, `storage/public.js#putPublicText`/`getPublicText`
+  (primeiro objeto não-JSON que R2 DATA guarda), `storage/cache.js`
+  (`CACHE_TTL_SECONDS.feed`, 1h).
+- `modules/feeds/config.js` (novo): `broker.modules.feeds.enabled` — opt-in
+  por corretor, mesmo padrão/lugar de `modules/publications`, por simetria
+  (`schemas/broker.schema.json#modules` já era `additionalProperties: true`
+  — nenhuma mudança de schema).
+- `modules/feeds/formatters/olx.js` (novo): formatter real, formato VRSync
+  (compartilhado por OLX/ZAP/VivaReal). `type` do anúncio (texto livre,
+  sem taxonomia fechada ainda) mapeado para `PropertyType` por uma tabela
+  best-effort — tipo não mapeado é excluído do feed, não inventado.
+- `modules/feeds/registry.js`, `generator.js`, `index.js` (novos):
+  `regenerateFeeds` recalcula o feed inteiro a partir do estado privado
+  (mesmo espírito de `rebuildCity`, sem particionamento — universo
+  opt-in é pequeno). `collectFeedItems` só inclui anúncio com projeção
+  pública `status: "active"` de corretor `status: "active"` + opt-in —
+  isso já exclui corretor suspenso "de graça" (mesma cascata da Etapa 8a).
+- `worker/api.js`, `worker/admin.js`: `regenerateFeeds` chamado nos pontos
+  onde `business/publishing.js` já é chamado, gated por "o corretor
+  afetado tem `modules.feeds.enabled`" (evita recompute completo em toda
+  escrita de qualquer corretor).
+- `scripts/generate-feeds.js` (novo, `npm run generate:feeds`) — caminho
+  manual/externo, já que nenhum Cron Trigger foi implementado neste lote.
+- 34 novos testes (`tests/modules/feeds/`) — formatter puro com fixtures,
+  config, e end-to-end sobre `FakeR2Bucket` cobrindo o filtro de quem
+  entra/sai (opt-in, corretor ativo/suspenso, anúncio
+  active/paused/sold/draft). Suíte completa (462 testes) passando,
+  `wrangler deploy --dry-run` validado.
+
+### Pendências abertas
+
+- `formatters/olx.js` foi escrito sem acesso à documentação oficial da
+  OLX/Grupo ZAP nesta sessão (rede bloqueada) — precisa de revisão contra
+  a página real antes de qualquer submissão de verdade ao Canal Pro.
+- `formatters/zap.js` não existe (VRSync é compartilhado, mas registrar o
+  portal e confirmar diferenças ficou fora do escopo deste lote).
+- Sem UI no painel para o corretor ligar/desligar o módulo (o
+  backend/config já aceita `modules.feeds.enabled` pelo caminho genérico
+  existente).
+- Sem endereço/CEP no schema do anúncio — o feed omite `PostalCode`, que
+  uma fonte encontrada via busca chamou de obrigatório; não confirmado.
+- Sem Cron Trigger da Cloudflare (`worker/cron.js` continua placeholder).
+- `Header.Email`/`Header.Telephone` do XML usam placeholders até
+  `FEED_CONTACT_EMAIL`/`FEED_CONTACT_PHONE` serem configurados.
+
 ## Etapa 9 (lote 6/N) — Módulo financing-calculator (§90, §44)
 
 Calculadora de financiamento imobiliário 100% client-side, tabela SAC

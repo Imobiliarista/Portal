@@ -16,6 +16,12 @@ export const CACHE_TTL_SECONDS = Object.freeze({
   brokerProfile: 300, // §60 "TTL curto/moderado"
   portalCatalog: 300, // portal/cities.json, portal/taxonomy.json
   media: 31_536_000, // versioned media objects — TTL longo (§59)
+  // feeds/*.xml (§46): the external crawler that consumes this file (OLX)
+  // only re-reads it every ~12h per its own integration docs (see
+  // modules/feeds/README.md's sources) — an hour-long TTL is already far
+  // shorter than that polling interval, so this is about bounding R2 reads
+  // between our own regenerations, not about freshness for the crawler.
+  feed: 3600,
 });
 
 export function buildCacheControl(kind) {

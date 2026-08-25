@@ -39,6 +39,17 @@ import {
 } from "../business/brokers.js";
 import { publishBroker, republishBrokerListings, rebuildCity, rebuildAll } from "../business/publishing.js";
 import { UnknownCityError } from "../business/cities.js";
+import { readFeedsConfig, regenerateFeeds } from "../modules/feeds/index.js";
+
+// Etapa 9 (§46) — see worker/api.js's copy of this same helper for the
+// full rationale (gate on the specific corretor being touched, so an
+// admin action on a corretor who never opted into feeds doesn't pay for a
+// full feed recompute).
+async function maybeRegenerateFeeds(env, broker) {
+  if (broker && readFeedsConfig(broker).enabled) {
+    await regenerateFeeds(env);
+  }
+}
 import {
   listPlans,
   createPlan,
@@ -81,6 +92,7 @@ export async function handleApproveBroker(request, env, ctx, params) {
   try {
     const broker = await approveBroker(env, params.id);
     await publishBroker(env, broker.brokerId);
+    await maybeRegenerateFeeds(env, broker);
     return success(broker);
   } catch (error) {
     if (error instanceof BrokerNotFoundError) return notFound(error.message);
@@ -100,6 +112,7 @@ export async function handleSuspendBroker(request, env, ctx, params) {
     const broker = await suspendBroker(env, params.id);
     await publishBroker(env, broker.brokerId);
     await republishBrokerListings(env, broker.brokerId);
+    await maybeRegenerateFeeds(env, broker);
     return success(broker);
   } catch (error) {
     if (error instanceof BrokerNotFoundError) return notFound(error.message);
@@ -119,6 +132,7 @@ export async function handleReactivateBroker(request, env, ctx, params) {
     const broker = await reactivateBroker(env, params.id);
     await publishBroker(env, broker.brokerId);
     await republishBrokerListings(env, broker.brokerId);
+    await maybeRegenerateFeeds(env, broker);
     return success(broker);
   } catch (error) {
     if (error instanceof BrokerNotFoundError) return notFound(error.message);
@@ -140,6 +154,7 @@ export async function handlePublishBroker(request, env, ctx, params) {
 
   await publishBroker(env, broker.brokerId, { force: true });
   const results = await republishBrokerListings(env, broker.brokerId);
+  await maybeRegenerateFeeds(env, broker);
   return success({ broker, republishedListings: results.length });
 }
 
@@ -165,6 +180,18 @@ export async function handleRebuildAll(request, env) {
   await requireAdmin(request, env);
   const body = await readJsonBody(request);
   const result = await rebuildAll(env, { cursor: body?.cursor });
+  // Etapa 9 (§46): unlike the per-corretor actions above, a global rebuild
+  // touches every city/corretor indiscriminately — there's no single
+  // corretor to gate the check on, so this regenerates unconditionally,
+  // but only once the whole batched rebuild actually finishes
+  // (`result.done`), not on every intermediate batch call (§34's own
+  // "checkpointable batches" already avoids doing all the work in one
+  // Worker invocation; regenerating the feed on every batch would undo
+  // that for no benefit — nothing feed-relevant is guaranteed consistent
+  // until the last batch lands anyway).
+  if (result.done) {
+    await regenerateFeeds(env);
+  }
   return success(result);
 }
 

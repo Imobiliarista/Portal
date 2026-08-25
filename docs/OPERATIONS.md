@@ -1,5 +1,24 @@
 # Operações
 
+## Pendências não-bloqueantes (Etapa 9, módulo feeds)
+
+9. **Feed OLX sem revisão contra a documentação oficial.** O acesso de
+   rede da sessão que implementou `modules/feeds/formatters/olx.js` foi
+   bloqueado para `developers.olx.com.br`/`developers.grupozap.com` — o
+   formatter foi reconstruído a partir de snippets de busca, não da página
+   oficial. Antes de cadastrar `https://dados.imobiliarista.net/feeds/olx.xml`
+   no Canal Pro da OLX de verdade, reabrir as duas URLs (ver
+   `modules/feeds/README.md#decisões`, item 3) de um ambiente com rede
+   liberada e diferenciar contra o formatter.
+10. **`FEED_CONTACT_EMAIL`/`FEED_CONTACT_PHONE`**: vars opcionais (não
+    segredo) lidas por `modules/feeds/generator.js#buildFeedHeader` para o
+    `<Header>` do XML — sem elas, o feed sai com um e-mail placeholder e
+    sem telefone. Configurar em `[vars]` no `wrangler.toml` antes de
+    produção.
+11. **Custom Domain de R2 DATA** (mesma pendência bloqueante 3 abaixo) é
+    também o que torna o feed alcançável pelo robô da OLX/ZAP — sem ele,
+    `feeds/olx.xml` existe no bucket mas não tem URL pública nenhuma.
+
 ## Pendências não-bloqueantes (Etapa 8a)
 
 5. **Provisionamento do primeiro SuperAdmin**: não existe rota HTTP de
@@ -140,4 +159,8 @@ npm run rebuild:listing -- <listingId>
 npm run rebuild:broker -- <brokerId>
 npm run rebuild:city -- <citySlug>
 npm run rebuild:all            # 1 lote e para; use -- --all para processar até terminar
+
+# Etapa 9 — módulo feeds (§46)
+npm run generate:feeds              # regenera feeds/{portal}.xml em R2 DATA (todos os portais registrados)
+npm run generate:feeds -- olx       # só um portal
 ```
