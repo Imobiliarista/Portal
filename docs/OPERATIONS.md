@@ -118,6 +118,44 @@
     ainda mandasse `{ cpf, ... }` (contrato do primeiro lote deste
     hotfix, nunca chegou a produção) precisa atualizar.
 
+## Pendências não-bloqueantes (Etapa 10, módulo financial — Asaas sandbox, §51)
+
+24. **Nenhuma credencial/API key sandbox do Asaas existe para este
+    projeto.** `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` (ambas via
+    `wrangler secret put`, ver `wrangler.toml`) estão **PENDENTES de
+    provisionamento** — não inventadas, não assumidas. Sem elas,
+    `modules/financial/provider.js#apiKey` lança (falha explícita) e
+    `modules/financial/webhook.js#handleAsaasWebhook` recusa qualquer
+    requisição com 503. Nenhuma conta Asaas (nem sandbox) foi criada até
+    onde esta sessão sabe.
+25. **Módulo inteiro desativado por flag (`FINANCIAL_ENABLED`, default
+    `"false"` em `wrangler.toml` `[vars]`)** — decisão explícita deste
+    lote (§51 "DESATIVADO por flag"). Mecanismo escolhido reaproveita o
+    padrão de env var/secret já usado no projeto (não um sistema de
+    toggle novo) — ver `modules/financial/README.md#decisões` para o
+    porquê e a ressalva operacional: um `wrangler deploy` de rotina
+    reaplica o `"false"` commitado, então ativar via dashboard sem também
+    atualizar `wrangler.toml` não sobrevive ao próximo deploy de código.
+26. **Nada foi exercitado contra a sandbox de verdade** (consequência
+    direta da pendência 24). Base URL, headers e campos dos endpoints
+    (`POST /customers`, `POST /payments`, webhook) foram confirmados nesta
+    sessão via WebSearch contra `docs.asaas.com` — reconferir contra a
+    documentação oficial (e uma chamada real) antes de ativar em produção.
+27. **Nenhum webhook cadastrado no Asaas** — `POST /api/webhooks/asaas`
+    existe e está pronto, mas não há conta Asaas para cadastrá-lo
+    (`POST /v3/webhooks` na API do Asaas, ou pelo painel deles, fora do
+    escopo de código deste lote).
+28. **Sem enforcement de inadimplência** — nenhuma suspensão automática de
+    corretor por cobrança vencida/não paga. Conectar isso a
+    `business/brokers.js#suspendBroker` (ou equivalente) é uma decisão de
+    produto explicitamente fora de escopo deste lote.
+29. **Sem UI no painel do corretor** para a área "financeiro" (§54) — só o
+    backend (`/api/me/financial/checkout`, `/api/me/financial/charges*`)
+    foi construído.
+30. **Sem visão SuperAdmin sobre cobranças** — `worker/admin.js` não ganhou
+    rota para listar cobranças entre corretores; cada corretor só vê as
+    próprias.
+
 ## Pendências não-bloqueantes (Etapa 10, módulo plans — schema/CRUD ampliado + eligibility, §52)
 
 20. **`business/plans.js#getActiveListingLimitForBroker` existe mas nada o
@@ -137,11 +175,13 @@
     20: conectar mudaria comportamento de dois módulos já em produção,
     decisão explicitamente deixada para confirmação posterior (ver
     `modules/plans/README.md`).
-22. **Preço (mensalidade/implantação) é só dado — nada cobra nada.**
-    `monthlyPrice`/`setupPrice` ficam gravados no registro do plano, mas
-    `modules/financial/` continua um placeholder (§51, Etapa 10 também) —
-    nenhuma integração de cobrança (Asaas ou outro provedor) lê esses
-    campos ainda.
+22. **Preço (mensalidade/implantação) já é lido, mas nada cobra de verdade
+    ainda.** `monthlyPrice`/`setupPrice` são lidos por
+    `modules/financial/checkout.js` (lote separado, §51, ver pendência 24
+    abaixo) desde que o corretor peça um checkout — mas o módulo inteiro
+    está atrás de `FINANCIAL_ENABLED` (default `"false"`), então nenhuma
+    cobrança real do Asaas dispara a partir desses valores até a flag ser
+    ligada com credenciais reais provisionadas.
 23. **`frontend/admin/render.js#PLAN_MODULE_FIELDS` duplica
     `business/plans.js#PLAN_MODULE_KEYS` por valor**, não por import —
     `frontend/admin/` nunca importa de `business/`/`modules/` (Workers

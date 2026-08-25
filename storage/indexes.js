@@ -277,3 +277,24 @@ export async function removeSavedSearchFromCityIndex(env, citySlug, savedSearchI
   await putPrivate(env, privateKeys.savedSearchCityIndex(citySlug), { savedSearchIds });
   return savedSearchIds;
 }
+
+// --- financial broker->chargeIds index (Etapa 10, §51, módulo financial) -
+// Every chargeId ever created for a broker, mirrors `getBrokerListingIds`
+// above — lets the painel's "financeiro" area list a broker's charges
+// without scanning `financial/charges/` (§26). Never pruned (a charge's own
+// `status` field tracks its lifecycle, same as listings keep a "removed"
+// status rather than disappearing from this kind of index).
+
+export async function getFinancialChargeIdsForBroker(env, brokerId) {
+  const index = await getPrivate(env, privateKeys.financialBrokerChargesIndex(brokerId));
+  return index?.chargeIds ?? [];
+}
+
+export async function addFinancialChargeToBrokerIndex(env, brokerId, chargeId) {
+  const chargeIds = await getFinancialChargeIdsForBroker(env, brokerId);
+  if (!chargeIds.includes(chargeId)) {
+    chargeIds.push(chargeId);
+    await putPrivate(env, privateKeys.financialBrokerChargesIndex(brokerId), { chargeIds });
+  }
+  return chargeIds;
+}

@@ -1,5 +1,71 @@
 # Changelog
 
+## Etapa 10 (lote 2/N, fecha a etapa) — Módulo financial: Asaas sandbox (§90, §51)
+
+**Sem testes neste lote** — pedido explícito do solicitante (mesma
+convenção do §27 hotfix e do lote 1/N desta etapa); `npm test` não foi
+rodado com o objetivo de cobrir código novo, só como checagem de que nada
+existente quebrou (ver `docs/OPERATIONS.md` pendência 14 para a contagem
+de falhas pré-existente, sem relação com este lote).
+
+Implementação completa de `modules/financial/` (placeholder desde a Etapa
+1) contra a API sandbox do Asaas — cliente Asaas (`provider.js`), checkout
+de taxa de implantação/mensalidade do plano (`checkout.js`), consulta de
+cobrança (`payments.js`) e webhook de confirmação de pagamento
+(`webhook.js`) — mas **DESATIVADO por flag** (`env.FINANCIAL_ENABLED`,
+default `"false"`): pedido explícito do solicitante, nenhum endpoint de
+checkout/pagamento chama o Asaas de verdade neste lote.
+
+- **Kill switch reaproveita o mecanismo já existente no projeto** (env
+  var/secret lida em runtime, mesmo padrão de `RESEND_API_KEY`/
+  `SESSION_SECRET`/etc.), não um sistema de toggle novo — decisão
+  detalhada em `modules/financial/README.md#decisões` depois de conferir
+  que o único precedente de "liga/desliga sem redeploy" do projeto
+  (`broker.modules.feeds[submodule].enabled`) é um opt-in por corretor,
+  incompatível com um kill switch de plataforma inteira. Checado em três
+  camadas (`checkout.js`/`payments.js`, `provider.js` de novo antes do
+  `fetch`, `webhook.js`) — defesa em profundidade, não um único gate.
+- **`worker/financial.js` (novo)**: handlers finos de
+  `/api/me/financial/checkout` e `/api/me/financial/charges*`, mesmo split
+  "handler fino no worker/ + lógica de domínio no módulo" que
+  `worker/api.js` já usa — nenhum módulo deste projeto importa de
+  `worker/`, então a sessão/tenant é resolvida aqui, não dentro de
+  `modules/financial/`. `POST /api/webhooks/asaas` é a exceção: rota
+  pública (autenticada por token compartilhado, não sessão), handler
+  definido direto em `modules/financial/webhook.js`, mesmo caso de
+  `modules/saved-search/index.js`.
+- **Cobrança lê `monthlyPrice`/`setupPrice`** (business/plans.js, Etapa
+  10/§52, lote 1/N) pela primeira vez — resolve a leitura da pendência 22
+  aberta naquele lote, mas continua sem nenhuma chamada real ao Asaas
+  disparar enquanto a flag estiver desligada.
+- **Storage**: 4 chaves novas em `storage/keys.js`
+  (`financialCustomer`/`financialCharge`/`financialBrokerChargesIndex`/
+  `financialWebhookEvent`) + 2 helpers de índice novos em
+  `storage/indexes.js`.
+- **`wrangler.toml`**: primeiro uso real do bloco `[vars]` (reservado
+  desde a Etapa 9) — `FINANCIAL_ENABLED = "false"`. Dois secrets novos
+  documentados como **PENDENTES** (`ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`)
+  — nenhuma credencial sandbox do Asaas existe para este projeto, não
+  inventado.
+- `business/plans.js`: comentário atualizado — `financial` não é mais
+  descrito como "unbuilt placeholder" (está implementado agora), mas
+  continua fora de `PLAN_MODULE_KEYS` porque é kill switch de plataforma
+  inteira, não uma concessão por plano.
+
+Arquivos alterados/criados: `modules/financial/{provider,checkout,payments,
+webhook,index,README}.{js,md}`, `worker/financial.js` (novo),
+`worker/index.js`, `storage/keys.js`, `storage/indexes.js`,
+`business/plans.js`, `wrangler.toml`, `docs/MODULES.md`,
+`docs/OPERATIONS.md`, `docs/CHANGELOG.md`.
+
+Pendências completas em `docs/OPERATIONS.md`, seção "Pendências
+não-bloqueantes (Etapa 10, módulo financial...)": credenciais sandbox do
+Asaas pendentes de provisionamento (bloqueia ativar a flag de verdade),
+endpoints/campos do Asaas confirmados via WebSearch mas nunca exercitados
+contra a sandbox real, nenhum webhook cadastrado no Asaas, sem enforcement
+de inadimplência, sem UI no painel do corretor, sem visão SuperAdmin sobre
+cobranças. Etapa 10 fecha aqui — sem lote seguinte imediato.
+
 ## Hotfix — PBKDF2 no navegador (§27, §90)
 
 Etapa 4 rodava 210k iterações de PBKDF2 dentro do handler de login do

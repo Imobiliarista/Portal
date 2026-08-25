@@ -46,5 +46,28 @@ bucket_name = "imob-media"
 #     HMAC-claims primitive, secret PRÓPRIO, nunca SESSION_SECRET).
 # See docs/OPERATIONS.md.
 #
-# Non-secret plain vars, when needed, belong in a `[vars]` block — none are
-# required yet.
+# Etapa 10 (§51, módulo financial, integração Asaas sandbox) adds two more,
+# both PENDING (no sandbox credential of any kind exists for this project
+# yet — see docs/OPERATIONS.md):
+#   ASAAS_API_KEY — modules/financial/provider.js, header `access_token`
+#     em toda chamada à API do Asaas.
+#   ASAAS_WEBHOOK_TOKEN — modules/financial/webhook.js, valida o header
+#     `asaas-access-token` que o Asaas ecoa em cada notificação de webhook
+#     (secret PRÓPRIO, nunca ASAAS_API_KEY — mesmo raciocínio de secrets
+#     separados por job de PASSWORD_PEPPER/LOGIN_INDEX_SECRET).
+# Nenhuma delas é lida por nada enquanto FINANCIAL_ENABLED (abaixo) não for
+# "true" — provisioná-las sozinhas não liga o módulo.
+
+# Etapa 10 (§51, módulo financial) — kill switch global do módulo, o
+# primeiro uso real deste bloco `[vars]` (reservado desde a Etapa 9, nunca
+# usado até agora). "false" é o default deliberado (§51 pede o módulo
+# "DESATIVADO por flag" neste lote): com este valor, nenhuma função de
+# modules/financial/ chega a montar uma Request para o Asaas (ver
+# modules/financial/provider.js). Trocar para "true" ativa o módulo sem
+# precisar redeployar código — editando este valor no dashboard Cloudflare
+# ("Settings > Variables and Secrets") em vez de rodar `wrangler deploy` —,
+# mas um `wrangler deploy` de rotina depois disso reaplica o "false"
+# commitado aqui (fail-safe intencional; ver
+# modules/financial/README.md#decisões para a ressalva completa).
+[vars]
+FINANCIAL_ENABLED = "false"
