@@ -1,5 +1,105 @@
 # Changelog
 
+## Etapa 11 (sub-lote 5/N) — Revisão de headers/CORS/cache (§90, §80, §81, §59-§61)
+
+Auditoria: o CSP/CORS/cache escritos na Etapa 1 (Fundação) ainda cobrem
+tudo que existe hoje, depois de nove etapas de módulos novos por cima?
+
+**Achado, corrigido:** `core/security.js#SECURITY_HEADERS`'s CSP não
+tinha `frame-src` nenhum — `modules/video-youtube` (Etapa 9, §50) embute
+um `<iframe src="https://www.youtube-nocookie.com/embed/...">`
+(`frontend/portal/render.js`) que `default-src 'self'` bloquearia.
+Passou despercebido só porque essa CSP nunca chega à página que embute o
+iframe (ver achado maior abaixo) — `frame-src` adicionado, teste novo em
+`tests/core/security.test.js` trava a regressão.
+
+**Achado maior, documentado (não corrigido — decisão de produto
+necessária):** `SECURITY_HEADERS` só é aplicado a respostas que o
+próprio Worker constrói (`/api/*` + as 3 páginas HTML de
+`modules/saved-search/index.js`) — nunca alcança as páginas reais do
+portal/painel/admin/minisite, servidas por Workers Static Assets
+(`wrangler.toml` `run_worker_first = ["/api/*"]`, §73/§89). Cloudflare
+Workers Static Assets suporta um arquivo `_headers` para isso, mas
+ligá-lo hoje quebraria `modules/publications` (Etapa 9, §47): seu
+`resolveBloggerFeedUrl`/`parseAtomFeed` fazem `fetch()` cross-origin
+direto do Browser para um domínio Blogger arbitrário informado pelo
+corretor, incompatível com o `connect-src` restrito da CSP atual.
+Detalhes completos e as duas opções de mitigação em
+`docs/OPERATIONS.md`, pendência 5.
+
+**Achado, documentado (mesma categoria — config manual, nunca
+existiu):** `core/security.js#buildCorsHeaders`/`PUBLIC_READ_CORS_HEADERS`
+(§80) não têm nenhum call site — R2 DATA/MEDIA são lidos direto do
+Custom Domain, nunca através deste Worker, então a política de CORS
+real precisa ser configurada no bucket/Custom Domain no painel
+Cloudflare (mesma categoria da Cache Rule já pendente desde a Etapa 1).
+Nunca tinha sido listada em `docs/OPERATIONS.md` — adicionada como
+pendência 4.
+
+**Sem achados:** `storage/cache.js#CACHE_TTL_SECONDS`/`buildCacheControl`
+— todo escritor de dado público atual (`business/publishing.js`,
+`modules/feeds/generator.js`) já passa um `cacheControl` correto; nenhum
+tipo de dado público novo desde a Etapa 1 ficou sem TTL definido.
+
+Arquivos alterados: `core/security.js`, `tests/core/security.test.js`,
+`docs/OPERATIONS.md`.
+
+581 testes (580 + 1 novo), 100% passando.
+
+## Etapa 11 (sub-lote 4/N) — Auditoria de observabilidade: fecha vazamento de PII em log (§90, §79)
+
+Auditoria de logging em `modules/financial`, `modules/saved-search` e
+`modules/plans` contra o mecanismo de redação de `core/logger.js` (§79 —
+nunca logar CPF/e-mail/segredos).
+
+**Achado real, corrigido:** `modules/saved-search/notifications.js#sendEmail`
+embutia o corpo cru da resposta de erro do Resend direto em
+`Error.message`. Três chamadas `logger.error` em `service.js`
+(`confirmation_email_failed`, `saved_search_notify_failed`,
+`saved_search_city_index_read_failed`) logam esse erro como
+`{ message: error?.message }` — e `core/logger.js` redige por NOME de
+campo, não por conteúdo, então uma resposta de validação do Resend que
+ecoe de volta o `to` rejeitado (padrão comum em APIs de e-mail) vazaria
+o e-mail do visitante para o log.
+
+Corrigido com uma classe `ResendApiError` dedicada (mesmo padrão que
+`modules/financial/provider.js#AsaasApiError` já usa): `.message` nunca
+carrega o corpo cru, que fica em `.responseBody`, não consumido por
+nenhum `logger.error` atual. Teste de regressão novo em
+`tests/modules/saved-search/service.test.js` espiona `console.error`
+para provar que o e-mail do visitante nunca chega ao log, mesmo quando o
+Resend o ecoa de volta.
+
+**Auditados sem achados:** `modules/financial/{provider,checkout,
+payments,webhook}.js` (só `webhook.js` loga, campos seguros);
+`business/plans.js` + `modules/plans/*` (nenhuma chamada de log em
+lugar nenhum).
+
+**Fora do escopo deste lote, sinalizado:** `core/app.js#errorToResponse`
+tem o mesmo padrão de risco no catch-all genérico (`{ message:
+error?.message, stack: error?.stack }`) — hoje seguro para os três
+módulos auditados, mas é infraestrutura compartilhada por todos os
+módulos do projeto, escopo maior que uma auditoria de 3 módulos.
+
+Arquivos alterados: `modules/saved-search/notifications.js`,
+`tests/modules/saved-search/{notifications,service}.test.js`.
+
+580 testes (579 + 1 novo), 100% passando. PR: #26.
+
+## Etapa 11 (sub-lote 3/N) — Sincroniza docs com o estado real do projeto (§90)
+
+`docs/MODULES.md` marcava `financing-calculator`, `comparison`, `feeds`,
+`publications`, `tour-360`, `video-youtube` e `plans` como "placeholder"
+— todos já implementados desde a Etapa 9/10, cada um com README próprio
+documentando o escopo real. Corrigido para "implementado" com uma
+observação de uma linha por módulo. `docs/CHANGELOG.md` não tinha
+entrada para os sub-lotes 1 e 2 desta etapa — adicionadas.
+`docs/OPERATIONS.md` carregava duas pendências de "sem testes neste
+lote" já resolvidas pelos PRs #23/#24 — atualizadas.
+
+Nenhum código de produção ou teste alterado — só documentação. 579
+testes, 100% passando. PR: #25.
+
 ## Etapa 11 (sub-lote 2/N) — Cobertura de teste para módulos sem teste (§90)
 
 Levantamento antes de escrever qualquer teste: `node --test` na baseline
