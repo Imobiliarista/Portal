@@ -34,6 +34,8 @@ import {
   handleConfirmSavedSearch,
   handleUnsubscribeSavedSearch,
 } from "../modules/saved-search/index.js";
+import { handleCreateCheckout, handleListMyCharges, handleGetMyCharge } from "./financial.js";
+import { handleAsaasWebhook } from "../modules/financial/index.js";
 import {
   handleListBrokers,
   handleApproveBroker,
@@ -83,6 +85,19 @@ router.delete("/api/me/listings/:id", async (request, env, ctx, params) =>
 
 router.post("/api/me/media", async (request, env) => handleUploadMedia(request, env));
 router.delete("/api/me/media/:id", async (request, env, ctx, params) => handleDeleteMedia(request, env, ctx, params));
+
+// Etapa 10 (§51, módulo financial) — checkout/consulta ficam sob
+// `/api/me/*` (mesma sessão de corretor que os demais); o webhook do
+// Asaas é a única rota pública deste módulo (worker/financial.js's header
+// explica o porquê). Nenhuma delas chama o Asaas de verdade enquanto
+// `env.FINANCIAL_ENABLED != "true"` (default deste lote) — ver
+// modules/financial/README.md.
+router.post("/api/me/financial/checkout", async (request, env) => handleCreateCheckout(request, env));
+router.get("/api/me/financial/charges", async (request, env) => handleListMyCharges(request, env));
+router.get("/api/me/financial/charges/:id", async (request, env, ctx, params) =>
+  handleGetMyCharge(request, env, ctx, params),
+);
+router.post("/api/webhooks/asaas", async (request, env) => handleAsaasWebhook(request, env));
 
 router.get("/api/admin/brokers", async (request, env) => handleListBrokers(request, env));
 router.post("/api/admin/brokers/:id/approve", async (request, env, ctx, params) => handleApproveBroker(request, env, ctx, params));

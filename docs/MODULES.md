@@ -28,7 +28,7 @@ arquivos de cada um) — nenhuma lógica de negócio foi implementada neles.
 | `pwa` | 9 | **implementado** | Isolado — não é dependência do portal (§48). Ver `modules/pwa/README.md` |
 | `tour-360` | 9 | placeholder | Campo opcional na projeção pública (§49) |
 | `video-youtube` | 9 | placeholder | — |
-| `financial` | 10 | placeholder | Transações continuam no Worker (§51) |
+| `financial` | 10 | **implementado (desativado por flag)** | Integração Asaas sandbox completa, atrás de `FINANCIAL_ENABLED` (default `"false"`) — nenhum endpoint chama o Asaas enquanto a flag não for `"true"`. Transações continuam no Worker (§51, ver `modules/financial/README.md`) |
 | `plans` | 10 | placeholder | Não espalhar checks de plano pela base (§52) |
 
 `modules/future/` reservado para módulos ainda não especificados.
@@ -67,6 +67,27 @@ módulo do projeto a integrar um provedor de e-mail (Resend, domínio
 `imobiliarista.net` já verificado) — decisões completas, incluindo o que
 ficou de fora (frontend, dedup por e-mail, retry de envio, reconciliação
 de rebuild em lote), em `modules/saved-search/README.md`.
+
+### `financial` (§51) — escopo real implementado
+
+Integração completa com a API sandbox do Asaas (cliente + cobrança de
+taxa de implantação/mensalidade do plano + webhook de confirmação de
+pagamento), mas **desativada por flag** — pedido explícito deste lote,
+Etapa 10 fecha aqui. `env.FINANCIAL_ENABLED` precisa ser exatamente a
+string `"true"` (default `"false"`, `wrangler.toml` `[vars]`) para
+qualquer função do módulo sequer montar uma `Request` para o Asaas —
+checado em três camadas independentes (`checkout.js`/`payments.js` antes
+de tocar R2, `provider.js` de novo antes do `fetch`, `webhook.js` antes de
+processar qualquer evento de entrada). Toggle reaproveita o mecanismo de
+env var/secret que o projeto já usa para outras integrações externas
+(`RESEND_API_KEY` etc.) em vez de um sistema novo — pode ser ligado sem
+redeploy de código (edição direta da var no dashboard Cloudflare), com uma
+ressalva documentada (um `wrangler deploy` de rotina reaplica o `"false"`
+commitado). `ASAAS_API_KEY`/`ASAAS_WEBHOOK_TOKEN` estão **pendentes de
+provisionamento** — nenhuma credencial sandbox existe para este projeto
+ainda, não inventado — decisões completas, incluindo tudo que ficou de
+fora (UI no painel, visão SuperAdmin, enforcement de inadimplência), em
+`modules/financial/README.md`.
 
 ### `pwa` (§48) — escopo real implementado
 

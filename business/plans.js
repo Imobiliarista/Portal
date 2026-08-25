@@ -16,7 +16,10 @@
 // catalog/eligibility/features) is the read-only query layer other
 // modules use instead of reaching into this file directly — see that
 // package's README for what is and isn't wired up yet. Billing/Asaas
-// itself is `modules/financial/`, still a separate, unbuilt piece.
+// itself is `modules/financial/` — a separate piece, built in Etapa 10
+// (behind `FINANCIAL_ENABLED`, see modules/financial/README.md), which
+// reads `monthlyPrice`/`setupPrice` from the plan resolved by
+// `getPlanForBroker` below but never imports anything else from this file.
 //
 // One plan is seeded automatically: DEFAULT_PLAN_ID ("free"). Every broker
 // that has no plan assigned (or whose assigned plan no longer exists)
@@ -68,7 +71,11 @@ const DEFAULT_PLAN_MAX_GALLERY_ITEMS = 50; // same value PROVISIONAL_MAX_GALLERY
  * tour-360/video-youtube are per-listing fields with no broker-level
  * enable/disable structure to gate; comparison/financing-calculator/
  * saved-search/pwa have no broker association at all, or are platform-
- * wide; ai-search and financial are still unbuilt placeholders). Adding a
+ * wide; ai-search is still an unbuilt placeholder). `financial` (§51) is
+ * deliberately excluded too, even though it's built now (Etapa 10, behind
+ * `FINANCIAL_ENABLED`, see modules/financial/README.md) — it's a
+ * platform-wide kill switch, not a per-plan grant, so it has no business
+ * being a boolean a plan's `modules` map could toggle per broker. Adding a
  * module here later is additive — no migration needed for existing plans.
  */
 export const PLAN_MODULE_KEYS = ["publications", "feeds"];

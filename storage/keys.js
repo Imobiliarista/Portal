@@ -168,6 +168,32 @@ export const privateKeys = {
     assertSafeSegment(ipHash, "ipHash");
     return `rate-limits/saved-search/${dateStamp}/${ipHash}.json`;
   },
+  /**
+   * Asaas customer record for a broker (§51, Etapa 10, módulo financial) —
+   * flat, keyed by brokerId, so `modules/financial/checkout.js` can reuse an
+   * already-created providerCustomerId instead of creating a duplicate
+   * customer on the Asaas side on every checkout.
+   */
+  financialCustomer(brokerId) {
+    return `financial/customers/${assertSafeSegment(brokerId, "brokerId")}.json`;
+  },
+  /** Flat charge record (setup/monthly, §51) — same "flat record, no draft/manifest split" shape as `plan()`/`savedSearch()` above. */
+  financialCharge(chargeId) {
+    return `financial/charges/${assertSafeSegment(chargeId, "chargeId")}.json`;
+  },
+  /** chargeIds ever created for a broker, so the painel's "financeiro" area can list them without scanning `financial/charges/` (§26). */
+  financialBrokerChargesIndex(brokerId) {
+    return `indexes/financial/charges/${assertSafeSegment(brokerId, "brokerId")}.json`;
+  },
+  /**
+   * Idempotency marker for an already-processed Asaas webhook event id
+   * (`evt_...`) — the Asaas webhook eventId, not the payment id, so a
+   * retried delivery of the same event never applies a status transition
+   * twice (`modules/financial/webhook.js`).
+   */
+  financialWebhookEvent(eventId) {
+    return `financial/webhook-events/${assertSafeSegment(eventId, "eventId")}.json`;
+  },
 };
 
 // ---------------------------------------------------------------------------
