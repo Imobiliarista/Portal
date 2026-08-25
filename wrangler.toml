@@ -30,7 +30,9 @@ bucket_name = "imob-data"
 binding = "IMOB_MEDIA"
 bucket_name = "imob-media"
 
-# Secrets (e.g. SESSION_SECRET for core/session.js, Etapa 4) are provisioned
-# via `wrangler secret put <NAME>` and must never be committed here (§3.1,
-# §27). Non-secret plain vars, when needed, belong in a `[vars]` block —
-# none are required yet in Etapa 1.
+# Secrets (SESSION_SECRET for core/session.js, Etapa 4; PASSWORD_PEPPER for
+# core/auth.js's HMAC step, §27 hotfix) are provisioned via
+# `wrangler secret put <NAME>` and must never be committed here (§3.1, §27).
+# PASSWORD_PEPPER is PENDING manual provisioning before this hotfix can go
+# live — see docs/OPERATIONS.md. Non-secret plain vars, when needed, belong
+# in a `[vars]` block — none are required yet.

@@ -5,7 +5,7 @@
   "description": "brokers/{brokerId}/profile-draft.json in R2 PRIVATE — §16, §29. Editable, authoritative source the publisher normalizes into broker-public.schema.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "brokerId", "userId", "slug", "status", "plan", "name", "updatedAt"],
+  "required": ["schemaVersion", "brokerId", "userId", "slug", "status", "plan", "name", "cpf", "updatedAt"],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "brokerId": { "type": "string", "minLength": 1 },
@@ -18,6 +18,11 @@
     "plan": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
     "email": { "type": "string", "format": "email" },
+    "cpf": {
+      "type": "string",
+      "pattern": "^[0-9]{11}$",
+      "description": "Normalizado (só dígitos). Identificador de login do corretor (§27 hotfix) — nunca aparece em broker-public.schema.json e nunca é logado (core/logger.js#SENSITIVE_KEY_PATTERNS)."
+    },
     "creci": { "type": "string", "description": "Número completo do CRECI — não confundir com creciPublic (broker-public.schema.json)." },
     "phone": { "type": "string" },
     "whatsapp": { "type": "string" },

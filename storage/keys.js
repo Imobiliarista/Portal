@@ -65,6 +65,15 @@ export const privateKeys = {
   brokerEmailIndex(emailHash) {
     return `indexes/broker-emails/${assertSafeSegment(emailHash, "emailHash")}.json`;
   },
+  /**
+   * Resolves a hashed broker CPF to a brokerId — never store raw CPF as a
+   * key (§79). CPF is the broker login identifier as of the §27 hotfix
+   * (browser-side PBKDF2); mirrors `brokerEmailIndex` above, which stays
+   * broker contact info only, unrelated to login.
+   */
+  brokerCpfIndex(cpfHash) {
+    return `indexes/broker-cpfs/${assertSafeSegment(cpfHash, "cpfHash")}.json`;
+  },
   /** List of listingIds owned by a broker, for "meus imóveis" without a scan. */
   brokerListingsIndex(brokerId) {
     return `indexes/listings/${assertSafeSegment(brokerId, "brokerId")}.json`;

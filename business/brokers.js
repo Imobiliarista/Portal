@@ -2,11 +2,13 @@
 //
 // Private broker domain (§29, Etapa 3 — §90). Owns the authoritative broker
 // record in R2 PRIVATE (`brokers/{brokerId}/*`) plus the private indexes
-// that resolve a broker by slug or e-mail without ever scanning the bucket
-// (§26). Deliberately does NOT touch auth: no password hashing, login, or
-// session — that is Etapa 4 (§27-§28). `getBrokerByEmail` exists here only
-// because Etapa 4's login flow will need to turn a resolved identity into a
-// broker/tenant context.
+// that resolve a broker by slug, e-mail, or CPF without ever scanning the
+// bucket (§26). Deliberately does NOT touch auth: no password hashing,
+// login, or session — that is business/auth.js (§27-§28). `getBrokerByCpf`
+// exists here only because business/auth.js#login needs to turn CPF (the
+// login identifier as of the §27 browser-PBKDF2 hotfix) into a broker/
+// tenant context; `getBrokerByEmail` stays for e-mail as a contact field,
+// unrelated to login.
 //
 // Multitenancy (§55): every write here scopes itself to a `brokerId` the
 // caller passes in explicitly — never a field read out of the patch/input
@@ -22,6 +24,9 @@ import {
   resolveBrokerByEmail,
   setBrokerEmailIndex,
   deleteBrokerEmailIndex,
+  resolveBrokerByCpf,
+  setBrokerCpfIndex,
+  deleteBrokerCpfIndex,
   getKnownBrokerIds,
   registerBrokerId,
 } from "../storage/indexes.js";
@@ -29,6 +34,8 @@ import {
   isNonEmptyString,
   isSlug,
   isEmail,
+  isCpf,
+  normalizeCpf,
   isUrl,
   isEnum,
   pickAllowed,
@@ -63,6 +70,7 @@ const CREATE_ALLOWED_FIELDS = [
   "plan",
   "status",
   "email",
+  "cpf",
   "creci",
   "phone",
   "whatsapp",
@@ -79,6 +87,7 @@ const CREATE_ALLOWED_FIELDS = [
 const PROFILE_UPDATE_ALLOWED_FIELDS = [
   "name",
   "email",
+  "cpf",
   "creci",
   "phone",
   "whatsapp",
@@ -96,6 +105,7 @@ const FIELD_RULES = {
   plan: (v) => isNonEmptyString(v, { maxLength: 60 }),
   status: (v) => isEnum(v, BROKER_STATUSES),
   email: isEmail,
+  cpf: isCpf,
   creci: (v) => isNonEmptyString(v, { maxLength: 60 }),
   phone: (v) => isNonEmptyString(v, { maxLength: 40 }),
   whatsapp: (v) => isNonEmptyString(v, { maxLength: 40 }),
@@ -110,13 +120,21 @@ function newBrokerId() {
   return `broker_${crypto.randomUUID()}`;
 }
 
-/** Creates a new broker record (§29). Returns the private profile object. */
+/**
+ * Creates a new broker record (§29). Returns the private profile object.
+ *
+ * `cpf` is required (§27 hotfix): it is now the broker's sole login
+ * identifier (business/auth.js#login), so a broker created without one
+ * could never authenticate. Stored normalized (digits only) — never the
+ * raw/formatted input the caller sent.
+ */
 export async function createBroker(env, input) {
   const picked = assertValid(input, CREATE_ALLOWED_FIELDS, FIELD_RULES, {
-    required: ["userId", "slug", "name", "plan"],
+    required: ["userId", "slug", "name", "plan", "cpf"],
   });
 
   const brokerId = isNonEmptyString(input?.brokerId) ? input.brokerId : newBrokerId();
+  const cpf = normalizeCpf(picked.cpf);
 
   const existingSlugOwner = await resolveSlug(env, picked.slug);
   if (existingSlugOwner) {
@@ -128,6 +146,11 @@ export async function createBroker(env, input) {
       throw new BrokerConflictError(`E-mail "${picked.email}" já está em uso.`);
     }
   }
+  const existingCpfOwner = await resolveBrokerByCpf(env, cpf);
+  if (existingCpfOwner) {
+    // Generic message — never echo the CPF back (§79 "CPF integral" never logged/exposed).
+    throw new BrokerConflictError("CPF já cadastrado.");
+  }
 
   const now = new Date().toISOString();
   const broker = {
@@ -138,6 +161,7 @@ export async function createBroker(env, input) {
     status: picked.status ?? "pending",
     plan: picked.plan,
     name: sanitizeText(picked.name),
+    cpf,
     ...(picked.email !== undefined ? { email: picked.email } : {}),
     ...(picked.creci !== undefined ? { creci: picked.creci } : {}),
     ...(picked.phone !== undefined ? { phone: picked.phone } : {}),
@@ -166,6 +190,7 @@ export async function createBroker(env, input) {
   if (broker.email) {
     await setBrokerEmailIndex(env, broker.email, brokerId);
   }
+  await setBrokerCpfIndex(env, broker.cpf, brokerId);
   await registerBrokerId(env, brokerId);
 
   return broker;
@@ -196,6 +221,14 @@ export async function updateBrokerProfile(env, brokerId, patch) {
     }
   }
 
+  if (picked.cpf !== undefined) picked.cpf = normalizeCpf(picked.cpf);
+  if (picked.cpf !== undefined && picked.cpf !== current.cpf) {
+    const cpfOwner = await resolveBrokerByCpf(env, picked.cpf);
+    if (cpfOwner && cpfOwner.brokerId !== brokerId) {
+      throw new BrokerConflictError("CPF já cadastrado.");
+    }
+  }
+
   if (picked.name !== undefined) picked.name = sanitizeText(picked.name);
   if (picked.about !== undefined) picked.about = sanitizeText(picked.about);
 
@@ -210,6 +243,10 @@ export async function updateBrokerProfile(env, brokerId, patch) {
   if (picked.email !== undefined && picked.email !== current.email) {
     if (current.email) await deleteBrokerEmailIndex(env, current.email);
     await setBrokerEmailIndex(env, picked.email, brokerId);
+  }
+  if (picked.cpf !== undefined && picked.cpf !== current.cpf) {
+    if (current.cpf) await deleteBrokerCpfIndex(env, current.cpf);
+    await setBrokerCpfIndex(env, picked.cpf, brokerId);
   }
 
   return updated;
@@ -237,6 +274,19 @@ export async function getBrokerBySlug(env, slug) {
 export async function getBrokerByEmail(env, email) {
   if (!isEmail(email)) return null;
   const resolved = await resolveBrokerByEmail(env, email);
+  if (!resolved) return null;
+  return getBrokerById(env, resolved.brokerId);
+}
+
+/**
+ * Resolves a CPF to its broker profile via the broker-CPF index (§26). §27
+ * hotfix: this is what `business/auth.js#login` now calls to turn the
+ * login identifier into tenant context — mirrors `getBrokerByEmail` above
+ * exactly, on the field that actually gates login.
+ */
+export async function getBrokerByCpf(env, cpf) {
+  if (!isCpf(cpf)) return null;
+  const resolved = await resolveBrokerByCpf(env, normalizeCpf(cpf));
   if (!resolved) return null;
   return getBrokerById(env, resolved.brokerId);
 }

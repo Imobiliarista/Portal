@@ -75,6 +75,28 @@ export async function deleteBrokerEmailIndex(env, email) {
   return deletePrivate(env, privateKeys.brokerEmailIndex(hash));
 }
 
+// --- broker CPF index: cpfHash -> { brokerId } -----------------------------
+// §27 hotfix: CPF is the broker login identifier (browser-side PBKDF2),
+// resolved by business/brokers.js#getBrokerByCpf. Mirrors the broker-email
+// index above exactly, on a different field. Callers are expected to pass
+// an already-normalized (digits-only) CPF — this file stays identifier-
+// agnostic, same as loginIdentifierHash itself.
+
+export async function resolveBrokerByCpf(env, cpf) {
+  const hash = await loginIdentifierHash(cpf);
+  return getPrivate(env, privateKeys.brokerCpfIndex(hash));
+}
+
+export async function setBrokerCpfIndex(env, cpf, brokerId) {
+  const hash = await loginIdentifierHash(cpf);
+  return putPrivate(env, privateKeys.brokerCpfIndex(hash), { brokerId });
+}
+
+export async function deleteBrokerCpfIndex(env, cpf) {
+  const hash = await loginIdentifierHash(cpf);
+  return deletePrivate(env, privateKeys.brokerCpfIndex(hash));
+}
+
 // --- broker -> listingIds index -------------------------------------------
 
 export async function getBrokerListingIds(env, brokerId) {

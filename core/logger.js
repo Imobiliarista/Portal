@@ -10,9 +10,20 @@ const REDACTED_VALUE = "[REDACTED]";
 
 // Field names are matched case-insensitively and as substrings, so
 // "passwordHash", "userPassword" and "PASSWORD" are all caught.
+//
+// §27 hotfix additions: `pbkdf2Result` (the browser's derived key — never
+// the password itself, but a password-equivalent credential over the
+// wire: whoever has it can log in without ever knowing the password) and
+// `pbkdf2Salt`/`verifier`/`pepper` (the stored-record and secret-binding
+// fields the new browser-side flow introduced). Salts aren't secret by
+// design, but redacting them too costs nothing and stays consistent with
+// this file's "when in doubt, redact" posture (§79).
 const SENSITIVE_KEY_PATTERNS = [
   /password/i,
   /passwordhash/i,
+  /pbkdf2/i,
+  /verifier/i,
+  /pepper/i,
   /\bcookie\b/i,
   /\btoken\b/i,
   /\bsecret/i,

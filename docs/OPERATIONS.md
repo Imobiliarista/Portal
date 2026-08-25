@@ -1,5 +1,36 @@
 # Operações
 
+## Pendências não-bloqueantes (§27 hotfix — PBKDF2 no navegador)
+
+13. **`PASSWORD_PEPPER` PENDENTE de provisionamento.** `wrangler secret put
+    PASSWORD_PEPPER` precisa rodar antes deste hotfix ir para produção —
+    sem ele, `worker/auth.js#passwordPepper` lança e `/api/auth/salt` e
+    `/api/auth/login` ficam fora do ar (falha explícita, não um 500
+    silencioso). Ver `core/auth.js` e `business/auth.js` para onde o
+    secret é consumido.
+14. **Sem testes neste lote** (pedido explícito do solicitante — etapa
+    dedicada de testes fica para o final do projeto). `npm test` vai
+    quebrar até lá: `tests/core/auth.test.js` ainda testa
+    `hashPassword`/`verifyPassword` (removidos), e
+    `tests/business/auth.test.js`/`tests/security/auth-flow.test.js` ainda
+    chamam `login`/`setAuthPassword`/`createBroker` com o contrato antigo
+    (e-mail, sem `cpf`). Reescrever para o novo contrato
+    (CPF+PBKDF2-no-navegador+HMAC-PASSWORD_PEPPER) faz parte dessa etapa
+    dedicada.
+15. **Sem rota de autocadastro/definição de senha via HTTP ainda** —
+    `setAuthPassword` continua só provisionamento admin/script (roda o
+    PBKDF2 localmente, fora de um handler do Worker). Um futuro fluxo de
+    signup/redefinição de senha self-service precisa seguir o mesmo padrão
+    de `login`: aceitar o resultado do PBKDF2 já derivado pelo navegador,
+    nunca a senha em texto puro num handler do Worker (senão reintroduz o
+    mesmo estouro de CPU que este hotfix corrige).
+16. **CPF agora é campo obrigatório em `createBroker`** (decisão tomada
+    neste lote: sem CPF, um corretor nunca conseguiria logar, já que CPF
+    substituiu e-mail como identificador de login). Não há migração porque
+    ainda não há usuários reais (confirmado pelo solicitante) — mas
+    qualquer script/seed existente que chame `createBroker` sem `cpf`
+    passa a falhar.
+
 ## Pendências não-bloqueantes (Etapa 9, módulo feeds — "Modo Exportação")
 
 9. **Submódulo vrsync sem revisão contra a documentação oficial completa.**
@@ -45,8 +76,12 @@
      plan: "internal",
      status: "active",
      email: "admin@imobiliarista.net",
+     cpf: "00000000000", // §27 hotfix: CPF é o identificador de login agora — obrigatório em createBroker
    });
-   await setAuthPassword(env, broker.userId, "senha-forte-aqui", { role: "superadmin" });
+   await setAuthPassword(env, broker.userId, "senha-forte-aqui", {
+     role: "superadmin",
+     pepper: env.PASSWORD_PEPPER, // secret vivo — ver pendência do PASSWORD_PEPPER nesta etapa
+   });
    ```
 
    O mesmo vale para colocar o primeiro corretor real em `pending` para

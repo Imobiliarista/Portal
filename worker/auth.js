@@ -16,9 +16,14 @@ import {
   UnauthorizedError,
 } from "../core/session.js";
 import { resolveTenant } from "../core/tenant.js";
-import { login as loginBusiness, InvalidCredentialsError } from "../business/auth.js";
+import {
+  login as loginBusiness,
+  getSaltForCpf,
+  InvalidCredentialsError,
+} from "../business/auth.js";
 import { getBrokerById } from "../business/brokers.js";
 import { ForbiddenError } from "../core/permissions.js";
+import { ValidationError } from "../core/validation.js";
 import { success, unauthorized, badRequest } from "../core/response.js";
 
 // Etapa 8 (§53) — mirrors business/auth.js#BLOCKED_LOGIN_STATUSES. Sessions
@@ -33,6 +38,16 @@ function sessionSecret(env) {
     throw new Error("worker/auth: binding SESSION_SECRET ausente em env.");
   }
   return env.SESSION_SECRET;
+}
+
+// §27 hotfix — HMAC-peppers the browser's PBKDF2 result (core/auth.js);
+// provisioned via `wrangler secret put PASSWORD_PEPPER`, same pattern as
+// SESSION_SECRET above.
+function passwordPepper(env) {
+  if (!env?.PASSWORD_PEPPER) {
+    throw new Error("worker/auth: binding PASSWORD_PEPPER ausente em env.");
+  }
+  return env.PASSWORD_PEPPER;
 }
 
 /** Verifies the signed session cookie on `request`. Returns claims or `null` — never throws on a missing/invalid/expired cookie. */
@@ -78,7 +93,41 @@ export async function requireTenant(request, env) {
   return { session, tenant };
 }
 
-/** POST /api/auth/login (§72). */
+/**
+ * POST /api/auth/salt (§27 hotfix). Step 1 of the browser-side login flow:
+ * returns the PBKDF2 salt/iterations for a CPF so the browser can derive
+ * its PBKDF2 result locally — identical response shape for an existing or
+ * nonexistent CPF (§26 "resposta genérica"), never a 404/differentiated
+ * error that would leak which CPFs are registered.
+ */
+export async function handleAuthSalt(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return badRequest("JSON inválido.");
+  }
+
+  const cpf = typeof body?.cpf === "string" ? body.cpf : "";
+
+  try {
+    const payload = await getSaltForCpf(env, cpf, passwordPepper(env));
+    return success(payload);
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return badRequest("CPF inválido.");
+    }
+    throw error;
+  }
+}
+
+/**
+ * POST /api/auth/login (§72). Step 2: the browser already derived
+ * `pbkdf2Result` locally (never the password) against the salt from
+ * `handleAuthSalt` above; the Worker only applies PASSWORD_PEPPER
+ * (HMAC-SHA256, core/auth.js) and compares — see §27 hotfix notes in
+ * business/auth.js.
+ */
 export async function handleLogin(request, env) {
   let body;
   try {
@@ -87,18 +136,22 @@ export async function handleLogin(request, env) {
     return badRequest("JSON inválido.");
   }
 
-  const email = typeof body?.email === "string" ? body.email.trim() : "";
-  const password = typeof body?.password === "string" ? body.password : "";
+  const cpf = typeof body?.cpf === "string" ? body.cpf : "";
+  const pbkdf2Result = typeof body?.pbkdf2Result === "string" ? body.pbkdf2Result : "";
 
   try {
-    const { token, claims } = await loginBusiness(env, { email, password }, sessionSecret(env));
+    const { token, claims } = await loginBusiness(
+      env,
+      { cpf, pbkdf2Result },
+      { sessionSecret: sessionSecret(env), pepper: passwordPepper(env) },
+    );
     return success(
       { userId: claims.userId, brokerId: claims.brokerId, slug: claims.slug, role: claims.role },
       { headers: { "Set-Cookie": buildSessionCookie(token) } },
     );
   } catch (error) {
     if (error instanceof InvalidCredentialsError) {
-      return unauthorized("E-mail ou senha inválidos.");
+      return unauthorized("CPF ou senha inválidos.");
     }
     throw error;
   }

@@ -5,7 +5,8 @@
 // only invoked for /api/* — every public navigation is served straight
 // from Static Assets / R2 and never reaches this file (§73, §89).
 //
-// Etapa 4 wired /api/auth/login and /api/auth/logout (§72, §26-28).
+// Etapa 4 wired /api/auth/login and /api/auth/logout (§72, §26-28); the §27
+// hotfix (browser-side PBKDF2) added /api/auth/salt ahead of login.
 // Etapa 5 adds /api/me/* (worker/api.js, worker/uploads.js) — the painel
 // do corretor's private API (§54). Etapa 8 (this lot) adds /api/admin/*
 // (worker/admin.js) — approve/suspend/reactivate/publish a broker plus
@@ -17,7 +18,7 @@
 import { Router } from "../core/router.js";
 import { createApp } from "../core/app.js";
 import { notImplemented } from "../core/response.js";
-import { handleLogin, handleLogout } from "./auth.js";
+import { handleAuthSalt, handleLogin, handleLogout } from "./auth.js";
 import {
   handleGetProfile,
   handlePutProfile,
@@ -53,6 +54,7 @@ router.get("/api/health", async () => {
   });
 });
 
+router.post("/api/auth/salt", async (request, env) => handleAuthSalt(request, env));
 router.post("/api/auth/login", async (request, env) => handleLogin(request, env));
 router.post("/api/auth/logout", async () => handleLogout());
 
