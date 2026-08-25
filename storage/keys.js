@@ -138,6 +138,36 @@ export const privateKeys = {
   audit(id) {
     return `audit/${assertSafeSegment(id, "id")}.json`;
   },
+  /**
+   * Flat saved-search record (§43, Etapa 9, módulo saved-search) — no
+   * draft/manifest split (a saved search has no publish step of its own),
+   * same "flat record" shape as `plan()` above.
+   */
+  savedSearch(savedSearchId) {
+    return `saved-searches/${assertSafeSegment(savedSearchId, "savedSearchId")}.json`;
+  },
+  /**
+   * savedSearchIds with a CONFIRMED (double opt-in done), still-subscribed
+   * alert for a city — lets `checkSavedSearchesForListing`
+   * (modules/saved-search/service.js) find candidates for a newly
+   * published listing without scanning `saved-searches/` (§26). A pending
+   * (unconfirmed) or unsubscribed search is never listed here.
+   */
+  savedSearchCityIndex(citySlug) {
+    return `indexes/saved-searches/cities/${assertSafeSegment(citySlug, "citySlug")}.json`;
+  },
+  /**
+   * Per-IP-per-day counter backing the saved-search anti-abuse limit
+   * (§43 decisão de produto — sem KV/Durable Objects neste projeto, R2
+   * PRIVATE faz de contador simples). `dateStamp` is the caller's
+   * already-formatted "YYYY-MM-DD" (UTC) — this file stays date-format-
+   * agnostic.
+   */
+  savedSearchRateLimit(ipHash, dateStamp) {
+    assertSafeSegment(dateStamp, "dateStamp");
+    assertSafeSegment(ipHash, "ipHash");
+    return `rate-limits/saved-search/${dateStamp}/${ipHash}.json`;
+  },
 };
 
 // ---------------------------------------------------------------------------

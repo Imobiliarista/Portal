@@ -52,13 +52,14 @@ mudaram a forma do módulo inteiro.
    "pendente"/"confirmado"/"recusado" em lugar nenhum — o corretor recebe
    a mensagem e conduz a conversa (incluindo, se for o caso, combinar uma
    visita) diretamente pelo WhatsApp, fora da plataforma.
-3. **Não existe (e não foi adicionada) infraestrutura de e-mail no
-   projeto** — confirmado antes de implementar (nem `core/` nem
-   `storage/` têm qualquer provedor de e-mail; `modules/saved-search/`, o
-   outro módulo desta etapa que mencionaria e-mail, §43, continua
-   placeholder). A notificação do corretor é só o redirecionamento para o
-   WhatsApp dele — nenhum provedor de e-mail foi adicionado como
-   dependência.
+3. **Não existia (e não foi adicionada aqui) infraestrutura de e-mail** —
+   confirmado antes de implementar (nem `core/` nem `storage/` tinham
+   qualquer provedor de e-mail nesse momento). A notificação do corretor
+   é só o redirecionamento para o WhatsApp dele — nenhum provedor de
+   e-mail foi adicionado como dependência deste módulo. (Atualização:
+   `modules/saved-search/`, o outro módulo desta etapa que mencionaria
+   e-mail, §43, foi implementado depois deste lote e É o primeiro módulo
+   do projeto a integrar um provedor — Resend, só ali; nada mudou aqui.)
 4. **Nenhuma persistência em R2 neste momento.** §41 sugeria
    "provavelmente precisa de uma gaveta nova em R2 (privado, associado ao
    corretor dono do anúncio)", mas isso pressupõe o corretor consultando/

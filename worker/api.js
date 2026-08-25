@@ -30,6 +30,7 @@ import { success, notFound, conflict } from "../core/response.js";
 import { ValidationError } from "../core/validation.js";
 import { publishListing, publishBroker } from "../business/publishing.js";
 import { hasAnyFeedSubmoduleEnabled, regenerateFeeds, FEED_SUBMODULE_IDS } from "../modules/feeds/index.js";
+import { checkSavedSearchesForListing } from "../modules/saved-search/index.js";
 
 // Etapa 9 (§46, módulo feeds, "Modo Exportação"): a full feed
 // regeneration scans every opted-in corretor's listings, per submódulo
@@ -43,6 +44,19 @@ import { hasAnyFeedSubmoduleEnabled, regenerateFeeds, FEED_SUBMODULE_IDS } from 
 async function maybeRegenerateFeeds(env, broker) {
   if (broker && hasAnyFeedSubmoduleEnabled(broker, FEED_SUBMODULE_IDS)) {
     await regenerateFeeds(env);
+  }
+}
+
+// Etapa 9 (§43, módulo saved-search, decisão 3) — mesmo padrão de
+// `maybeRegenerateFeeds` acima: hook direto no fluxo de publicação, sem
+// cron novo. `publishListing`'s result already carries everything needed
+// (`cardActive`/`listingPublic`/`city`) — no extra R2 read here.
+// `checkSavedSearchesForListing` never throws (logs internally), so a
+// Resend hiccup can never turn a broker's own successful write into a 500.
+async function maybeNotifySavedSearches(env, request, publishResult) {
+  if (publishResult?.cardActive && publishResult?.listingPublic) {
+    const requestOrigin = new URL(request.url).origin;
+    await checkSavedSearchesForListing(env, publishResult.city, publishResult.listingPublic, { requestOrigin });
   }
 }
 
@@ -133,7 +147,8 @@ export async function handleCreateListing(request, env) {
     // publishListing() no-ops for that case (nothing to publish yet). If
     // the caller set an explicit publishable status at creation, this
     // takes it live immediately.
-    await publishListing(env, draft.listingId);
+    const publishResult = await publishListing(env, draft.listingId);
+    await maybeNotifySavedSearches(env, request, publishResult);
     await maybeRegenerateFeeds(env, await getBrokerById(env, brokerId));
     return success(draft, { status: 201 });
   } catch (error) {
@@ -169,7 +184,8 @@ export async function handlePutListing(request, env, ctx, params) {
     // Etapa 6 (§32) — the trigger this section of the doc names first:
     // "quando o corretor salva/edita via Etapa 5". Publishes the full
     // listing + updates only this listing's city shard/index/manifest.
-    await publishListing(env, updated.listingId);
+    const publishResult = await publishListing(env, updated.listingId);
+    await maybeNotifySavedSearches(env, request, publishResult);
     await maybeRegenerateFeeds(env, await getBrokerById(env, brokerId));
     return success(updated);
   } catch (error) {
@@ -203,7 +219,8 @@ export async function handleDeleteListing(request, env, ctx, params) {
     // listings/{slug}.json is NOT deleted — it's rewritten with
     // status:"removed" (publishListing/normalizeListingForPublic), so the
     // public URL keeps resolving instead of 404ing silently.
-    await publishListing(env, updated.listingId);
+    const publishResult = await publishListing(env, updated.listingId);
+    await maybeNotifySavedSearches(env, request, publishResult);
     await maybeRegenerateFeeds(env, await getBrokerById(env, brokerId));
     return success(updated);
   } catch (error) {

@@ -273,6 +273,78 @@ ver acima): este comando ainda não foi executado neste ambiente; sem o
 secret configurado, `wrangler dev`/`deploy` sobem mas qualquer chamada a
 `/api/auth/login` falha com erro 500 ("SESSION_SECRET ausente em env").
 
+Etapa 9 (§43, módulo saved-search) adiciona mais dois secrets, mesmo
+padrão acima — **ambos PENDENTES** de provisionamento:
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put SAVED_SEARCH_TOKEN_SECRET
+```
+
+`RESEND_API_KEY` autentica `modules/saved-search/notifications.js` contra
+a API do Resend (provedor e domínio `imobiliarista.net` — já verificado
+na conta Resend — decididos fora deste lote, instrução explícita do
+solicitante). `SAVED_SEARCH_TOKEN_SECRET` assina os tokens de
+confirmação/cancelamento (`modules/saved-search/service.js`, reaproveita
+`core/session.js#createSessionToken`/`verifySessionToken`) — deliberadamente
+um secret próprio, nunca `SESSION_SECRET`: um token de busca salva não é
+uma sessão de corretor, e reaproveitar o mesmo segredo entre os dois usos
+misturaria dois espaços de assinatura sem necessidade. Sem os dois
+secrets, `POST /api/saved-searches` e os links de confirmação/cancelamento
+lançam em vez de um 500 silencioso (mesmo espírito de falha explícita do
+`PASSWORD_PEPPER` acima).
+
+## Pendências não-bloqueantes — módulo saved-search (§43)
+
+1. **Sem testes neste lote** (pedido explícito do solicitante, mesma
+   condição de todos os lotes desta etapa). `npm test` não cobre
+   `modules/saved-search/*` nem os handlers novos em `worker/index.js`/
+   `worker/api.js`.
+2. **Sem frontend** — nenhuma tela/formulário em `frontend/portal/` ou
+   `frontend/minisite/` para o visitante realmente salvar uma busca. O
+   pedido deste lote listou só "salvar critério de busca + destinatário,
+   endpoint no Worker, verificação de match, disparo do e-mail" — a UI
+   fica para um lote futuro. Os links de confirmação/cancelamento do
+   e-mail apontam direto para as rotas do Worker (que respondem com uma
+   página HTML mínima própria, não JSON), então o fluxo funciona ponta a
+   ponta mesmo sem essa UI existir ainda.
+3. **Sem deduplicação por e-mail/critério.** Salvar a mesma busca (mesmo
+   e-mail + mesmos filtros) mais de uma vez cria um registro novo a cada
+   vez — não existe índice por e-mail (só por cidade, para o match), e
+   checar "já existe uma busca igual" exigiria ou um índice novo ou
+   escanear `saved-searches/` (proibido, §26). Consequência prática: um
+   visitante que clica "salvar" 3 vezes recebe 3 e-mails de confirmação e,
+   se confirmar os 3, 3 alertas idênticos por imóvel novo.
+4. **Limite por IP/dia é best-effort, não atômico.** O contador em R2
+   PRIVATE (`storage/keys.js#privateKeys.savedSearchRateLimit`) é um
+   read-then-write simples — duas requisições da mesma origem chegando
+   quase juntas podem subcontar em 1 (uma corrida de leitura). Aceitável
+   para um limite de dissuasão (5/dia por IP); não é uma garantia dura.
+   PUT condicional (ETag) do R2 resolveria, mas é complexidade não
+   justificada para este mecanismo (§94).
+5. **E-mail de alerta sem fila/retry dedicado.** Se o envio ao Resend
+   falhar no momento do hook de publicação, o registro NÃO é marcado como
+   notificado (para permitir nova tentativa) — mas só existe uma nova
+   tentativa se aquele mesmo anúncio for publicado de novo (outra edição).
+   Um anúncio que dá match, falha o envio, e nunca mais é editado nunca
+   chega a notificar aquele visitante. Sem Queue/cron neste lote (decisão
+   3 do solicitante — hook direto, sem mecanismo de reconciliação).
+6. **Notificação só no caminho normal de escrita do painel.** O hook fica
+   em `worker/api.js` (create/update/delete de anúncio via
+   `/api/me/listings/*`) — `rebuildCity`/`rebuildAll`/`republishBrokerListings`
+   (business/publishing.js, usados por scripts de rebuild em lote e pela
+   suspensão/reativação de corretor) chamam `applyCardToCity` diretamente,
+   não passam por esses 3 handlers, e portanto não disparam
+   `checkSavedSearchesForListing`. Um imóvel que só aparece/reaparece via
+   rebuild em lote não gera alerta. Trade-off explícito da decisão 3
+   (hook direto, sem cron de reconciliação) — ver
+   `modules/saved-search/README.md#pendências`.
+7. **Match de `type`/`district` é case-sensitive, comparação exata.** Sem
+   evidência de que os valores gravados variam de caixa (o painel usa uma
+   lista fixa, presumivelmente), não foi adicionada normalização — se isso
+   se provar um problema real, é uma mudança pequena e local em
+   `modules/saved-search/service.js#matchesCriteria`.
+
 ## Comandos locais
 
 ```bash

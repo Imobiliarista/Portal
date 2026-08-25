@@ -30,6 +30,11 @@ import {
 } from "./api.js";
 import { handleUploadMedia, handleDeleteMedia } from "./uploads.js";
 import {
+  handleCreateSavedSearch,
+  handleConfirmSavedSearch,
+  handleUnsubscribeSavedSearch,
+} from "../modules/saved-search/index.js";
+import {
   handleListBrokers,
   handleApproveBroker,
   handleSuspendBroker,
@@ -57,6 +62,13 @@ router.get("/api/health", async () => {
 router.post("/api/auth/salt", async (request, env) => handleAuthSalt(request, env));
 router.post("/api/auth/login", async (request, env) => handleLogin(request, env));
 router.post("/api/auth/logout", async () => handleLogout());
+
+// Etapa 9 (§43, módulo saved-search) — únicas rotas públicas deste
+// arquivo: nenhuma passa por `requireTenant`/`requireSession` (decisão de
+// produto: visitante do portal, sem login, ver modules/saved-search/README.md).
+router.post("/api/saved-searches", async (request, env) => handleCreateSavedSearch(request, env));
+router.get("/api/saved-searches/confirm", async (request, env) => handleConfirmSavedSearch(request, env));
+router.get("/api/saved-searches/unsubscribe", async (request, env) => handleUnsubscribeSavedSearch(request, env));
 
 router.get("/api/me/profile", async (request, env) => handleGetProfile(request, env));
 router.put("/api/me/profile", async (request, env) => handlePutProfile(request, env));

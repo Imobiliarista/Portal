@@ -37,5 +37,14 @@ bucket_name = "imob-media"
 # `wrangler secret put <NAME>` and must never be committed here (§3.1, §27).
 # PASSWORD_PEPPER and LOGIN_INDEX_SECRET are both PENDING manual
 # provisioning before this hotfix can go live — see docs/OPERATIONS.md.
+#
+# Etapa 9 (§43, módulo saved-search) adds two more, both PENDING:
+#   RESEND_API_KEY — modules/saved-search/notifications.js, Resend API
+#     (domínio imobiliarista.net já verificado na conta Resend).
+#   SAVED_SEARCH_TOKEN_SECRET — modules/saved-search/service.js, assina os
+#     tokens de confirmação/cancelamento (reaproveita core/session.js's
+#     HMAC-claims primitive, secret PRÓPRIO, nunca SESSION_SECRET).
+# See docs/OPERATIONS.md.
+#
 # Non-secret plain vars, when needed, belong in a `[vars]` block — none are
 # required yet.
