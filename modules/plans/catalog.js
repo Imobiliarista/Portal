@@ -1,7 +1,11 @@
 // modules/plans/catalog.js
 //
-// Placeholder — módulo plans (§52), Etapa 10.
-// Ver IMOBILIARISTA_ARQUITETURA_TECNICA_OFICIAL_JSON_R2.md. Fora do
-// escopo da Etapa 1 (Fundação, §90) deste lote.
+// Módulo plans (§52), Etapa 10. Reexport fino do acesso de leitura ao
+// catálogo de planos que já mora em business/plans.js (Etapa 8b) — outros
+// módulos (uma vez que consultar plano vire uma coisa que módulos fazem,
+// ver eligibility.js) importam daqui, não de business/plans.js
+// diretamente. Nenhum comportamento novo, nenhuma duplicação: só o limite
+// de pacote (§52 "não espalhar checks de plano pela base" aplicado à
+// própria leitura do catálogo, não só aos checks booleanos).
 
-export {};
+export { listPlans, getPlanById, getPlanForBroker, DEFAULT_PLAN_ID, PLAN_MODULE_KEYS } from "../../business/plans.js";
