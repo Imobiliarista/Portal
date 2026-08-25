@@ -38,10 +38,10 @@ export function mount(container) {
     renderLogin(container, { error }, { onLogin: handleLogin });
   }
 
-  async function handleLogin(email, password) {
+  async function handleLogin(identifier, password) {
     renderLogin(container, { submitting: true }, { onLogin: handleLogin });
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(identifier, password);
       if (result.role !== "superadmin") {
         await api.logout().catch(() => {});
         return showLogin("Acesso restrito a SuperAdmin.");

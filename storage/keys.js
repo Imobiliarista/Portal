@@ -65,6 +65,28 @@ export const privateKeys = {
   brokerEmailIndex(emailHash) {
     return `indexes/broker-emails/${assertSafeSegment(emailHash, "emailHash")}.json`;
   },
+  /**
+   * Resolves a hashed broker CPF to a brokerId — never store raw CPF as a
+   * key (§79). CPF is the broker login identifier as of the §27 hotfix
+   * (browser-side PBKDF2); mirrors `brokerEmailIndex` above, which stays
+   * broker contact info only, unrelated to login.
+   */
+  brokerCpfIndex(cpfHash) {
+    return `indexes/broker-cpfs/${assertSafeSegment(cpfHash, "cpfHash")}.json`;
+  },
+  /**
+   * §27 hotfix pt.2 — the exact two-identifier allowlist (MASTER/TESTE,
+   * business/auth.js#SPECIAL_IDENTIFIERS). Deliberately a literal fixed
+   * path per `kind`, never a hash of user input like the indexes above:
+   * there are only ever two of these, both names are already known to
+   * whoever operates this, and hashing a constant buys nothing. Security
+   * here comes from the exact-match allowlist gate before this is ever
+   * read, plus the same PBKDF2+HMAC-pepper verifier check as everyone
+   * else — not from obscuring the storage key.
+   */
+  loginSpecial(kind) {
+    return `indexes/login-special/${assertSafeSegment(kind, "kind")}.json`;
+  },
   /** List of listingIds owned by a broker, for "meus imóveis" without a scan. */
   brokerListingsIndex(brokerId) {
     return `indexes/listings/${assertSafeSegment(brokerId, "brokerId")}.json`;

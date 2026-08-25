@@ -50,15 +50,49 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
 
 `storage/indexes.js` implementa os índices que evitam varredura de bucket:
 
-- **login** → `loginIdentifierHash(email)` (SHA-256 do e-mail normalizado)
-  resolve para `{ userId }`. Índice de identidade de auth (Etapa 4).
+- **login** → `loginIdentifierHash(identificador, secret)` (HMAC-SHA256,
+  ver nota de secret abaixo) resolve para `{ userId }`. Índice genérico de
+  identidade de auth (Etapa 4); reservado para uma identidade sem perfil
+  de corretor e sem lugar em `login-special/` — o login de corretor usa
+  **broker-cpf** abaixo, MASTER/TESTE usam **login-special**, nenhum dos
+  dois usa este.
 - **slug** → qualquer slug público (corretor ou imóvel) resolve para
   `{ type, id }`. Usado por `business/brokers.js#getBrokerBySlug` (broker-by-slug).
-- **broker-email** → `loginIdentifierHash(email)` resolve para
-  `{ brokerId }`. Distinto do índice de login: resolve o e-mail de contato
-  do corretor direto para seu `brokerId`, sem envolver auth/sessão. Usado por
-  `business/brokers.js#getBrokerByEmail` (broker-by-email; §29, necessário
-  para o login da Etapa 4, mas não faz parte dela).
+  Reserva as duas palavras do allowlist de identificador especial —
+  `business/brokers.js#RESERVED_SLUGS` ("master"/"teste") — nunca deixa um
+  corretor de verdade registrar um slug que colidiria com
+  `business/auth.js#SPECIAL_IDENTIFIERS` (§27 hotfix pt.2).
+- **broker-email** → `loginIdentifierHash(email, secret)` resolve para
+  `{ brokerId }`. Resolve o e-mail de contato do corretor direto para seu
+  `brokerId`, sem envolver auth/sessão — não é mais o que o login usa
+  (ver **broker-cpf**, §27 hotfix). Usado por
+  `business/brokers.js#getBrokerByEmail` (broker-by-email).
+- **broker-cpf** (§27 hotfix pt.1) → `loginIdentifierHash(cpf normalizado,
+  secret)` resolve para `{ brokerId }`. É este índice que
+  `business/auth.js#login` usa para resolver CPF → contexto de tenant.
+  Usado por `business/brokers.js#getBrokerByCpf` (broker-by-cpf).
+- **login-special** (novo, §27 hotfix pt.2) →
+  `indexes/login-special/{master,teste}.json`, path literal fixo (nunca
+  hasheado — só dois valores possíveis, hashear um deles não esconde nada
+  que já não seja público conhecimento operacional). Guarda o registro de
+  credencial inteiro (não só um ponteiro): `{ schemaVersion, kind, userId,
+  brokerId?, role, pbkdf2Salt, pbkdf2Iterations, verifier, authVersion,
+  temporary: true, updatedAt }`. `brokerId` só existe no registro de
+  "teste" (aponta pro corretor real que `provisionSpecialAccount` também
+  provisiona via `createBroker(..., { allowMissingCpf: true })`); "master"
+  nunca tem `brokerId` — sem corretor associado. Gerido por
+  `business/auth.js#provisionSpecialAccount`/`resolveSpecialLogin`.
+- **Nota de secret (§27 hotfix pt.3)**: `loginIdentifierHash` era
+  SHA-256 puro (sem secret) até este hotfix — força-bruteável para CPF
+  (espaço de ~10^8 valores válidos: quem tivesse leitura em R2 PRIVATE
+  conseguia hashear todo CPF possível e comparar contra
+  `indexes/broker-cpfs/*` sem nunca passar pelo Worker). Agora é
+  HMAC-SHA256 com `LOGIN_INDEX_SECRET` (`wrangler secret put
+  LOGIN_INDEX_SECRET`) — secret deliberadamente separado de
+  `PASSWORD_PEPPER`: um protege o índice de lookup (login/broker-email/
+  broker-cpf acima), o outro o verificador de senha
+  (`auth/{userId}.json`/`login-special/*.json#verifier`). Rotacionar um
+  nunca exige rotacionar o outro.
 - **broker → listingIds** → lista de imóveis de um corretor, para o painel
   "meus imóveis" sem varrer `listings/`. Usado por
   `business/listings.js#listListingsByBroker` (listings-by-broker).
@@ -86,25 +120,63 @@ Validação estrutural: `npm run validate:schemas` (`scripts/validate-json.js`).
   draft carregado contra o argumento antes de gravar
   (`core/tenant.js#TenantMismatchError`).
 
-## Auth privado (§26-§28, Etapa 4)
+## Auth privado (§26-§28, Etapa 4; §27 hotfix — PBKDF2 no navegador)
 
 - `auth/{userId}.json` (`storage/keys.js#privateKeys.authUser`) — identidade
-  de credencial: `{ schemaVersion, userId, role, passwordHash, authVersion,
-  updatedAt }`. Deliberadamente **não** faz parte de `broker.schema.json`
-  (que tem `additionalProperties: false`) nem de nenhum schema em
-  `schemas/` — objeto puramente privado/de segurança, nunca serializado
-  para fora do Worker. Gerido por `business/auth.js#setAuthPassword`/
-  `getAuthUser`.
-- `business/auth.js#login` compõe duas buscas independentes por e-mail:
-  `business/brokers.getBrokerByEmail` (índice `broker-email` → contexto de
-  tenant: `brokerId`/`slug`) e `getAuthUser` (a partir do `userId` do
-  broker → credencial). O índice `login` (`loginIdentifierHash` → `{
-  userId }`, já existente desde a Etapa 1) fica disponível para uma
-  identidade de auth sem perfil de corretor (ex.: superadmin, Etapa 8) mas
-  não é usado pelo login de corretor desta etapa.
+  de credencial de um corretor de verdade: `{ schemaVersion, userId, role,
+  pbkdf2Salt, pbkdf2Iterations, verifier, authVersion, updatedAt }`.
+  `schemaVersion: 2` como de `passwordHash` (Etapa 4): a Worker nunca mais
+  armazena um hash PBKDF2 puro nem roda PBKDF2 sozinha —
+  `pbkdf2Salt`/`pbkdf2Iterations` são o que o navegador precisa para
+  derivar localmente (Web Crypto, 600k iterações), e `verifier` é
+  HMAC-SHA256(resultado do PBKDF2 do navegador, `PASSWORD_PEPPER`) — nunca
+  o PBKDF2 cru, nunca a senha. Deliberadamente **não** faz parte de
+  `broker.schema.json` (que tem `additionalProperties: false`) nem de
+  nenhum schema em `schemas/` — objeto puramente privado/de segurança,
+  nunca serializado para fora do Worker. Gerido por
+  `business/auth.js#setAuthPassword`/`getAuthUser`. MASTER/TESTE (abaixo)
+  nunca têm um registro aqui — o deles vive só em `login-special/`.
+- `indexes/login-special/{master,teste}.json` (§27 hotfix pt.2) — mesma
+  ideia, para as duas contas especiais de homologação
+  (`business/auth.js#SPECIAL_IDENTIFIERS`, allowlist exata e fechada,
+  case-insensitive/trim, nunca um sistema de username genérico). Ver
+  "Índices privados" acima para a forma exata do registro. Gerido por
+  `business/auth.js#provisionSpecialAccount`/
+  `storage/indexes.js#resolveSpecialLogin`.
+- `business/auth.js#getSaltForIdentifier` (§27 hotfix pt.1/pt.2,
+  `getSaltForCpf` original renomeada/generalizada) — `POST /api/auth/salt`,
+  passo 1 do login: devolve `{ algorithm, iterations, salt }` para
+  `identifier` (CPF, ou MASTER/TESTE), real (do registro correspondente)
+  ou um dummy determinístico (`core/auth.js#deriveDummySalt`) quando não
+  existe/não foi provisionado — mesma forma de resposta em todo caso (§26
+  "resposta genérica" aplicada a enumeração de CPF **e** de MASTER/TESTE).
+  O dummy do CPF usa o hash HMAC-keyed do identificador (pt.3); o de
+  MASTER/TESTE usa uma string fixa por `kind` — não precisa de hash, só
+  precisa ser estável entre chamadas.
+- `business/auth.js#login` resolve `identifier` (via
+  `resolveLoginTarget`, interno) para um registro de credencial + contexto
+  de corretor opcional: CPF passa por `business/brokers.getBrokerByCpf`
+  (índice `broker-cpf` → `brokerId`/`slug`) então `getAuthUser`; MASTER/
+  TESTE passam direto por `resolveSpecialLogin` (o registro já tem tudo,
+  e para TESTE também resolve o `brokerId` guardado nele via
+  `getBrokerById`). Depois compara o `verifier` armazenado contra
+  HMAC-SHA256(`pbkdf2Result` que o navegador enviou, `PASSWORD_PEPPER`) —
+  mesma checagem, os três casos. CPF substituiu e-mail como identificador
+  de login de corretor neste hotfix — e-mail continua no perfil do
+  corretor só como contato (índice `broker-email` intocado).
+- `PASSWORD_PEPPER` (`wrangler secret put PASSWORD_PEPPER`) — usado por
+  `core/auth.js#hashPbkdf2Result`/`verifyPbkdf2Result`/`deriveDummySalt`.
+  `LOGIN_INDEX_SECRET` (§27 hotfix pt.3, `wrangler secret put
+  LOGIN_INDEX_SECRET`) — usado por `storage/indexes.js#loginIdentifierHash`.
+  Dois secrets deliberadamente separados (ver "Índices privados" acima).
+  Ver pendências de provisionamento em `docs/OPERATIONS.md`.
 - `worker/auth.js` — único lugar que lê o cookie de sessão de um `Request`
   (`getSession`/`requireSession`/`requireTenant`); resolve o tenant sempre
-  via `core/tenant.js#resolveTenant(session)`, nunca do corpo (§55).
+  via `core/tenant.js#resolveTenant(session)`, nunca do corpo (§55). Uma
+  sessão MASTER carrega `role: "superadmin"` sem `brokerId` — já suportado
+  sem nenhuma mudança em `core/tenant.js#resolveTenant` (`!session.brokerId`
+  já tratava esse caso, pensado originalmente para uma futura conta
+  superadmin sem corretor).
 
 ## Publicador (§31-34, §64, Etapa 6)
 

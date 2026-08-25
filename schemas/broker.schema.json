@@ -18,6 +18,11 @@
     "plan": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
     "email": { "type": "string", "format": "email" },
+    "cpf": {
+      "type": "string",
+      "pattern": "^[0-9]{11}$",
+      "description": "Normalizado (só dígitos). Identificador de login do corretor (§27 hotfix) — obrigatório em business/brokers.js#createBroker para todo corretor real; omitido só na conta especial TESTE (§27 hotfix pt.2, business/auth.js#SPECIAL_IDENTIFIERS — sem CPF, loga por identificador fixo). Nunca aparece em broker-public.schema.json e nunca é logado (core/logger.js#SENSITIVE_KEY_PATTERNS)."
+    },
     "creci": { "type": "string", "description": "Número completo do CRECI — não confundir com creciPublic (broker-public.schema.json)." },
     "phone": { "type": "string" },
     "whatsapp": { "type": "string" },

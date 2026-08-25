@@ -1,5 +1,123 @@
 # Operações
 
+## Pendências não-bloqueantes (§27 hotfix — PBKDF2 no navegador)
+
+13. **`PASSWORD_PEPPER` PENDENTE de provisionamento.** `wrangler secret put
+    PASSWORD_PEPPER` precisa rodar antes deste hotfix ir para produção —
+    sem ele, `worker/auth.js#passwordPepper` lança e `/api/auth/salt` e
+    `/api/auth/login` ficam fora do ar (falha explícita, não um 500
+    silencioso). Ver `core/auth.js` e `business/auth.js` para onde o
+    secret é consumido.
+14. **Sem testes neste lote** (pedido explícito do solicitante — etapa
+    dedicada de testes fica para o final do projeto). `npm test` vai
+    quebrar até lá — rodado após os 3 lotes deste hotfix (§27 pt.1-3):
+    **128 de 472 testes falham, em 12 arquivos**
+    (`node --test "tests/**/*.test.js"`, checado nesta sessão):
+    `tests/core/auth.test.js` (1 falha — ainda testa
+    `hashPassword`/`verifyPassword`, removidos),
+    `tests/business/auth.test.js` (9),
+    `tests/business/brokers.test.js` (19),
+    `tests/business/listings.test.js` (1),
+    `tests/business/plans.test.js` (5),
+    `tests/modules/feeds/generator.test.js` (12),
+    `tests/publishing/publishing.test.js` (24),
+    `tests/publishing/sharding.test.js` (3),
+    `tests/security/admin-api.test.js` (22),
+    `tests/security/auth-flow.test.js` (5),
+    `tests/security/painel-api.test.js` (21),
+    `tests/storage/indexes.test.js` (6). A maioria não é sobre auth
+    diretamente — são testes de listings/plans/feeds/publishing/admin-api
+    cujo helper `makeBroker`-style chama `createBroker`/`updateBrokerProfile`
+    (agora exigem `cpf`/`{ loginIndexSecret }`) ou testes de
+    `storage/indexes.js` chamando `loginIdentifierHash`/`resolveBrokerByCpf`/
+    etc. sem o novo parâmetro `secret` (agora obrigatório, §27 hotfix pt.3).
+    Reescrever para o novo contrato (identifier CPF/MASTER/TESTE +
+    PBKDF2-no-navegador + HMAC-PASSWORD_PEPPER + HMAC-LOGIN_INDEX_SECRET)
+    faz parte dessa etapa dedicada.
+15. **Sem rota de autocadastro/definição de senha via HTTP ainda** —
+    `setAuthPassword` continua só provisionamento admin/script (roda o
+    PBKDF2 localmente, fora de um handler do Worker). Um futuro fluxo de
+    signup/redefinição de senha self-service precisa seguir o mesmo padrão
+    de `login`: aceitar o resultado do PBKDF2 já derivado pelo navegador,
+    nunca a senha em texto puro num handler do Worker (senão reintroduz o
+    mesmo estouro de CPU que este hotfix corrige).
+16. **CPF agora é campo obrigatório em `createBroker`** (decisão tomada
+    neste lote: sem CPF, um corretor nunca conseguiria logar, já que CPF
+    substituiu e-mail como identificador de login). Não há migração porque
+    ainda não há usuários reais (confirmado pelo solicitante) — mas
+    qualquer script/seed existente que chame `createBroker` sem `cpf`
+    passa a falhar. Exceção: a conta especial TESTE (item 18 abaixo), via
+    `{ allowMissingCpf: true }`.
+17. **`LOGIN_INDEX_SECRET` PENDENTE de provisionamento** (§27 hotfix
+    pt.3). `wrangler secret put LOGIN_INDEX_SECRET` precisa rodar junto
+    com `PASSWORD_PEPPER` (item 13) antes de produção. `/api/auth/salt` e
+    `/api/auth/login` (`worker/auth.js#loginIndexSecret`, resolvido sempre,
+    já que todo login precisa dele) lançam sem ele — falha explícita, não
+    um 500 silencioso. `PUT /api/me/profile`
+    (`worker/api.js#handlePutProfile`) é mais tolerante: só passa
+    `env.LOGIN_INDEX_SECRET` adiante (possivelmente `undefined`) para
+    `business/brokers.js#updateBrokerProfile`, que só exige o secret
+    quando o patch de fato muda `email`/`cpf` — editar telefone/sobre/logo
+    continua funcionando mesmo sem o secret provisionado ainda.
+    Deliberadamente um secret separado de `PASSWORD_PEPPER`: protege o
+    índice de lookup CPF/e-mail
+    (`storage/indexes.js#loginIdentifierHash`, agora HMAC-SHA256 em vez de
+    SHA-256 puro — o SHA-256 puro anterior era força-bruteável para CPF,
+    espaço de ~10^8 valores válidos), não o verificador de senha.
+18. **Contas especiais MASTER/TESTE — runbook de provisionamento** (§27
+    hotfix pt.2). Allowlist exata e fechada de dois identificadores
+    (`business/auth.js#SPECIAL_IDENTIFIERS`), case-insensitive/trim, sem
+    CPF, sem sistema genérico de login por username. MASTER é SuperAdmin
+    de homologação sem corretor associado; TESTE é uma conta
+    comercial/anunciante de homologação (role "broker") com um corretor de
+    verdade, mas sem CPF. Nenhuma das duas existe até ser provisionada —
+    até lá, `/api/auth/salt`/`/api/auth/login` respondem com o mesmo salt
+    dummy/erro genérico de sempre (§26), nunca revelando que ainda não
+    foram criadas. Provisionar via script/console:
+
+    ```js
+    import { createBroker } from "./business/brokers.js";
+    import { provisionSpecialAccount } from "./business/auth.js";
+
+    // MASTER — sem broker, role superadmin.
+    await provisionSpecialAccount(env, "MASTER", "user_master_homolog", "senha-temporaria-forte", {
+      pepper: env.PASSWORD_PEPPER,
+    });
+
+    // TESTE — corretor de verdade (sem cpf), role broker.
+    const testeBroker = await createBroker(
+      env,
+      {
+        userId: "user_teste_homolog",
+        slug: "teste-homologacao", // "teste" sozinho é reservado (business/brokers.js#RESERVED_SLUGS)
+        name: "Conta de teste (homologação)",
+        plan: "internal",
+        status: "active",
+      },
+      { loginIndexSecret: env.LOGIN_INDEX_SECRET, allowMissingCpf: true },
+    );
+    await provisionSpecialAccount(env, "TESTE", testeBroker.userId, "outra-senha-temporaria", {
+      pepper: env.PASSWORD_PEPPER,
+      brokerId: testeBroker.brokerId,
+    });
+    ```
+
+    Ambos os registros ficam marcados `temporary: true`
+    (`indexes/login-special/{master,teste}.json`). **Antes de produção
+    definitiva**: trocar a senha (reprovisionar via
+    `provisionSpecialAccount` com uma senha nova) ou desativar (apagar o
+    registro `login-special/{kind}.json` via `storage/private.js#deletePrivate`
+    manualmente — não há endpoint HTTP para isso, nem fluxo de troca de
+    senha self-service). Não há enforcement automático de "senha
+    temporária" no login em si — é um passo manual de checklist, não uma
+    trava no código.
+19. **Contrato de wire mudou de `cpf`/`email` para `identifier`** (§27
+    hotfix pt.2): `POST /api/auth/salt` e `POST /api/auth/login` agora
+    recebem `{ identifier }`/`{ identifier, pbkdf2Result }` — qualquer
+    integração externa (nenhuma existe hoje, mas fica registrado) que
+    ainda mandasse `{ cpf, ... }` (contrato do primeiro lote deste
+    hotfix, nunca chegou a produção) precisa atualizar.
+
 ## Pendências não-bloqueantes (Etapa 9, módulo feeds — "Modo Exportação")
 
 9. **Submódulo vrsync sem revisão contra a documentação oficial completa.**
@@ -45,8 +163,12 @@
      plan: "internal",
      status: "active",
      email: "admin@imobiliarista.net",
+     cpf: "00000000000", // §27 hotfix: CPF é o identificador de login agora — obrigatório em createBroker
    });
-   await setAuthPassword(env, broker.userId, "senha-forte-aqui", { role: "superadmin" });
+   await setAuthPassword(env, broker.userId, "senha-forte-aqui", {
+     role: "superadmin",
+     pepper: env.PASSWORD_PEPPER, // secret vivo — ver pendência do PASSWORD_PEPPER nesta etapa
+   });
    ```
 
    O mesmo vale para colocar o primeiro corretor real em `pending` para

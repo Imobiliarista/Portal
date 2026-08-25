@@ -16,9 +16,14 @@ import {
   UnauthorizedError,
 } from "../core/session.js";
 import { resolveTenant } from "../core/tenant.js";
-import { login as loginBusiness, InvalidCredentialsError } from "../business/auth.js";
+import {
+  login as loginBusiness,
+  getSaltForIdentifier,
+  InvalidCredentialsError,
+} from "../business/auth.js";
 import { getBrokerById } from "../business/brokers.js";
 import { ForbiddenError } from "../core/permissions.js";
+import { ValidationError } from "../core/validation.js";
 import { success, unauthorized, badRequest } from "../core/response.js";
 
 // Etapa 8 (§53) — mirrors business/auth.js#BLOCKED_LOGIN_STATUSES. Sessions
@@ -33,6 +38,28 @@ function sessionSecret(env) {
     throw new Error("worker/auth: binding SESSION_SECRET ausente em env.");
   }
   return env.SESSION_SECRET;
+}
+
+// §27 hotfix — HMAC-peppers the browser's PBKDF2 result (core/auth.js);
+// provisioned via `wrangler secret put PASSWORD_PEPPER`, same pattern as
+// SESSION_SECRET above.
+function passwordPepper(env) {
+  if (!env?.PASSWORD_PEPPER) {
+    throw new Error("worker/auth: binding PASSWORD_PEPPER ausente em env.");
+  }
+  return env.PASSWORD_PEPPER;
+}
+
+// §27 hotfix pt.3 — keys the CPF/e-mail lookup-index hashes
+// (storage/indexes.js#loginIdentifierHash); provisioned via
+// `wrangler secret put LOGIN_INDEX_SECRET`. Deliberately separate from
+// PASSWORD_PEPPER above — different job (protects the lookup index, not
+// the password verifier).
+function loginIndexSecret(env) {
+  if (!env?.LOGIN_INDEX_SECRET) {
+    throw new Error("worker/auth: binding LOGIN_INDEX_SECRET ausente em env.");
+  }
+  return env.LOGIN_INDEX_SECRET;
 }
 
 /** Verifies the signed session cookie on `request`. Returns claims or `null` — never throws on a missing/invalid/expired cookie. */
@@ -78,7 +105,47 @@ export async function requireTenant(request, env) {
   return { session, tenant };
 }
 
-/** POST /api/auth/login (§72). */
+/**
+ * POST /api/auth/salt (§27 hotfix). Step 1 of the browser-side login flow:
+ * returns the PBKDF2 salt/iterations for `identifier` (a CPF, or the
+ * MASTER/TESTE special identifiers, §27 hotfix pt.2) so the browser can
+ * derive its PBKDF2 result locally — identical response shape whether or
+ * not the identifier exists/is provisioned (§26 "resposta genérica"),
+ * never a 404/differentiated error that would leak which ones are real.
+ */
+export async function handleAuthSalt(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return badRequest("JSON inválido.");
+  }
+
+  const identifier = typeof body?.identifier === "string" ? body.identifier : "";
+
+  try {
+    const payload = await getSaltForIdentifier(env, identifier, {
+      pepper: passwordPepper(env),
+      loginIndexSecret: loginIndexSecret(env),
+    });
+    return success(payload);
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return badRequest("Identificador inválido.");
+    }
+    throw error;
+  }
+}
+
+/**
+ * POST /api/auth/login (§72). Step 2: the browser already derived
+ * `pbkdf2Result` locally (never the password) against the salt from
+ * `handleAuthSalt` above; the Worker only applies PASSWORD_PEPPER
+ * (HMAC-SHA256, core/auth.js) and compares — see §27 hotfix notes in
+ * business/auth.js. `identifier` is a CPF for almost everyone, or MASTER/
+ * TESTE for the two special homologação accounts (§27 hotfix pt.2) — same
+ * request shape either way, business/auth.js#login sorts out which.
+ */
 export async function handleLogin(request, env) {
   let body;
   try {
@@ -87,18 +154,22 @@ export async function handleLogin(request, env) {
     return badRequest("JSON inválido.");
   }
 
-  const email = typeof body?.email === "string" ? body.email.trim() : "";
-  const password = typeof body?.password === "string" ? body.password : "";
+  const identifier = typeof body?.identifier === "string" ? body.identifier : "";
+  const pbkdf2Result = typeof body?.pbkdf2Result === "string" ? body.pbkdf2Result : "";
 
   try {
-    const { token, claims } = await loginBusiness(env, { email, password }, sessionSecret(env));
+    const { token, claims } = await loginBusiness(
+      env,
+      { identifier, pbkdf2Result },
+      { sessionSecret: sessionSecret(env), pepper: passwordPepper(env), loginIndexSecret: loginIndexSecret(env) },
+    );
     return success(
-      { userId: claims.userId, brokerId: claims.brokerId, slug: claims.slug, role: claims.role },
+      { userId: claims.userId, brokerId: claims.brokerId ?? null, slug: claims.slug ?? null, role: claims.role },
       { headers: { "Set-Cookie": buildSessionCookie(token) } },
     );
   } catch (error) {
     if (error instanceof InvalidCredentialsError) {
-      return unauthorized("E-mail ou senha inválidos.");
+      return unauthorized("CPF ou senha inválidos.");
     }
     throw error;
   }

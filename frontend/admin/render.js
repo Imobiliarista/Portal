@@ -33,7 +33,16 @@ function messageBox(text, kind = "error") {
 export function renderLogin(container, { error, submitting } = {}, handlers = {}) {
   clear(container);
 
-  const emailInput = el("input", { attrs: { type: "email", name: "email", required: "true", placeholder: "E-mail" } });
+  // §27 hotfix: CPF substituiu e-mail como identificador de login — ver
+  // frontend/admin/data.js#login (PBKDF2 no navegador) e
+  // business/brokers.js#getBrokerByCpf. §27 hotfix pt.2: o mesmo campo
+  // também aceita o identificador especial MASTER (SuperAdmin de
+  // homologação, business/auth.js#SPECIAL_IDENTIFIERS) — sem
+  // `inputmode="numeric"` de propósito, para não atrapalhar digitar letras
+  // num teclado mobile.
+  const identifierInput = el("input", {
+    attrs: { type: "text", name: "identifier", required: "true", placeholder: "CPF" },
+  });
   const passwordInput = el("input", { attrs: { type: "password", name: "password", required: "true", placeholder: "Senha" } });
   const submit = el("button", { attrs: { type: "submit" }, text: submitting ? "Entrando…" : "Entrar" });
   if (submitting) submit.setAttribute("disabled", "true");
@@ -41,14 +50,14 @@ export function renderLogin(container, { error, submitting } = {}, handlers = {}
   const form = el("form", { className: "imob-login-form" }, [
     el("h1", { text: "SuperAdmin" }),
     messageBox(error),
-    emailInput,
+    identifierInput,
     passwordInput,
     submit,
   ]);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    handlers.onLogin?.(emailInput.value.trim(), passwordInput.value);
+    handlers.onLogin?.(identifierInput.value.trim(), passwordInput.value);
   });
 
   container.append(el("div", { className: "imob-login-page" }, [form]));

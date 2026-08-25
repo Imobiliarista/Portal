@@ -43,9 +43,59 @@ async function apiFetch(path, options = {}) {
   return payload?.data;
 }
 
-// --- auth (§72, Etapa 4) ------------------------------------------------------
-export function login(email, password) {
-  return apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+// --- auth (§72, §27 hotfix — PBKDF2 no navegador) -----------------------------
+// Duplicated between frontend/admin/data.js and frontend/painel/data.js
+// (byte-for-byte — each SPA host under Static Assets is self-contained,
+// and frontend/shared/ is reserved for scripts/generate-*.js output, not
+// hand-written code) rather than a shared import — keep both copies in
+// sync if this changes.
+//
+// `password` is used only in-memory to derive `pbkdf2Result` via Web
+// Crypto — never sent, never persisted to localStorage/sessionStorage/
+// IndexedDB. See core/auth.js / business/auth.js for the Worker side.
+
+const PBKDF2_KEY_LENGTH_BITS = 256;
+
+function pbkdf2ToBase64(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function pbkdf2FromBase64(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function derivePbkdf2(password, saltB64, iterations) {
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: pbkdf2FromBase64(saltB64), iterations, hash: "SHA-256" },
+    keyMaterial,
+    PBKDF2_KEY_LENGTH_BITS,
+  );
+  return pbkdf2ToBase64(new Uint8Array(derived));
+}
+
+/**
+ * Fetches `identifier`'s PBKDF2 salt, derives the result locally, then logs
+ * in. `identifier` is normally the MASTER special identifier here (§27
+ * hotfix pt.2, business/auth.js#SPECIAL_IDENTIFIERS — the SuperAdmin
+ * homologação login this SPA is for), or a real corretor's CPF for the
+ * rarer case of a broker reaching this host; same request shape either way.
+ */
+export async function login(identifier, password) {
+  const { salt, iterations } = await apiFetch("/api/auth/salt", { method: "POST", body: JSON.stringify({ identifier }) });
+  const pbkdf2Result = await derivePbkdf2(password, salt, iterations);
+  return apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, pbkdf2Result }) });
 }
 
 export function logout() {

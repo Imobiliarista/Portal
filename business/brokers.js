@@ -2,11 +2,13 @@
 //
 // Private broker domain (§29, Etapa 3 — §90). Owns the authoritative broker
 // record in R2 PRIVATE (`brokers/{brokerId}/*`) plus the private indexes
-// that resolve a broker by slug or e-mail without ever scanning the bucket
-// (§26). Deliberately does NOT touch auth: no password hashing, login, or
-// session — that is Etapa 4 (§27-§28). `getBrokerByEmail` exists here only
-// because Etapa 4's login flow will need to turn a resolved identity into a
-// broker/tenant context.
+// that resolve a broker by slug, e-mail, or CPF without ever scanning the
+// bucket (§26). Deliberately does NOT touch auth: no password hashing,
+// login, or session — that is business/auth.js (§27-§28). `getBrokerByCpf`
+// exists here only because business/auth.js#login needs to turn CPF (the
+// login identifier as of the §27 browser-PBKDF2 hotfix) into a broker/
+// tenant context; `getBrokerByEmail` stays for e-mail as a contact field,
+// unrelated to login.
 //
 // Multitenancy (§55): every write here scopes itself to a `brokerId` the
 // caller passes in explicitly — never a field read out of the patch/input
@@ -22,6 +24,9 @@ import {
   resolveBrokerByEmail,
   setBrokerEmailIndex,
   deleteBrokerEmailIndex,
+  resolveBrokerByCpf,
+  setBrokerCpfIndex,
+  deleteBrokerCpfIndex,
   getKnownBrokerIds,
   registerBrokerId,
 } from "../storage/indexes.js";
@@ -29,6 +34,8 @@ import {
   isNonEmptyString,
   isSlug,
   isEmail,
+  isCpf,
+  normalizeCpf,
   isUrl,
   isEnum,
   pickAllowed,
@@ -53,6 +60,13 @@ export class BrokerConflictError extends Error {
 
 const BROKER_STATUSES = ["pending", "active", "suspended", "disabled"];
 
+// §27 hotfix pt.2 — never let a real broker register a slug that collides
+// with the special-identifier allowlist (business/auth.js#SPECIAL_IDENTIFIERS
+// — "MASTER"/"TESTE"). CPF can't collide structurally (normalizeCpf strips
+// letters, so "MASTER"/"TESTE" can never become an 11-digit CPF in the
+// first place), but slug has no such built-in protection.
+const RESERVED_SLUGS = ["master", "teste"];
+
 // Fields a caller may set on creation. `brokerId` is intentionally absent —
 // it is always minted or supplied as an explicit argument, never picked out
 // of this object.
@@ -63,6 +77,7 @@ const CREATE_ALLOWED_FIELDS = [
   "plan",
   "status",
   "email",
+  "cpf",
   "creci",
   "phone",
   "whatsapp",
@@ -79,6 +94,7 @@ const CREATE_ALLOWED_FIELDS = [
 const PROFILE_UPDATE_ALLOWED_FIELDS = [
   "name",
   "email",
+  "cpf",
   "creci",
   "phone",
   "whatsapp",
@@ -96,6 +112,7 @@ const FIELD_RULES = {
   plan: (v) => isNonEmptyString(v, { maxLength: 60 }),
   status: (v) => isEnum(v, BROKER_STATUSES),
   email: isEmail,
+  cpf: isCpf,
   creci: (v) => isNonEmptyString(v, { maxLength: 60 }),
   phone: (v) => isNonEmptyString(v, { maxLength: 40 }),
   whatsapp: (v) => isNonEmptyString(v, { maxLength: 40 }),
@@ -110,22 +127,52 @@ function newBrokerId() {
   return `broker_${crypto.randomUUID()}`;
 }
 
-/** Creates a new broker record (§29). Returns the private profile object. */
-export async function createBroker(env, input) {
+/**
+ * Creates a new broker record (§29). Returns the private profile object.
+ *
+ * `cpf` is required (§27 hotfix): it is now the broker's sole login
+ * identifier (business/auth.js#login), so a broker created without one
+ * could never authenticate. Stored normalized (digits only) — never the
+ * raw/formatted input the caller sent.
+ *
+ * `loginIndexSecret` must be the live LOGIN_INDEX_SECRET (§27 hotfix pt.3
+ * — keys the email/CPF index hashes, see storage/indexes.js). `allowMissingCpf`
+ * is a narrow escape hatch for `business/auth.js#provisionSpecialAccount`
+ * to provision the TESTE special account's broker record (§27 hotfix pt.2
+ * — "sem CPF"); no HTTP route may ever set it (there is no broker-creation
+ * endpoint yet — see docs/OPERATIONS.md pendência 5).
+ */
+export async function createBroker(env, input, { loginIndexSecret, allowMissingCpf = false } = {}) {
   const picked = assertValid(input, CREATE_ALLOWED_FIELDS, FIELD_RULES, {
-    required: ["userId", "slug", "name", "plan"],
+    required: ["userId", "slug", "name", "plan", ...(allowMissingCpf ? [] : ["cpf"])],
   });
 
   const brokerId = isNonEmptyString(input?.brokerId) ? input.brokerId : newBrokerId();
+  const cpf = picked.cpf !== undefined ? normalizeCpf(picked.cpf) : null;
+
+  if ((cpf || picked.email) && !isNonEmptyString(loginIndexSecret)) {
+    throw new ValidationError([{ field: "loginIndexSecret", message: "obrigatório para indexar cpf/email" }]);
+  }
+
+  if (RESERVED_SLUGS.includes(picked.slug.toLowerCase())) {
+    throw new BrokerConflictError(`Slug "${picked.slug}" é reservado.`);
+  }
 
   const existingSlugOwner = await resolveSlug(env, picked.slug);
   if (existingSlugOwner) {
     throw new BrokerConflictError(`Slug "${picked.slug}" já está em uso.`);
   }
   if (picked.email) {
-    const existingEmailOwner = await resolveBrokerByEmail(env, picked.email);
+    const existingEmailOwner = await resolveBrokerByEmail(env, picked.email, loginIndexSecret);
     if (existingEmailOwner) {
       throw new BrokerConflictError(`E-mail "${picked.email}" já está em uso.`);
+    }
+  }
+  if (cpf) {
+    const existingCpfOwner = await resolveBrokerByCpf(env, cpf, loginIndexSecret);
+    if (existingCpfOwner) {
+      // Generic message — never echo the CPF back (§79 "CPF integral" never logged/exposed).
+      throw new BrokerConflictError("CPF já cadastrado.");
     }
   }
 
@@ -138,6 +185,7 @@ export async function createBroker(env, input) {
     status: picked.status ?? "pending",
     plan: picked.plan,
     name: sanitizeText(picked.name),
+    ...(cpf !== null ? { cpf } : {}),
     ...(picked.email !== undefined ? { email: picked.email } : {}),
     ...(picked.creci !== undefined ? { creci: picked.creci } : {}),
     ...(picked.phone !== undefined ? { phone: picked.phone } : {}),
@@ -164,7 +212,10 @@ export async function createBroker(env, input) {
 
   await setSlugIndex(env, broker.slug, "broker", brokerId);
   if (broker.email) {
-    await setBrokerEmailIndex(env, broker.email, brokerId);
+    await setBrokerEmailIndex(env, broker.email, brokerId, loginIndexSecret);
+  }
+  if (broker.cpf) {
+    await setBrokerCpfIndex(env, broker.cpf, brokerId, loginIndexSecret);
   }
   await registerBrokerId(env, brokerId);
 
@@ -177,7 +228,7 @@ export async function createBroker(env, input) {
  * from `patch` (§55) — the allowlist above also guarantees `patch.brokerId`
  * or `patch.userId`, if present, are silently dropped rather than trusted.
  */
-export async function updateBrokerProfile(env, brokerId, patch) {
+export async function updateBrokerProfile(env, brokerId, patch, { loginIndexSecret } = {}) {
   if (!isNonEmptyString(brokerId)) {
     throw new ValidationError([{ field: "brokerId", message: "obrigatório" }]);
   }
@@ -188,11 +239,25 @@ export async function updateBrokerProfile(env, brokerId, patch) {
   }
 
   const picked = assertValid(patch, PROFILE_UPDATE_ALLOWED_FIELDS, FIELD_RULES);
+  if (picked.cpf !== undefined) picked.cpf = normalizeCpf(picked.cpf);
 
-  if (picked.email !== undefined && picked.email !== current.email) {
-    const emailOwner = await resolveBrokerByEmail(env, picked.email);
+  const emailChanged = picked.email !== undefined && picked.email !== current.email;
+  const cpfChanged = picked.cpf !== undefined && picked.cpf !== current.cpf;
+  if ((emailChanged || cpfChanged) && !isNonEmptyString(loginIndexSecret)) {
+    throw new ValidationError([{ field: "loginIndexSecret", message: "obrigatório para reindexar cpf/email" }]);
+  }
+
+  if (emailChanged) {
+    const emailOwner = await resolveBrokerByEmail(env, picked.email, loginIndexSecret);
     if (emailOwner && emailOwner.brokerId !== brokerId) {
       throw new BrokerConflictError(`E-mail "${picked.email}" já está em uso.`);
+    }
+  }
+
+  if (cpfChanged) {
+    const cpfOwner = await resolveBrokerByCpf(env, picked.cpf, loginIndexSecret);
+    if (cpfOwner && cpfOwner.brokerId !== brokerId) {
+      throw new BrokerConflictError("CPF já cadastrado.");
     }
   }
 
@@ -207,9 +272,13 @@ export async function updateBrokerProfile(env, brokerId, patch) {
 
   await putPrivate(env, privateKeys.brokerProfileDraft(brokerId), updated);
 
-  if (picked.email !== undefined && picked.email !== current.email) {
-    if (current.email) await deleteBrokerEmailIndex(env, current.email);
-    await setBrokerEmailIndex(env, picked.email, brokerId);
+  if (emailChanged) {
+    if (current.email) await deleteBrokerEmailIndex(env, current.email, loginIndexSecret);
+    await setBrokerEmailIndex(env, picked.email, brokerId, loginIndexSecret);
+  }
+  if (cpfChanged) {
+    if (current.cpf) await deleteBrokerCpfIndex(env, current.cpf, loginIndexSecret);
+    await setBrokerCpfIndex(env, picked.cpf, brokerId, loginIndexSecret);
   }
 
   return updated;
@@ -234,9 +303,22 @@ export async function getBrokerBySlug(env, slug) {
  * Needed so Etapa 4's login flow can turn a resolved identity into a
  * broker/tenant context — this function does not itself verify credentials.
  */
-export async function getBrokerByEmail(env, email) {
+export async function getBrokerByEmail(env, email, loginIndexSecret) {
   if (!isEmail(email)) return null;
-  const resolved = await resolveBrokerByEmail(env, email);
+  const resolved = await resolveBrokerByEmail(env, email, loginIndexSecret);
+  if (!resolved) return null;
+  return getBrokerById(env, resolved.brokerId);
+}
+
+/**
+ * Resolves a CPF to its broker profile via the broker-CPF index (§26). §27
+ * hotfix: this is what `business/auth.js#login` now calls to turn the
+ * login identifier into tenant context — mirrors `getBrokerByEmail` above
+ * exactly, on the field that actually gates login.
+ */
+export async function getBrokerByCpf(env, cpf, loginIndexSecret) {
+  if (!isCpf(cpf)) return null;
+  const resolved = await resolveBrokerByCpf(env, normalizeCpf(cpf), loginIndexSecret);
   if (!resolved) return null;
   return getBrokerById(env, resolved.brokerId);
 }

@@ -8,32 +8,48 @@
 import { privateKeys } from "./keys.js";
 import { getPrivate, putPrivate, deletePrivate } from "./private.js";
 
-async function sha256Hex(value) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+// §27 hotfix pt.3 — was plain SHA-256 (no secret): brute-forceable for a
+// small identifier space like CPF (~10^8 checksum-valid values), since
+// anyone with read access to R2 PRIVATE could hash every possible CPF and
+// match it against `indexes/broker-cpfs/*` without ever touching the
+// Worker. HMAC-SHA256 with LOGIN_INDEX_SECRET (provisioned via
+// `wrangler secret put LOGIN_INDEX_SECRET`, `wrangler secret put
+// PASSWORD_PEPPER`-style) makes that infeasible without the secret.
+// Deliberately a different secret than PASSWORD_PEPPER — different job
+// (this one protects the *lookup index*, not the password verifier), so
+// rotating one never forces rotating the other.
+async function hmacSha256Hex(value, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  return [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Emails are matched case-insensitively; never store the raw address as a key. */
-export async function loginIdentifierHash(login) {
+/** Identifiers are matched case-insensitively; never store the raw value as a key. `secret` must be the live LOGIN_INDEX_SECRET. */
+export async function loginIdentifierHash(login, secret) {
   const normalized = String(login).trim().toLowerCase();
-  return sha256Hex(normalized);
+  return hmacSha256Hex(normalized, secret);
 }
 
 // --- login index: loginHash -> { userId } --------------------------------
 
-export async function resolveLogin(env, login) {
-  const hash = await loginIdentifierHash(login);
+export async function resolveLogin(env, login, secret) {
+  const hash = await loginIdentifierHash(login, secret);
   return getPrivate(env, privateKeys.loginIndex(hash));
 }
 
-export async function setLoginIndex(env, login, userId) {
-  const hash = await loginIdentifierHash(login);
+export async function setLoginIndex(env, login, userId, secret) {
+  const hash = await loginIdentifierHash(login, secret);
   return putPrivate(env, privateKeys.loginIndex(hash), { userId });
 }
 
-export async function deleteLoginIndex(env, login) {
-  const hash = await loginIdentifierHash(login);
+export async function deleteLoginIndex(env, login, secret) {
+  const hash = await loginIdentifierHash(login, secret);
   return deletePrivate(env, privateKeys.loginIndex(hash));
 }
 
@@ -60,19 +76,54 @@ export async function deleteSlugIndex(env, slug) {
 // what business/brokers.js#getBrokerByEmail needs (§29) without touching
 // auth/session concerns.
 
-export async function resolveBrokerByEmail(env, email) {
-  const hash = await loginIdentifierHash(email);
+export async function resolveBrokerByEmail(env, email, secret) {
+  const hash = await loginIdentifierHash(email, secret);
   return getPrivate(env, privateKeys.brokerEmailIndex(hash));
 }
 
-export async function setBrokerEmailIndex(env, email, brokerId) {
-  const hash = await loginIdentifierHash(email);
+export async function setBrokerEmailIndex(env, email, brokerId, secret) {
+  const hash = await loginIdentifierHash(email, secret);
   return putPrivate(env, privateKeys.brokerEmailIndex(hash), { brokerId });
 }
 
-export async function deleteBrokerEmailIndex(env, email) {
-  const hash = await loginIdentifierHash(email);
+export async function deleteBrokerEmailIndex(env, email, secret) {
+  const hash = await loginIdentifierHash(email, secret);
   return deletePrivate(env, privateKeys.brokerEmailIndex(hash));
+}
+
+// --- broker CPF index: cpfHash -> { brokerId } -----------------------------
+// §27 hotfix: CPF is the broker login identifier (browser-side PBKDF2),
+// resolved by business/brokers.js#getBrokerByCpf. Mirrors the broker-email
+// index above exactly, on a different field. Callers are expected to pass
+// an already-normalized (digits-only) CPF — this file stays identifier-
+// agnostic, same as loginIdentifierHash itself.
+
+export async function resolveBrokerByCpf(env, cpf, secret) {
+  const hash = await loginIdentifierHash(cpf, secret);
+  return getPrivate(env, privateKeys.brokerCpfIndex(hash));
+}
+
+export async function setBrokerCpfIndex(env, cpf, brokerId, secret) {
+  const hash = await loginIdentifierHash(cpf, secret);
+  return putPrivate(env, privateKeys.brokerCpfIndex(hash), { brokerId });
+}
+
+export async function deleteBrokerCpfIndex(env, cpf, secret) {
+  const hash = await loginIdentifierHash(cpf, secret);
+  return deletePrivate(env, privateKeys.brokerCpfIndex(hash));
+}
+
+// --- special-identifier login: kind -> credential record -------------------
+// §27 hotfix pt.2 — MASTER/TESTE (business/auth.js#SPECIAL_IDENTIFIERS).
+// `kind` is always the literal "master" or "teste", never hashed (see
+// storage/keys.js#privateKeys.loginSpecial for why).
+
+export async function resolveSpecialLogin(env, kind) {
+  return getPrivate(env, privateKeys.loginSpecial(kind));
+}
+
+export async function setSpecialLogin(env, kind, record) {
+  return putPrivate(env, privateKeys.loginSpecial(kind), record);
 }
 
 // --- broker -> listingIds index -------------------------------------------

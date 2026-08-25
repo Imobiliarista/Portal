@@ -31,6 +31,32 @@ export function isEmail(value) {
   return typeof value === "string" && EMAIL_PATTERN.test(value);
 }
 
+/** Strips everything but digits — accepts CPF typed with or without dots/hyphen. */
+export function normalizeCpf(value) {
+  return typeof value === "string" ? value.replace(/\D/g, "") : "";
+}
+
+function cpfCheckDigit(digits) {
+  let sum = 0;
+  let weight = digits.length + 1;
+  for (const digit of digits) {
+    sum += Number(digit) * weight;
+    weight -= 1;
+  }
+  const remainder = sum % 11;
+  return remainder < 2 ? 0 : 11 - remainder;
+}
+
+/** Validates CPF format (11 digits) and the standard mod-11 check digits — rejects e.g. "000.000.000-00" repeated-digit CPFs, which pass the digit-count check but are never real. */
+export function isCpf(value) {
+  const digits = normalizeCpf(value);
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+  const base = digits.slice(0, 9);
+  const d1 = cpfCheckDigit(base);
+  const d2 = cpfCheckDigit(base + d1);
+  return digits === `${base}${d1}${d2}`;
+}
+
 export function isInteger(value) {
   return typeof value === "number" && Number.isInteger(value);
 }
