@@ -63,6 +63,78 @@ Pendências completas (provisionamento de `PASSWORD_PEPPER`/
 `LOGIN_INDEX_SECRET`, runbook MASTER/TESTE, mudança de contrato
 `cpf`→`identifier`, estado de `npm test`) em `docs/OPERATIONS.md`.
 
+## Etapa 10 (lote 1/N) — Módulo plans: schema/CRUD ampliado + eligibility (§90, §52, §53)
+
+**Sem testes neste lote** — pedido explícito do solicitante (mesma
+convenção do §27 hotfix); `npm test` continua com a mesma contagem de
+falhas de antes deste lote (128/472, ver `docs/OPERATIONS.md` pendência
+14) — nada novo quebrou nem foi coberto.
+
+`business/plans.js` (Etapa 8b) já tinha CRUD + limite de fotos por
+anúncio; este lote amplia o registro de plano, sem recriar nada:
+
+- **Campos novos**: `monthlyPrice`/`setupPrice` (BRL, mesma convenção de
+  `listing.price` — `core/validation.js#isPrice`), `maxActiveListings`
+  (nullable — `null`/omitido = ilimitado, reverte a decisão "fora de
+  escopo" da Etapa 8b sobre esse mesmo limite) e `modules` (mapa de
+  toggles por módulo, chaves fechadas em `PLAN_MODULE_KEYS`). Todos
+  opcionais com default seguro (`0`/`null`/`{}`) — um plano criado antes
+  deste lote (inclusive o `"free"` semeado) continua resolvendo
+  normalmente, sem migração.
+- **`PLAN_MODULE_KEYS = ["publications", "feeds"]`** — só esses dois
+  módulos da Etapa 9 viraram toggle de plano. Os demais foram avaliados e
+  ficaram de fora (ver `modules/plans/README.md` para o raciocínio por
+  módulo): appointments/tour-360/video-youtube não têm nenhuma estrutura
+  `broker.modules.<x>` para gatear; comparison/financing-calculator/
+  saved-search não têm corretor associado (client-side ou visitante sem
+  login); pwa é do portal inteiro, não por corretor; ai-search e
+  financial ainda são placeholders.
+- **`getPlanForBroker`** (novo, extraído do corpo de
+  `getGalleryLimitForBroker`) é agora o resolvedor compartilhado por
+  `getGalleryLimitForBroker`, pelo novo `getActiveListingLimitForBroker` e
+  por `modules/plans/eligibility.js` — mesmo fallback de sempre (plano
+  atribuído → `DEFAULT_PLAN_ID` quando ausente/inexistente).
+
+`modules/plans/` (placeholders desde a Etapa 1) ganha conteúdo real:
+`catalog.js` (reexport fino de leitura do catálogo), `features.js`
+(rótulos de exibição para `PLAN_MODULE_KEYS`, sempre derivados da lista —
+nunca duplicados) e `eligibility.js`
+(`isModuleEnabledForBroker`/`getEnabledModulesForBroker` — a pergunta "esse
+corretor tem módulo X no plano dele?" que §52 pede para centralizar, em
+vez de espalhar pela base).
+
+**Decisão explícita de não conectar nada ainda**: nem
+`modules/publications` nem `modules/feeds` chamam `eligibility.js` — os
+dois continuam exatamente como estavam, utilizáveis por qualquer
+corretor independente do `modules` do plano dele. Conectar essa checagem
+mudaria comportamento de dois módulos já em produção; pedido explícito do
+solicitante para não assumir essa mudança neste lote, e sim confirmar
+depois de revisar a interface do eligibility.js. Mesma postura para
+`getActiveListingLimitForBroker`: o resolvedor existe, mas
+`business/listings.js#createListing` não o chama — sem enforcement do
+limite de anúncios ativos.
+
+SuperAdmin (`frontend/admin/`): `renderPlansSection` (mesma seção
+"Planos" desde a Etapa 8b) ganhou os campos novos no formulário
+(mensalidade, implantação, limite de anúncios, checkboxes de módulos
+inclusos) e as colunas correspondentes na tabela — formulário ampliado,
+não recriado. `frontend/admin/data.js` não precisou de nenhuma mudança:
+já repassava o corpo da requisição inteiro para `POST`/`PUT
+/api/admin/plans*`, então os campos novos passam a fluir automaticamente
+assim que `business/plans.js` os aceita.
+
+Arquivos alterados/criados: `business/plans.js`, `schemas/plan.schema.json`,
+`modules/plans/{catalog,eligibility,features,index,README}.{js,md}`,
+`frontend/admin/render.js`, `frontend/admin/styles/main.css`,
+`docs/CHANGELOG.md`, `docs/OPERATIONS.md`.
+
+Pendências completas em `docs/OPERATIONS.md`, seção "Pendências
+não-bloqueantes (Etapa 10, módulo plans...)": enforcement do limite de
+anúncios ativos, wiring do eligibility.js em publications/feeds,
+`modules/financial/` ainda não lê `monthlyPrice`/`setupPrice`, e a lista
+de módulos do formulário do SuperAdmin é duplicada por valor (não por
+import) do lado do frontend.
+
 ## Etapa 9 (lote 8/N) — Módulo feeds: "Modo Exportação" (§90, §46)
 
 Seção "Exportação" no painel do corretor com submódulos independentes —

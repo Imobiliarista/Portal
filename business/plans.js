@@ -1,19 +1,22 @@
 // business/plans.js
 //
-// Private plan-catalog domain (§52, §53, Etapa 8b — §90). Owns the plan
-// records that live in R2 PRIVATE (`plans/{planId}.json`) plus the plan
-// registry that lists them without scanning the bucket (§26), same pattern
-// as business/brokers.js/business/cities.js.
+// Private plan-catalog domain (§52, §53, Etapa 8b + Etapa 10 — §90). Owns
+// the plan records that live in R2 PRIVATE (`plans/{planId}.json`) plus
+// the plan registry that lists them without scanning the bucket (§26),
+// same pattern as business/brokers.js/business/cities.js.
 //
-// Scope of this lot: only the technical piece §53 lists under SuperAdmin
-// ("gerenciar planos") — CRUD of a plan record, assigning a plan to a
-// broker, and resolving the gallery-photo limit a broker's assigned plan
-// grants. `modules/plans/` (§52, catalog/eligibility/features for
-// checkout, Etapa 10) is a different, still-unbuilt piece — billing/Asaas
-// never enters here. The architecture doc never defines a real plan
-// catalog (names, prices, per-plan limits) — this file only builds the
-// structure; real plan values are a product decision left as a pendência
-// (see the PR).
+// Etapa 8b built CRUD + the gallery-photo limit only. This lot (Etapa 10,
+// §52) widens the plan record's shape — monthly/setup price, an active-
+// listings limit (reverses the "fora de escopo" call from Etapa 8b, see
+// docs/CHANGELOG.md), and a `modules` map of per-plan feature toggles —
+// without touching the CRUD functions' signatures or the registry. All
+// new fields are optional with safe defaults, so a plan created before
+// this lot (including the seeded DEFAULT_PLAN_ID one) still resolves
+// correctly through `getPlanForBroker` below. `modules/plans/` (§52,
+// catalog/eligibility/features) is the read-only query layer other
+// modules use instead of reaching into this file directly — see that
+// package's README for what is and isn't wired up yet. Billing/Asaas
+// itself is `modules/financial/`, still a separate, unbuilt piece.
 //
 // One plan is seeded automatically: DEFAULT_PLAN_ID ("free"). Every broker
 // that has no plan assigned (or whose assigned plan no longer exists)
@@ -27,7 +30,7 @@
 import { getPrivate, putPrivate, deletePrivate } from "../storage/private.js";
 import { privateKeys } from "../storage/keys.js";
 import { getKnownPlanIds, registerPlanId, deregisterPlanId } from "../storage/indexes.js";
-import { isNonEmptyString, isSlug, isInteger, assertValid, ValidationError } from "../core/validation.js";
+import { isNonEmptyString, isSlug, isInteger, isPrice, assertValid, ValidationError } from "../core/validation.js";
 import { getBrokerById, listBrokers, BrokerNotFoundError } from "./brokers.js";
 
 export class PlanNotFoundError extends Error {
@@ -53,13 +56,42 @@ export const DEFAULT_PLAN_ID = "free";
 const DEFAULT_PLAN_NAME = "Gratuito (provisório)";
 const DEFAULT_PLAN_MAX_GALLERY_ITEMS = 50; // same value PROVISIONAL_MAX_GALLERY_ITEMS used to hardcode
 
-const CREATE_ALLOWED_FIELDS = ["planId", "name", "maxGalleryItems"];
-const UPDATE_ALLOWED_FIELDS = ["name", "maxGalleryItems"];
+/**
+ * The only module keys a plan's `modules` map may toggle (§52). Kept here
+ * — not in `modules/plans/` — because §39 forbids business/ depending on
+ * modules/; `modules/plans/features.js` imports this list back out to
+ * attach display labels for SuperAdmin/eligibility consumers.
+ *
+ * Only `publications` (§47) and `feeds` (§46) are included. The other
+ * Etapa 9 modules were evaluated and left out — see this lot's PR
+ * description for the per-module reasoning (in short: appointments/
+ * tour-360/video-youtube are per-listing fields with no broker-level
+ * enable/disable structure to gate; comparison/financing-calculator/
+ * saved-search/pwa have no broker association at all, or are platform-
+ * wide; ai-search and financial are still unbuilt placeholders). Adding a
+ * module here later is additive — no migration needed for existing plans.
+ */
+export const PLAN_MODULE_KEYS = ["publications", "feeds"];
+
+function isPlanModules(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.entries(value).every(([key, val]) => PLAN_MODULE_KEYS.includes(key) && typeof val === "boolean");
+}
+
+const CREATE_ALLOWED_FIELDS = ["planId", "name", "monthlyPrice", "setupPrice", "maxGalleryItems", "maxActiveListings", "modules"];
+const UPDATE_ALLOWED_FIELDS = ["name", "monthlyPrice", "setupPrice", "maxGalleryItems", "maxActiveListings", "modules"];
 
 const FIELD_RULES = {
   planId: isSlug,
   name: (v) => isNonEmptyString(v, { maxLength: 200 }),
+  monthlyPrice: isPrice,
+  setupPrice: isPrice,
   maxGalleryItems: (v) => isInteger(v) && v >= 1,
+  // Nullable — `null`/omitted means unlimited (core/validation.js#validate
+  // skips the rule for null/undefined values, so this only runs when a
+  // real value was sent).
+  maxActiveListings: (v) => isInteger(v) && v >= 1,
+  modules: isPlanModules,
 };
 
 function now() {
@@ -97,7 +129,11 @@ async function ensureDefaultPlan(env) {
     schemaVersion: 1,
     planId: DEFAULT_PLAN_ID,
     name: DEFAULT_PLAN_NAME,
+    monthlyPrice: 0,
+    setupPrice: 0,
     maxGalleryItems: DEFAULT_PLAN_MAX_GALLERY_ITEMS,
+    maxActiveListings: null,
+    modules: {},
     updatedAt: now(),
   };
   await putPrivate(env, privateKeys.plan(DEFAULT_PLAN_ID), plan);
@@ -120,7 +156,11 @@ export async function createPlan(env, input) {
     schemaVersion: 1,
     planId: picked.planId,
     name: picked.name,
+    monthlyPrice: picked.monthlyPrice ?? 0,
+    setupPrice: picked.setupPrice ?? 0,
     maxGalleryItems: picked.maxGalleryItems,
+    maxActiveListings: picked.maxActiveListings ?? null,
+    modules: picked.modules ?? {},
     updatedAt: now(),
   };
 
@@ -150,9 +190,9 @@ export async function updatePlan(env, planId, patch) {
  * Deletes a plan. Refuses to remove DEFAULT_PLAN_ID (every unassigned
  * broker depends on it existing) and refuses to remove a plan currently
  * assigned to any broker (so a broker never ends up pointing at a plan
- * that silently vanished — `getGalleryLimitForBroker` below only falls
- * back to the default plan for a *stale/unknown* planId, not as a
- * substitute for this guard).
+ * that silently vanished — `getPlanForBroker` above only falls back to
+ * the default plan for a *stale/unknown* planId, not as a substitute for
+ * this guard).
  */
 export async function deletePlan(env, planId) {
   if (!isNonEmptyString(planId)) {
@@ -207,21 +247,51 @@ export async function assignBrokerPlan(env, brokerId, planId) {
   return updated;
 }
 
-// --- limite de fotos por anúncio (§56-57, substitui PROVISIONAL_MAX_GALLERY_ITEMS) ---
+// --- resolução de plano/limites por corretor (§52, §56-57) -----------------
 
 /**
- * Resolves the gallery-photo limit that applies to `brokerId` right now:
- * its assigned plan's `maxGalleryItems`, falling back to the seeded
- * DEFAULT_PLAN_ID plan when the broker has no plan assigned, the broker
- * itself can't be resolved, or its assigned planId no longer exists (e.g.
- * legacy `plan` free text from before this lot, or a since-deleted plan).
- * This is the single source of truth business/listings.js and
- * worker/uploads.js both call into — no more separate hardcoded cap.
+ * Resolves the plan record that applies to `brokerId` right now: its
+ * assigned plan, falling back to the seeded DEFAULT_PLAN_ID plan when the
+ * broker has no plan assigned, the broker itself can't be resolved, or its
+ * assigned planId no longer exists (e.g. legacy `plan` free text from
+ * before Etapa 8b, or a since-deleted plan). Never returns null/undefined.
+ * Shared resolver behind every per-broker plan lookup below, and behind
+ * modules/plans/eligibility.js's module-toggle checks.
  */
-export async function getGalleryLimitForBroker(env, brokerId) {
+export async function getPlanForBroker(env, brokerId) {
   const broker = await getBrokerById(env, brokerId);
   const planId = isNonEmptyString(broker?.plan) ? broker.plan : DEFAULT_PLAN_ID;
 
-  const plan = (await getPlanById(env, planId)) ?? (await ensureDefaultPlan(env));
+  return (await getPlanById(env, planId)) ?? (await ensureDefaultPlan(env));
+}
+
+/**
+ * Resolves the gallery-photo limit for `brokerId`'s plan. This is the
+ * single source of truth business/listings.js and worker/uploads.js both
+ * call into — no more separate hardcoded cap (substitui
+ * PROVISIONAL_MAX_GALLERY_ITEMS).
+ */
+export async function getGalleryLimitForBroker(env, brokerId) {
+  const plan = await getPlanForBroker(env, brokerId);
   return plan.maxGalleryItems;
+}
+
+/**
+ * Resolves the active-listings limit for `brokerId`'s plan — `null` means
+ * unlimited (the field is optional; a plan created before this lot, or
+ * the seeded default plan, has no value for it). Reverses the "fora de
+ * escopo" call Etapa 8b made on this exact limit (docs/CHANGELOG.md) —
+ * the field is real now, mirroring `getGalleryLimitForBroker` above.
+ *
+ * NOT enforced anywhere yet. No caller in business/listings.js — wiring a
+ * cap into `createListing` would change already-shipped listing-creation
+ * behavior, which needs confirmation first (same posture this lot took
+ * for modules/plans/eligibility.js not being wired into
+ * modules/publications or modules/feeds). This resolver only exists so
+ * that decision, once made, doesn't also need a resolver written from
+ * scratch.
+ */
+export async function getActiveListingLimitForBroker(env, brokerId) {
+  const plan = await getPlanForBroker(env, brokerId);
+  return plan.maxActiveListings ?? null;
 }

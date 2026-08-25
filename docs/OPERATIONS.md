@@ -118,6 +118,39 @@
     ainda mandasse `{ cpf, ... }` (contrato do primeiro lote deste
     hotfix, nunca chegou a produção) precisa atualizar.
 
+## Pendências não-bloqueantes (Etapa 10, módulo plans — schema/CRUD ampliado + eligibility, §52)
+
+20. **`business/plans.js#getActiveListingLimitForBroker` existe mas nada o
+    chama.** Este lote reverte a decisão "fora de escopo" da Etapa 8b
+    (pendência 7 abaixo) e adiciona `maxActiveListings` ao registro de
+    plano + um resolvedor, mirroring `getGalleryLimitForBroker`. Mas
+    nenhum enforcement foi adicionado — `business/listings.js#createListing`
+    não chama esse resolvedor, então um corretor pode ter mais anúncios
+    ativos do que o limite do plano dele permite sem que nada bloqueie.
+    Wiring isso exigiria confirmação prévia (mudaria comportamento já em
+    produção de `createListing`) — não foi assumido neste lote.
+21. **`modules/plans/eligibility.js` não está conectado a nada.**
+    `isModuleEnabledForBroker`/`getEnabledModulesForBroker` existem e
+    funcionam, mas nem `modules/publications` nem `modules/feeds` os
+    chamam — os dois continuam utilizáveis por qualquer corretor
+    independente do `modules` do plano dele. Mesmo raciocínio da pendência
+    20: conectar mudaria comportamento de dois módulos já em produção,
+    decisão explicitamente deixada para confirmação posterior (ver
+    `modules/plans/README.md`).
+22. **Preço (mensalidade/implantação) é só dado — nada cobra nada.**
+    `monthlyPrice`/`setupPrice` ficam gravados no registro do plano, mas
+    `modules/financial/` continua um placeholder (§51, Etapa 10 também) —
+    nenhuma integração de cobrança (Asaas ou outro provedor) lê esses
+    campos ainda.
+23. **`frontend/admin/render.js#PLAN_MODULE_FIELDS` duplica
+    `business/plans.js#PLAN_MODULE_KEYS` por valor**, não por import —
+    `frontend/admin/` nunca importa de `business/`/`modules/` (Workers
+    Static Assets só publica `frontend/`), mesmo limite que já existia
+    para outros campos deste formulário. Adicionar uma chave nova em
+    `PLAN_MODULE_KEYS` sem atualizar essa lista no admin faz o checkbox
+    correspondente não aparecer no formulário (o backend aceitaria o
+    campo normalmente via API direta, só a UI ficaria desatualizada).
+
 ## Pendências não-bloqueantes (Etapa 9, módulo feeds — "Modo Exportação")
 
 9. **Submódulo vrsync sem revisão contra a documentação oficial completa.**
@@ -195,7 +228,10 @@
 7. **Limite de anúncios ativos por corretor**: fora do escopo deste lote
    por decisão explícita do solicitante — o documento não define esse
    limite em lugar nenhum. Só o limite de fotos por anúncio foi migrado
-   para o sistema de planos.
+   para o sistema de planos. **Atualização Etapa 10**: o campo
+   (`maxActiveListings`) e o resolvedor (`getActiveListingLimitForBroker`)
+   agora existem — ver pendência 20 acima para o porquê de ainda não
+   haver enforcement.
 8. **`business/brokers.js#createBroker`'s `plan` field**: continua sendo
    validado só como texto livre (`isNonEmptyString`, não contra o catálogo
    de `business/plans.js`) — não foi tocado neste lote porque não existe

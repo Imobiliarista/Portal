@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://imobiliarista.net/schemas/plan.schema.json",
   "title": "Plan",
-  "description": "plans/{planId}.json in R2 PRIVATE — §52, §53, Etapa 8b. SuperAdmin-managed plan catalog entry. No public projection exists for this object (§53 'gerenciar planos' is an admin-only concern in this lot; billing/Asaas is Etapa 10).",
+  "description": "plans/{planId}.json in R2 PRIVATE — §52, §53, Etapa 8b + Etapa 10. SuperAdmin-managed plan catalog entry. No public projection exists for this object (§53 'gerenciar planos' is an admin-only concern; billing/Asaas itself is modules/financial/, still unbuilt). monthlyPrice/setupPrice/maxActiveListings/modules were added in Etapa 10 (§52) — all optional so a plan created before that lot (including the seeded \"free\" default) still validates.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "planId", "name", "maxGalleryItems", "updatedAt"],
@@ -10,10 +10,34 @@
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "planId": { "type": "string", "minLength": 1, "description": "Slug-shaped id, e.g. \"free\", \"premium\". Immutable once created." },
     "name": { "type": "string", "minLength": 1 },
+    "monthlyPrice": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Recurring monthly price in BRL (same integer-cents-free convention as listing.price, core/validation.js#isPrice). Optional — a plan without one defaults to 0 (business/plans.js#createPlan)."
+    },
+    "setupPrice": {
+      "type": "number",
+      "minimum": 0,
+      "description": "One-time setup/implantação fee in BRL, charged once when the broker joins the plan (not enforced/charged by any code yet — modules/financial/ is still a placeholder). Optional, defaults to 0."
+    },
     "maxGalleryItems": {
       "type": "integer",
       "minimum": 1,
       "description": "Replaces the old PROVISIONAL_MAX_GALLERY_ITEMS fixed constant (business/listings.js, Etapa 5) — the per-listing gallery photo cap enforced for every broker on this plan."
+    },
+    "maxActiveListings": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "Cap on the broker's active listing count. `null` (or omitted) means unlimited — reverses the 'fora de escopo' call from Etapa 8b (docs/CHANGELOG.md). Resolved by business/plans.js#getActiveListingLimitForBroker but NOT enforced anywhere yet (no caller in business/listings.js) — wiring it into listing creation is a pendência, confirmation needed first."
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-plan feature toggles (§52) — business/plans.js#PLAN_MODULE_KEYS is the closed list of valid keys. Queried through modules/plans/eligibility.js; not yet consulted by modules/publications or modules/feeds (pendência, confirmation needed before wiring). Optional, defaults to {} (nothing enabled).",
+      "properties": {
+        "publications": { "type": "boolean", "description": "§47 — feed Blogger no minisite." },
+        "feeds": { "type": "boolean", "description": "§46 — exportação para portais externos (OLX/ZAP/VivaReal)." }
+      }
     },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

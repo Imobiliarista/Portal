@@ -161,10 +161,30 @@ export function renderBrokersSection(content, { brokers, plans, busyBrokerId, er
   );
 }
 
-// --- planos (§52, §53, Etapa 8b, /api/admin/plans*) -----------------------------
-// Single form, toggling between "criar" and "editar" (`editingPlanId` in
+// --- planos (§52, §53, Etapa 8b + Etapa 10, /api/admin/plans*) -----------------
+// Single form, toggling between "criar" e "editar" (`editingPlanId` in
 // state) instead of two separate forms — mirrors the rest of this file's
-// preference for one state-driven draw() over parallel DOM trees.
+// preference for one state-driven draw() over parallel DOM trees. Etapa
+// 10 (§52) added price/limite de anúncios/módulos fields to the same
+// form — não recriado do zero.
+//
+// `PLAN_MODULE_FIELDS` mirrors business/plans.js#PLAN_MODULE_KEYS by
+// value (frontend/admin never imports business/* or modules/*, same
+// boundary every other frontend/*.js in this repo keeps — Workers Static
+// Assets only publishes frontend/). Adding a module there later needs the
+// matching entry added here too; there's no generator keeping the two in
+// sync in this lot.
+const PLAN_MODULE_FIELDS = [
+  { key: "publications", label: "Publicações (feed Blogger)" },
+  { key: "feeds", label: "Feeds para portais externos (OLX/ZAP/VivaReal)" },
+];
+
+const planCurrencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function formatPlanPrice(value) {
+  return typeof value === "number" ? planCurrencyFormatter.format(value) : planCurrencyFormatter.format(0);
+}
+
 export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, error } = {}, handlers = {}) {
   const editing = (plans ?? []).find((plan) => plan.planId === editingPlanId);
 
@@ -175,15 +195,35 @@ export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, 
     attrs: { type: "text", name: "name", placeholder: "Nome", required: "true" },
     value: editing?.name,
   });
+  const monthlyPriceInput = el("input", {
+    attrs: { type: "number", name: "monthlyPrice", placeholder: "Mensalidade (R$)", min: "0", step: "0.01" },
+    value: editing?.monthlyPrice ?? 0,
+  });
+  const setupPriceInput = el("input", {
+    attrs: { type: "number", name: "setupPrice", placeholder: "Implantação (R$)", min: "0", step: "0.01" },
+    value: editing?.setupPrice ?? 0,
+  });
   const maxGalleryInput = el("input", {
     attrs: { type: "number", name: "maxGalleryItems", placeholder: "Limite de fotos por anúncio", min: "1", required: "true" },
     value: editing?.maxGalleryItems,
+  });
+  const maxActiveListingsInput = el("input", {
+    attrs: { type: "number", name: "maxActiveListings", placeholder: "Limite de anúncios (vazio = ilimitado)", min: "1" },
+    value: editing?.maxActiveListings ?? "",
   });
 
   if (editing) {
     planIdInput.value = editing.planId;
     planIdInput.setAttribute("disabled", "true"); // planId é imutável após criado
   }
+
+  const moduleCheckboxes = PLAN_MODULE_FIELDS.map(({ key, label }) => {
+    const checkbox = el("input", {
+      attrs: { type: "checkbox", name: `module-${key}`, ...(editing?.modules?.[key] ? { checked: "true" } : {}) },
+    });
+    const field = el("label", { className: "imob-field imob-field-checkbox" }, [checkbox, el("span", { text: label })]);
+    return { key, checkbox, field };
+  });
 
   const cancelButton = editing ? el("button", { className: "imob-danger", text: "Cancelar edição", attrs: { type: "button" } }) : null;
   cancelButton?.addEventListener("click", () => handlers.onCancelEdit?.());
@@ -193,15 +233,27 @@ export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, 
   const form = el("form", { className: "imob-plan-form" }, [
     planIdInput,
     nameInput,
+    monthlyPriceInput,
+    setupPriceInput,
     maxGalleryInput,
+    maxActiveListingsInput,
+    el("fieldset", { className: "imob-plan-modules" }, [
+      el("legend", { text: "Módulos inclusos" }),
+      ...moduleCheckboxes.map((m) => m.field),
+    ]),
     submitButton,
     cancelButton,
   ]);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const maxActiveListingsRaw = maxActiveListingsInput.value.trim();
     const input = {
       name: nameInput.value.trim(),
+      monthlyPrice: Number(monthlyPriceInput.value || 0),
+      setupPrice: Number(setupPriceInput.value || 0),
       maxGalleryItems: Number(maxGalleryInput.value),
+      maxActiveListings: maxActiveListingsRaw === "" ? null : Number(maxActiveListingsRaw),
+      modules: Object.fromEntries(moduleCheckboxes.map((m) => [m.key, m.checkbox.checked])),
     };
     if (editing) {
       handlers.onUpdate?.(editing.planId, input);
@@ -232,10 +284,16 @@ export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, 
       if (busy) button.setAttribute("disabled", "true");
     }
 
+    const enabledModules = PLAN_MODULE_FIELDS.filter((m) => plan.modules?.[m.key]).map((m) => m.label);
+
     return el("tr", {}, [
       el("td", { text: plan.name }),
       el("td", { text: plan.planId }),
+      el("td", { text: formatPlanPrice(plan.monthlyPrice) }),
+      el("td", { text: formatPlanPrice(plan.setupPrice) }),
       el("td", { text: String(plan.maxGalleryItems) }),
+      el("td", { text: plan.maxActiveListings != null ? String(plan.maxActiveListings) : "Ilimitado" }),
+      el("td", { text: enabledModules.length ? enabledModules.join(", ") : "—" }),
       el("td", { className: "imob-actions" }, [editButton, deleteButton]),
     ]);
   });
@@ -245,7 +303,11 @@ export function renderPlansSection(content, { plans, editingPlanId, busyPlanId, 
       el("tr", {}, [
         el("th", { text: "Nome" }),
         el("th", { text: "ID" }),
+        el("th", { text: "Mensalidade" }),
+        el("th", { text: "Implantação" }),
         el("th", { text: "Limite de fotos" }),
+        el("th", { text: "Limite de anúncios" }),
+        el("th", { text: "Módulos" }),
         el("th", { text: "Ações" }),
       ]),
     ]),
