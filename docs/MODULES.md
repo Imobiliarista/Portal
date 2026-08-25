@@ -12,24 +12,26 @@ sem quebrar o portal, o painel ou o admin.
 
 ## Status
 
-Salvo indicado abaixo, os módulos existem apenas como placeholders
-(`index.js` + `README.md` próprios, ver §67 para a árvore exata de
-arquivos de cada um) — nenhuma lógica de negócio foi implementada neles.
+Todos os módulos da Etapa 9/10 estão implementados, exceto `ai-search`
+— placeholder por decisão de produto (§42: IA não é dependência da busca
+básica), não uma pendência. Um módulo ainda placeholder existe só como
+`index.js` + `README.md` próprios (ver §67 para a árvore exata de
+arquivos de cada um) — nenhuma lógica de negócio implementada nele.
 
 | Módulo | Etapa prevista | Status | Observação |
 | --- | --- | --- | --- |
 | `appointments` (agendamento-visita) | 9 | **implementado** | Na prática é um formulário de contato geral (sem data/horário), 100% client-side, redireciona para o WhatsApp do corretor — sem persistência em R2/Worker (§41, ver `modules/appointments/README.md`) |
 | `ai-search` (busca-ia) | 9 | placeholder | IA não é dependência da busca básica (§42) |
 | `saved-search` (busca-salva-email) | 9 | **implementado** | Visitante público sem login; double opt-in por e-mail (Resend) + limite por IP/dia; notificação disparada no hook de publicação, sem cron (§43, ver `modules/saved-search/README.md`) |
-| `financing-calculator` (calculadora-financiamento) | 9 | placeholder | Preferir client-side (§44) |
-| `comparison` (comparação de anúncios) | 9 | placeholder | 100% client-side, sem Worker (§45) |
-| `feeds` (feed para portais externos) | 9 | placeholder | Formatters por portal em `feeds/formatters/` (§46) |
-| `publications` (publicações/blog) | 9 | placeholder | Consome feed externo no Browser (§47) |
+| `financing-calculator` (calculadora-financiamento) | 9 | **implementado** | 100% client-side (SAC): `validateFinancingInput`/`buildSacSchedule`/`summarizeSchedule`/`calculateFinancing`, config própria em `config.js` — sem Worker (§44, ver `modules/financing-calculator/README.md`) |
+| `comparison` (comparação de anúncios) | 9 | **implementado** | 100% client-side sobre `listings/{slug}.json` já carregados — seleção persistida via `storage` injetável (`localStorage` no browser), sem Worker (§45, ver `modules/comparison/README.md`) |
+| `feeds` (feed para portais externos) | 9 | **implementado** | "Modo Exportação": opt-in por submódulo (`broker.modules.feeds.{id}.enabled`), um arquivo agregado por submódulo em R2 DATA. Só o formatter `vrsync` (OLX/ZAP/VivaReal) existe hoje — arquitetura de registry permite adicionar outros sem mudar `generator.js` (§46, ver `modules/feeds/README.md`) |
+| `publications` (publicações/blog) | 9 | **implementado** | Descobre/consome o feed Atom do Blogger a partir do link que o corretor cola no painel (`resolveBloggerFeedUrl`) — parsing 100% client-side, só Blogger é suportado (§47, ver `modules/publications/README.md`) |
 | `pwa` | 9 | **implementado** | Isolado — não é dependência do portal (§48). Ver `modules/pwa/README.md` |
-| `tour-360` | 9 | placeholder | Campo opcional na projeção pública (§49) |
-| `video-youtube` | 9 | placeholder | — |
+| `tour-360` | 9 | **implementado** | Campo `tour360` do anúncio já validado em `business/listings.js` desde a Etapa 3 — este módulo é só a camada de consumo pelo frontend, sem mover a validação (§39 proíbe `business/` depender de `modules/`) (§49, ver `modules/tour-360/README.md`) |
+| `video-youtube` | 9 | **implementado** | Mesmo padrão de `tour-360`: campo `video` já validado em `business/listings.js` desde a Etapa 3, módulo é só a camada de consumo (§50, ver `modules/video-youtube/README.md`) |
 | `financial` | 10 | **implementado (desativado por flag)** | Integração Asaas sandbox completa, atrás de `FINANCIAL_ENABLED` (default `"false"`) — nenhum endpoint chama o Asaas enquanto a flag não for `"true"`. Transações continuam no Worker (§51, ver `modules/financial/README.md`) |
-| `plans` | 10 | placeholder | Não espalhar checks de plano pela base (§52) |
+| `plans` | 10 | **implementado** | Camada de consulta sobre `business/plans.js` (schema/CRUD real, Etapa 8b/10): `catalog.js` (reexport), `features.js` (rótulos de exibição), `eligibility.js` (`isModuleEnabledForBroker`/`getEnabledModulesForBroker` — ainda não conectado a `publications`/`feeds`, decisão de produto adiada) (§52, ver `modules/plans/README.md`) |
 
 `modules/future/` reservado para módulos ainda não especificados.
 
