@@ -15,6 +15,7 @@ import {
   renderLogin,
   renderAppShell,
   renderProfileForm,
+  renderExportForm,
   renderListingsList,
   renderListingForm,
 } from "./render.js";
@@ -174,6 +175,37 @@ export function mount(container) {
     }
   }
 
+  // --- exportação (§46, "Modo Exportação") -------------------------------------
+  async function renderExportRoute() {
+    const contentEl = renderAppShell(container, { activeRoute: "export" }, { onLogout: handleLogout });
+    renderLoading(contentEl);
+
+    const profile = await guarded(contentEl, () => api.getProfile());
+    if (!profile) return;
+
+    drawExport(contentEl, profile, {});
+  }
+
+  function drawExport(contentEl, profile, { error, saving, saved } = {}) {
+    renderExportForm(contentEl, { profile, error, saving, saved }, {
+      onSubmit: (feedsPatch) => submitExport(contentEl, profile, feedsPatch),
+    });
+  }
+
+  // `modules` é substituído por inteiro por business/brokers.js (não faz
+  // merge profundo) — precisa ir com os outros módulos já configurados do
+  // corretor, não só `feeds` (mesmo cuidado de submitPublications acima).
+  async function submitExport(contentEl, profile, feedsPatch) {
+    drawExport(contentEl, profile, { saving: true });
+    try {
+      const updated = await api.updateProfile({ modules: { ...profile.modules, feeds: feedsPatch } });
+      drawExport(contentEl, updated, { saved: true });
+    } catch (submitError) {
+      if (isSessionExpired(submitError)) return showLogin("Sessão expirada. Entre novamente.");
+      drawExport(contentEl, profile, { error: submitError.message });
+    }
+  }
+
   // --- imóveis: lista -----------------------------------------------------------
   async function renderListingsRoute() {
     const contentEl = renderAppShell(container, { activeRoute: "listings" }, { onLogout: handleLogout });
@@ -295,6 +327,7 @@ export function mount(container) {
     const route = parseRoute(location.pathname);
     if (route.name === "dashboard") return renderListingsRoute();
     if (route.name === "profile") return renderProfileRoute();
+    if (route.name === "export") return renderExportRoute();
     if (route.name === "listings") return renderListingsRoute();
     if (route.name === "listing-new") return renderListingNewRoute();
     if (route.name === "listing-edit") return renderListingEditRoute(route.id);

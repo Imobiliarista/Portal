@@ -1,101 +1,102 @@
 // modules/feeds/generator.js
 //
-// Módulo feeds (§46) — o Publicador deste módulo. Análogo a
-// business/publishing.js#rebuildCity/rebuildAll (§33): recalcula do zero a
-// partir do estado privado, nunca incremental — dado que o universo aqui é
-// "corretores que optaram por aparecer no feed", que é sempre um
-// subconjunto (normalmente pequeno) de todos os corretores, um recompute
-// completo é barato o bastante para não justificar a complexidade de um
-// upsert incremental por anúncio que rebuildCity precisa (§9's shard
-// partitioning não existe aqui).
+// Módulo feeds (§46) — o Publicador do "Modo Exportação": para cada
+// submódulo registrado (modules/feeds/registry.js), recalcula o arquivo
+// inteiro a partir do estado privado. Análogo a
+// business/publishing.js#rebuildCity/rebuildAll (§33): sempre do zero,
+// nunca incremental — o universo de "corretores que ligaram este
+// submódulo" é normalmente um subconjunto pequeno de todos os
+// corretores, então um recompute completo é barato o bastante para não
+// justificar upsert incremental por anúncio (§9's particionamento de
+// shard não existe aqui — um arquivo por submódulo, sem limite de
+// tamanho, ver README#pendências).
 //
-// Este é o primeiro módulo desta etapa que toca R2/business diretamente no
-// servidor — todos os módulos anteriores (publications, tour-360,
+// Este é o primeiro módulo desta etapa que toca R2/business diretamente
+// no servidor — todos os módulos anteriores (publications, tour-360,
 // video-youtube, comparison, financing-calculator, appointments) são
 // client-side puros ou não têm nada para persistir. §39 permite essa
-// direção (MODULES -> BUSINESS -> CORE -> STORAGE); o motivo pelo qual os
-// módulos anteriores nunca precisaram é que nenhum deles precisava
-// materializar um artefato que um consumidor fora do browser (o robô do
-// OLX/ZAP) busca direto, sem executar JavaScript algum — só um arquivo
-// estático em R2 DATA resolve isso (§94, ver também a mensagem do
-// solicitante reforçando "edge-first").
+// direção (MODULES -> BUSINESS -> CORE -> STORAGE); o motivo é que
+// nenhum módulo anterior precisava materializar um artefato que um
+// consumidor fora do browser (o robô de um portal externo) busca direto,
+// sem executar JavaScript algum — só um arquivo estático em R2 DATA
+// resolve isso (§94, edge-first).
 //
-// Nunca chamado a cada write individual em worker/api.js/worker/admin.js —
-// ver worker/api.js e worker/admin.js para onde e por que (gate: só quando
-// o corretor afetado tem `modules.feeds.enabled`, para não pagar o custo
-// de um recompute completo em toda edição de qualquer corretor, opt-in ou
-// não). Também exposto via scripts/generate-feeds.js para uso manual/cron
+// Nunca chamado a cada write individual sem gate — ver worker/api.js e
+// worker/admin.js (o gate: só quando o corretor afetado tem QUALQUER
+// submódulo habilitado, `modules/feeds/config.js#hasAnyFeedSubmoduleEnabled`).
+// Também exposto via scripts/rebuild-feeds.js para uso manual/cron
 // externo (README#pendências — não há Cron Trigger da Cloudflare
 // implementado neste lote, worker/cron.js continua placeholder).
 
 import { getBrokerById } from "../../business/brokers.js";
-import { getCityBySlug } from "../../business/cities.js";
 import { getKnownBrokerIds, getBrokerListingIds } from "../../storage/indexes.js";
 import { getPrivate } from "../../storage/private.js";
 import { getPublic, putPublicText } from "../../storage/public.js";
 import { privateKeys, dataKeys } from "../../storage/keys.js";
 import { buildCacheControl } from "../../storage/cache.js";
-import { readFeedsConfig } from "./config.js";
-import { FEED_FORMATTERS } from "./registry.js";
+import { readFeedSubmoduleConfig } from "./config.js";
+import { FEED_SUBMODULES } from "./registry.js";
 
-export class UnknownFeedPortalError extends Error {
-  constructor(portalId) {
-    super(`Portal de feed "${portalId}" não está registrado (modules/feeds/registry.js).`);
-    this.name = "UnknownFeedPortalError";
-    this.portalId = portalId;
+export class UnknownFeedSubmoduleError extends Error {
+  constructor(submoduleId) {
+    super(`Submódulo de exportação "${submoduleId}" não está registrado (modules/feeds/registry.js).`);
+    this.name = "UnknownFeedSubmoduleError";
+    this.submoduleId = submoduleId;
   }
 }
 
 /**
- * Enumerates every listing eligible for the feed right now: owned by a
- * corretor with `status: "active"` AND `modules.feeds.enabled` (§46
- * decisão 2), whose PUBLIC projection has `status: "active"` (§13/§14 —
- * the same condition business/publishing.js already uses for a card to
- * exist in a city shard, `cardActive`). This one condition on the public
- * projection is what excludes a suspended corretor's listings too, for
- * free: business/publishing.js#publishListing already rewrites a
- * suspended corretor's would-be-active listings to public
- * `status: "suspended"` the moment the corretor is suspended (Etapa 8a
- * decisão 8) — so this generator never needs to re-derive that cascade
- * itself, it just trusts the same public status the portal/minisite
- * already trust. The `broker.status === "active"` check below is
- * defense-in-depth for the one gap in that cascade noted in
- * business/brokers.js: `status: "disabled"` has no admin action wired to
- * it yet, so a disabled corretor's public listings could in theory still
- * read `status: "active"` if `republishBrokerListings` was never re-run —
- * this generator does not take that on faith.
+ * Enumerates every listing eligible for `submoduleId` right now: owned
+ * by a corretor with `status: "active"` AND
+ * `modules.feeds[submoduleId].enabled` (§46 decisão — opt-in por
+ * submódulo), cuja projeção PÚBLICA tem `status: "active"` (§13/§14 —
+ * mesma condição que já existe para um card existir num shard de
+ * cidade, `cardActive` em business/publishing.js). Essa única condição
+ * na projeção pública já exclui de graça os anúncios de um corretor
+ * suspenso: business/publishing.js#publishListing já reescreve os
+ * anúncios que seriam "active" de um corretor suspenso pra
+ * `status: "suspended"` no momento da suspensão (Etapa 8a decisão 8) —
+ * este gerador não precisa reimplementar essa cascata, só confia no
+ * mesmo status público que o portal/minisite já confiam. O check
+ * `broker.status === "active"` abaixo é defesa extra pro único buraco
+ * dessa cascata hoje: `status: "disabled"` não tem ação de admin
+ * associada ainda (business/brokers.js), então um corretor "disabled"
+ * poderia em teoria ainda ter anúncios com `status: "active"` se
+ * `republishBrokerListings` nunca tiver rodado — este gerador não confia
+ * cegamente nisso.
  *
- * Uses only the registries/indexes storage/indexes.js already maintains
- * (§26 "não varrer objetos") — no bucket `list()` anywhere in this file.
+ * Usa só os registries/indexes que storage/indexes.js já mantém (§26
+ * "não varrer objetos") — nenhum `list()` de bucket neste arquivo. Cada
+ * item devolvido é `{ listing, listingId }` — `listingId` é o id PRIVADO
+ * (business/listings.js), que `listing-public.schema.json` nunca carrega
+ * (só `slug`) mas que formatters/vrsync.js precisa para `<ListingID>`
+ * (decisão do solicitante: "ListingID = listingId interno").
  */
-export async function collectFeedItems(env) {
+export async function collectFeedItems(env, submoduleId) {
   const brokerIds = await getKnownBrokerIds(env);
   const items = [];
 
   for (const brokerId of brokerIds) {
     const broker = await getBrokerById(env, brokerId);
     if (!broker || broker.status !== "active") continue;
-    if (!readFeedsConfig(broker).enabled) continue;
+    if (!readFeedSubmoduleConfig(broker, submoduleId).enabled) continue;
 
     const listingIds = await getBrokerListingIds(env, brokerId);
     for (const listingId of listingIds) {
       const manifest = await getPrivate(env, privateKeys.listingManifest(listingId));
-      if (!manifest?.slug) continue; // never published, or an orphaned index entry
+      if (!manifest?.slug) continue; // nunca publicado, ou entrada de índice órfã
 
       const listingPublic = await getPublic(env, dataKeys.listingPublic(manifest.slug));
       if (!listingPublic || listingPublic.status !== "active") continue;
 
-      const city = getCityBySlug(listingPublic.location.city);
-      if (!city) continue; // defensivo — não deveria acontecer para um listing já publicado (publishListing exige requireCityBySlug)
-
-      items.push({ listing: listingPublic, city });
+      items.push({ listing: listingPublic, listingId });
     }
   }
 
   return items;
 }
 
-/** `{provider, email, contactName, telephone, publishDate}` for the feed-level `<Header>` (VRSync) — see README#pendências for the contact fields' current placeholder status. */
+/** `{provider, email, contactName, telephone, publishDate}` for the shared `<Header>` (VRSync) — see README#pendências for the contact fields' current placeholder status. */
 export function buildFeedHeader(env) {
   return {
     provider: "Imobiliarista",
@@ -107,33 +108,34 @@ export function buildFeedHeader(env) {
 }
 
 /**
- * Rebuilds one or more portal feeds from scratch and writes each to
- * `feeds/{fileName}.xml` in R2 DATA (storage/keys.js#dataKeys.feed).
- * `portals` defaults to every registered formatter
+ * Rebuilds every registered submodule's file from scratch and writes
+ * each to `feeds/{fileName}.xml` in R2 DATA (storage/keys.js#dataKeys.feed).
+ * `submodules` defaults to every registered id
  * (modules/feeds/registry.js); pass an explicit subset to rebuild only
- * one (e.g. from a script). Returns `{ [portalId]: { candidateCount } }` —
- * `candidateCount` is `items.length`, the listings eligible *before* each
- * portal's own formatter applies its own field-level exclusions (e.g.
- * formatters/olx.js dropping an unmapped `type`); formatters return a
- * plain XML string, not a count, so a per-portal "how many actually made
- * it in" isn't available here without re-parsing the XML.
+ * one (e.g. from a script). Returns `{ [submoduleId]: { candidateCount } }` —
+ * `candidateCount` is the number of listings eligible *before* the
+ * submodule's own `generate` applies its own field-level exclusions
+ * (e.g. formatters/vrsync.js dropping an unmapped `type`/missing
+ * `zipcode`); `generate` returns a plain string, not a count, so a
+ * per-submodule "how many actually made it in" isn't available here
+ * without re-parsing the output.
  */
-export async function regenerateFeeds(env, { portals, registry = FEED_FORMATTERS } = {}) {
-  const portalIds = portals ?? Object.keys(registry);
-  const items = await collectFeedItems(env);
+export async function regenerateFeeds(env, { submodules, registry = FEED_SUBMODULES } = {}) {
+  const submoduleIds = submodules ?? Object.keys(registry);
   const header = buildFeedHeader(env);
 
   const results = {};
-  for (const portalId of portalIds) {
-    const formatter = registry[portalId];
-    if (!formatter) throw new UnknownFeedPortalError(portalId);
+  for (const submoduleId of submoduleIds) {
+    const submodule = registry[submoduleId];
+    if (!submodule) throw new UnknownFeedSubmoduleError(submoduleId);
 
-    const xml = formatter.formatFeed(items, header);
-    await putPublicText(env, dataKeys.feed(formatter.fileName), xml, {
-      contentType: "application/xml; charset=utf-8",
+    const items = await collectFeedItems(env, submoduleId);
+    const content = submodule.generate(items, header);
+    await putPublicText(env, dataKeys.feed(submodule.fileName), content, {
+      contentType: submodule.contentType,
       cacheControl: buildCacheControl("feed"),
     });
-    results[portalId] = { candidateCount: items.length };
+    results[submoduleId] = { candidateCount: items.length };
   }
   return results;
 }

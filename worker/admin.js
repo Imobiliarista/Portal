@@ -39,14 +39,14 @@ import {
 } from "../business/brokers.js";
 import { publishBroker, republishBrokerListings, rebuildCity, rebuildAll } from "../business/publishing.js";
 import { UnknownCityError } from "../business/cities.js";
-import { readFeedsConfig, regenerateFeeds } from "../modules/feeds/index.js";
+import { hasAnyFeedSubmoduleEnabled, regenerateFeeds, FEED_SUBMODULE_IDS } from "../modules/feeds/index.js";
 
 // Etapa 9 (§46) — see worker/api.js's copy of this same helper for the
 // full rationale (gate on the specific corretor being touched, so an
-// admin action on a corretor who never opted into feeds doesn't pay for a
-// full feed recompute).
+// admin action on a corretor who never opted into any feed submódulo
+// doesn't pay for a full feed recompute).
 async function maybeRegenerateFeeds(env, broker) {
-  if (broker && readFeedsConfig(broker).enabled) {
+  if (broker && hasAnyFeedSubmoduleEnabled(broker, FEED_SUBMODULE_IDS)) {
     await regenerateFeeds(env);
   }
 }

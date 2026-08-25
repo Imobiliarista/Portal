@@ -1,19 +1,23 @@
-// modules/feeds/generator.js — quem entra/sai do feed (§46, Etapa 9):
-// corretor ativo + opt-in (`modules.feeds.enabled`) + anúncio com projeção
-// pública `status: "active"` — a mesma condição que já tira um anúncio do
-// shard da cidade (business/publishing.js `cardActive`), incluindo o
-// cascateamento de suspensão de corretor (Etapa 8a). End-to-end sobre
-// FakeR2Bucket, sem worker/router envolvido — mesmo estilo de
-// tests/publishing/publishing.test.js.
+// modules/feeds/generator.js — quem entra/sai do feed de um submódulo
+// (§46, "Modo Exportação", Etapa 9): corretor ativo + opt-in nesse
+// submódulo específico (`modules.feeds[submoduleId].enabled`) + anúncio
+// com projeção pública `status: "active"` — a mesma condição que já tira
+// um anúncio do shard da cidade (business/publishing.js `cardActive`),
+// incluindo o cascateamento de suspensão de corretor (Etapa 8a). Também
+// cobre o filtro de dado incompleto (sem CEP) que o formatter vrsync
+// aplica. End-to-end sobre FakeR2Bucket, sem worker/router envolvido —
+// mesmo estilo de tests/publishing/publishing.test.js.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collectFeedItems, regenerateFeeds, UnknownFeedPortalError } from "../../../modules/feeds/generator.js";
+import { collectFeedItems, regenerateFeeds, UnknownFeedSubmoduleError } from "../../../modules/feeds/generator.js";
 import { createBroker, updateBrokerProfile, suspendBroker, reactivateBroker } from "../../../business/brokers.js";
 import { createListing, updateListing } from "../../../business/listings.js";
-import { publishListing, publishBroker } from "../../../business/publishing.js";
+import { publishListing, publishBroker, republishBrokerListings } from "../../../business/publishing.js";
 import { getPublicText } from "../../../storage/public.js";
 import { FakeR2Bucket } from "../../storage/fake-r2-bucket.js";
+
+const SUBMODULE = "vrsync";
 
 function makeEnv() {
   return { IMOB_PRIVATE: new FakeR2Bucket(), IMOB_DATA: new FakeR2Bucket() };
@@ -28,7 +32,7 @@ async function makeOptedInBroker(env, overrides = {}) {
     status: "active",
   });
   await publishBroker(env, broker.brokerId);
-  return updateBrokerProfile(env, broker.brokerId, { modules: { feeds: { enabled: true } } });
+  return updateBrokerProfile(env, broker.brokerId, { modules: { feeds: { [SUBMODULE]: { enabled: true } } } });
 }
 
 function baseListingInput(overrides = {}) {
@@ -41,6 +45,7 @@ function baseListingInput(overrides = {}) {
     type: "apartamento",
     price: 450000,
     district: "Centro",
+    zipcode: "86010-000",
     features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
     ...overrides,
   };
@@ -52,27 +57,36 @@ async function publishedListing(env, brokerId, overrides = {}) {
   return draft;
 }
 
-// --- collectFeedItems: opt-in ---------------------------------------------
+// --- collectFeedItems: opt-in por submódulo ---------------------------------
 
-test("collectFeedItems excludes a broker who never enabled the feeds module", async () => {
+test("collectFeedItems excludes a broker who never enabled this submodule", async () => {
   const env = makeEnv();
   const broker = await createBroker(env, { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active" });
   await publishBroker(env, broker.brokerId);
   await publishedListing(env, broker.brokerId);
 
-  const items = await collectFeedItems(env);
-  assert.equal(items.length, 0);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 0);
 });
 
-test("collectFeedItems includes an active listing from an active, opted-in broker", async () => {
+test("collectFeedItems excludes a broker who enabled a DIFFERENT submodule, not this one", async () => {
   const env = makeEnv();
-  const broker = await makeOptedInBroker(env);
+  const broker = await createBroker(env, { userId: "u1", slug: "joao", name: "João", plan: "premium", status: "active" });
+  await publishBroker(env, broker.brokerId);
+  await updateBrokerProfile(env, broker.brokerId, { modules: { feeds: { "outro-submodulo": { enabled: true } } } });
   await publishedListing(env, broker.brokerId);
 
-  const items = await collectFeedItems(env);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 0);
+});
+
+test("collectFeedItems includes an active listing from an active, opted-in broker, carrying listingId (not just slug)", async () => {
+  const env = makeEnv();
+  const broker = await makeOptedInBroker(env);
+  const draft = await publishedListing(env, broker.brokerId);
+
+  const items = await collectFeedItems(env, SUBMODULE);
   assert.equal(items.length, 1);
+  assert.equal(items[0].listingId, draft.listingId);
   assert.equal(items[0].listing.slug, "apartamento-centro-123");
-  assert.equal(items[0].city.uf, "PR");
 });
 
 test("collectFeedItems excludes a listing that was never published (still draft)", async () => {
@@ -80,11 +94,10 @@ test("collectFeedItems excludes a listing that was never published (still draft)
   const broker = await makeOptedInBroker(env);
   await createListing(env, broker.brokerId, baseListingInput({ status: "draft" })); // never publishListing()'d live
 
-  const items = await collectFeedItems(env);
-  assert.equal(items.length, 0);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 0);
 });
 
-test("collectFeedItems excludes a paused/sold/removed listing, keeping only status:active ones", async () => {
+test("collectFeedItems excludes a paused/sold listing, keeping only status:active ones", async () => {
   const env = makeEnv();
   const broker = await makeOptedInBroker(env);
   await publishedListing(env, broker.brokerId, { slug: "ativo" });
@@ -95,7 +108,7 @@ test("collectFeedItems excludes a paused/sold/removed listing, keeping only stat
   await updateListing(env, broker.brokerId, sold.listingId, { status: "sold" });
   await publishListing(env, sold.listingId);
 
-  const items = await collectFeedItems(env);
+  const items = await collectFeedItems(env, SUBMODULE);
   assert.deepEqual(items.map((item) => item.listing.slug).sort(), ["ativo"]);
 });
 
@@ -105,37 +118,32 @@ test("collectFeedItems drops a listing the moment its owning broker is suspended
   const env = makeEnv();
   const broker = await makeOptedInBroker(env);
   await publishedListing(env, broker.brokerId);
-  assert.equal((await collectFeedItems(env)).length, 1);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 1);
 
   await suspendBroker(env, broker.brokerId);
   await publishBroker(env, broker.brokerId);
-  // Etapa 8a: business/publishing.js#republishBrokerListings is what
-  // actually rewrites already-published listings to public
-  // status:"suspended" — mirrors worker/admin.js#handleSuspendBroker.
-  const { republishBrokerListings } = await import("../../../business/publishing.js");
   await republishBrokerListings(env, broker.brokerId);
 
-  assert.equal((await collectFeedItems(env)).length, 0);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 0);
 });
 
 test("collectFeedItems brings the listing back once the broker is reactivated and republished", async () => {
   const env = makeEnv();
   const broker = await makeOptedInBroker(env);
   await publishedListing(env, broker.brokerId);
-  const { republishBrokerListings } = await import("../../../business/publishing.js");
 
   await suspendBroker(env, broker.brokerId);
   await publishBroker(env, broker.brokerId);
   await republishBrokerListings(env, broker.brokerId);
-  assert.equal((await collectFeedItems(env)).length, 0);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 0);
 
   await reactivateBroker(env, broker.brokerId);
   await publishBroker(env, broker.brokerId);
   await republishBrokerListings(env, broker.brokerId);
-  assert.equal((await collectFeedItems(env)).length, 1);
+  assert.equal((await collectFeedItems(env, SUBMODULE)).length, 1);
 });
 
-test("collectFeedItems excludes listings from multiple opted-out brokers while including an opted-in one", async () => {
+test("collectFeedItems excludes listings from an opted-out broker while including an opted-in one — one file aggregates every opted-in broker", async () => {
   const env = makeEnv();
   const optedIn = await makeOptedInBroker(env, { userId: "u1", slug: "joao" });
   await publishedListing(env, optedIn.brokerId, { slug: "do-joao" });
@@ -144,23 +152,51 @@ test("collectFeedItems excludes listings from multiple opted-out brokers while i
   await publishBroker(env, optedOut.brokerId);
   await publishedListing(env, optedOut.brokerId, { slug: "da-maria" });
 
-  const items = await collectFeedItems(env);
+  const items = await collectFeedItems(env, SUBMODULE);
   assert.deepEqual(items.map((item) => item.listing.slug), ["do-joao"]);
+});
+
+test("collectFeedItems aggregates listings from MULTIPLE opted-in brokers into the same result set (no per-broker split)", async () => {
+  const env = makeEnv();
+  const brokerA = await makeOptedInBroker(env, { userId: "u1", slug: "joao" });
+  await publishedListing(env, brokerA.brokerId, { slug: "do-joao" });
+  const brokerB = await makeOptedInBroker(env, { userId: "u2", slug: "maria" });
+  await publishedListing(env, brokerB.brokerId, { slug: "da-maria" });
+
+  const items = await collectFeedItems(env, SUBMODULE);
+  assert.deepEqual(items.map((item) => item.listing.slug).sort(), ["da-maria", "do-joao"]);
 });
 
 // --- regenerateFeeds ---------------------------------------------------------
 
-test("regenerateFeeds writes feeds/olx.xml with every eligible listing", async () => {
+test("regenerateFeeds writes feeds/vrsync.xml with every eligible listing", async () => {
   const env = makeEnv();
   const broker = await makeOptedInBroker(env);
-  await publishedListing(env, broker.brokerId);
+  const draft = await publishedListing(env, broker.brokerId);
 
   const result = await regenerateFeeds(env);
-  assert.deepEqual(result, { olx: { candidateCount: 1 } });
+  assert.deepEqual(result, { vrsync: { candidateCount: 1 } });
 
-  const xml = await getPublicText(env, "feeds/olx.xml");
-  assert.match(xml, /<ListingID>apartamento-centro-123<\/ListingID>/);
+  const xml = await getPublicText(env, "feeds/vrsync.xml");
+  assert.match(xml, new RegExp(`<ListingID>${draft.listingId}</ListingID>`));
   assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+});
+
+// §46 — a listing missing zipcode counts as a "candidate" (it belongs to
+// an opted-in, active broker and is published) but the vrsync formatter
+// itself drops it (PostalCode is required) — documented as an
+// incomplete-data pendency, not a bug: candidateCount still reflects it,
+// the written XML does not.
+test("regenerateFeeds's candidateCount includes a listing missing zipcode, but the written XML excludes it", async () => {
+  const env = makeEnv();
+  const broker = await makeOptedInBroker(env);
+  await publishedListing(env, broker.brokerId, { zipcode: undefined });
+
+  const result = await regenerateFeeds(env);
+  assert.equal(result.vrsync.candidateCount, 1);
+
+  const xml = await getPublicText(env, "feeds/vrsync.xml");
+  assert.doesNotMatch(xml, /ListingID/);
 });
 
 test("regenerateFeeds overwrites the previous feed on each call (no stale listings left behind)", async () => {
@@ -173,11 +209,11 @@ test("regenerateFeeds overwrites the previous feed on each call (no stale listin
   await publishListing(env, listing.listingId);
   await regenerateFeeds(env);
 
-  const xml = await getPublicText(env, "feeds/olx.xml");
+  const xml = await getPublicText(env, "feeds/vrsync.xml");
   assert.doesNotMatch(xml, /ListingID/);
 });
 
-test("regenerateFeeds throws UnknownFeedPortalError for an unregistered portal id", async () => {
+test("regenerateFeeds throws UnknownFeedSubmoduleError for an unregistered submodule id", async () => {
   const env = makeEnv();
-  await assert.rejects(() => regenerateFeeds(env, { portals: ["zap"] }), UnknownFeedPortalError);
+  await assert.rejects(() => regenerateFeeds(env, { submodules: ["chavesNaMao"] }), UnknownFeedSubmoduleError);
 });

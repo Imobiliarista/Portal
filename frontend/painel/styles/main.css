@@ -52,7 +52,8 @@ a {
 .imob-login-form,
 .imob-profile-form,
 .imob-listing-form,
-.imob-publications-form {
+.imob-publications-form,
+.imob-export-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;

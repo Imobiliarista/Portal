@@ -29,19 +29,19 @@ import { assertTenantMatch } from "../core/tenant.js";
 import { success, notFound, conflict } from "../core/response.js";
 import { ValidationError } from "../core/validation.js";
 import { publishListing, publishBroker } from "../business/publishing.js";
-import { readFeedsConfig, regenerateFeeds } from "../modules/feeds/index.js";
+import { hasAnyFeedSubmoduleEnabled, regenerateFeeds, FEED_SUBMODULE_IDS } from "../modules/feeds/index.js";
 
-// Etapa 9 (§46, módulo feeds): a full feed regeneration scans every
-// opted-in corretor's listings (modules/feeds/generator.js#collectFeedItems)
-// — cheap relative to rebuildAll (bounded by opt-in count, not "todas as
-// cidades"), but still real work this file's hot paths shouldn't pay on
-// every single write from every corretor, opted in or not. Gated below on
-// whichever corretor the write actually touches having
-// `modules.feeds.enabled` right now — the common case (a corretor who
-// never touched this module) costs one already-in-hand object read, not a
-// bucket-wide scan.
+// Etapa 9 (§46, módulo feeds, "Modo Exportação"): a full feed
+// regeneration scans every opted-in corretor's listings, per submódulo
+// (modules/feeds/generator.js#collectFeedItems) — cheap relative to
+// rebuildAll (bounded by opt-in count, not "todas as cidades"), but
+// still real work this file's hot paths shouldn't pay on every single
+// write from every corretor, opted in or not. Gated below on whichever
+// corretor the write actually touches having ANY submódulo enabled right
+// now — the common case (a corretor who never touched this module) costs
+// one already-in-hand object read, not a bucket-wide scan.
 async function maybeRegenerateFeeds(env, broker) {
-  if (broker && readFeedsConfig(broker).enabled) {
+  if (broker && hasAnyFeedSubmoduleEnabled(broker, FEED_SUBMODULE_IDS)) {
     await regenerateFeeds(env);
   }
 }

@@ -1,63 +1,111 @@
 # Changelog
 
-## Etapa 9 (lote 8/N) — Módulo feeds (§90, §46)
+## Etapa 9 (lote 8/N) — Módulo feeds: "Modo Exportação" (§90, §46)
 
-Feed de anúncios para portais externos (OLX, prioridade — ZAP fica como
-pendência explícita, ver README). Diferente de todos os módulos
-client-side desta etapa: consumido por um robô de portal externo via HTTP
-direto, sem executar JavaScript — arquivo estático (`feeds/olx.xml`) em R2
-DATA, gerado pelo Publicador, servido pelo mesmo Custom Domain que já
-expõe R2 DATA hoje (§59, docs/OPERATIONS.md pendência 3). **Nenhuma rota
-de Worker nova** — decisão de produto confirmada explicitamente antes
-deste lote, reforçando §94/§101 (edge-first, Worker só onde realmente
-necessário). Decisões completas (incluindo as fontes usadas para o XML,
-já que o acesso à documentação oficial da OLX ficou bloqueado nesta
-sessão) em `modules/feeds/README.md`.
+Seção "Exportação" no painel do corretor com submódulos independentes —
+um por formato/provedor de feed, cada um ligado/desligado separadamente.
+Este lote implementa só o submódulo `vrsync` (XML compartilhado por OLX,
+ZAP e VivaReal — um único arquivo cobre os três, decisão de produto).
+Diferente de todos os módulos client-side desta etapa: o robô de cada
+portal busca o arquivo (`feeds/vrsync.xml`) sozinho, sem executar
+JavaScript algum — arquivo estático em R2 DATA, gerado pelo Publicador,
+servido pelo mesmo Custom Domain que já expõe R2 DATA hoje (§59,
+docs/OPERATIONS.md pendência 3). **Nenhuma rota de Worker nova** — sem
+push, sem token, sem autenticação (§94/§101, edge-first). Decisões
+completas (incluindo as fontes usadas para o XML e o que ficou pendente
+de verificação) em `modules/feeds/README.md`.
 
+Este lote passou por duas correções de rumo antes de fechar: a primeira
+implementação (formato XML "olx" isolado, reconstruído só via busca) foi
+substituída por uma tentativa de JSON estático (spec oficial da OLX,
+colada diretamente pelo solicitante) e, por fim, pelo formato final
+abaixo — XML VrSync, com "Modo Exportação"/registry de submódulos. O
+histórico de commits reflete essa evolução; este changelog documenta só
+o estado final.
+
+- `core/validation.js#isZipcode`, `zipcode` novo (opcional) em
+  `listing-draft.schema.json`/`listing-public.schema.json#location` —
+  pré-requisito descoberto ao implementar: a spec do VrSync exige
+  `PostalCode`, e o schema do anúncio nunca teve CEP em lugar nenhum.
+  Opcional (não força todo corretor a preencher CEP) — só um anúncio sem
+  CEP fica de fora do feed. `business/listings.js`,
+  `business/publishing.js#normalizeListingForPublic`,
+  `frontend/painel/forms.js`/`render.js` (campo "CEP" no form de anúncio)
+  atualizados.
 - `storage/keys.js#dataKeys.feed`, `storage/public.js#putPublicText`/`getPublicText`
   (primeiro objeto não-JSON que R2 DATA guarda), `storage/cache.js`
   (`CACHE_TTL_SECONDS.feed`, 1h).
-- `modules/feeds/config.js` (novo): `broker.modules.feeds.enabled` — opt-in
-  por corretor, mesmo padrão/lugar de `modules/publications`, por simetria
+- `broker.modules.feeds` deixou de ser um booleano único e virou um
+  objeto por submódulo — `{ vrsync: { enabled } }` — mesmo padrão de
+  `broker.modules.publications`, preparado para outras chaves crescerem
+  ao lado. `modules/feeds/config.js`: `readFeedSubmoduleConfig`,
+  `validateFeedSubmoduleConfig`, `hasAnyFeedSubmoduleEnabled`
   (`schemas/broker.schema.json#modules` já era `additionalProperties: true`
   — nenhuma mudança de schema).
-- `modules/feeds/formatters/olx.js` (novo): formatter real, formato VRSync
-  (compartilhado por OLX/ZAP/VivaReal). `type` do anúncio (texto livre,
-  sem taxonomia fechada ainda) mapeado para `PropertyType` por uma tabela
-  best-effort — tipo não mapeado é excluído do feed, não inventado.
-- `modules/feeds/registry.js`, `generator.js`, `index.js` (novos):
-  `regenerateFeeds` recalcula o feed inteiro a partir do estado privado
-  (mesmo espírito de `rebuildCity`, sem particionamento — universo
-  opt-in é pequeno). `collectFeedItems` só inclui anúncio com projeção
-  pública `status: "active"` de corretor `status: "active"` + opt-in —
-  isso já exclui corretor suspenso "de graça" (mesma cascata da Etapa 8a).
-- `worker/api.js`, `worker/admin.js`: `regenerateFeeds` chamado nos pontos
-  onde `business/publishing.js` já é chamado, gated por "o corretor
-  afetado tem `modules.feeds.enabled`" (evita recompute completo em toda
-  escrita de qualquer corretor).
-- `scripts/generate-feeds.js` (novo, `npm run generate:feeds`) — caminho
-  manual/externo, já que nenhum Cron Trigger foi implementado neste lote.
-- 34 novos testes (`tests/modules/feeds/`) — formatter puro com fixtures,
-  config, e end-to-end sobre `FakeR2Bucket` cobrindo o filtro de quem
-  entra/sai (opt-in, corretor ativo/suspenso, anúncio
-  active/paused/sold/draft). Suíte completa (462 testes) passando,
-  `wrangler deploy --dry-run` validado.
+- `modules/feeds/registry.js`: registro dos submódulos —
+  `{id, displayName, generate(items, header), fileName, contentType}`.
+  Só `vrsync` nesta etapa; um submódulo novo é só uma entrada nova aqui.
+- `modules/feeds/formatters/vrsync.js` (renomeado de `olx.js`):
+  formatter real, XML VrSync — `ListingID` (o `listingId` PRIVADO, não o
+  `slug`), `Title`/`Description` (CDATA), `TransactionType`,
+  `ListPrice`/`RentalPrice`, `PropertyType` (tabela best-effort, tipo não
+  mapeado exclui o anúncio), `PostalCode` (obrigatório — sem CEP, exclui
+  o anúncio), `LivingArea`/`LotArea` (conforme tipo), `Media` (fotos +
+  vídeo do YouTube).
+- `modules/feeds/generator.js`: `regenerateFeeds` percorre os submódulos
+  registrados; `collectFeedItems(env, submoduleId)` recalcula o arquivo
+  inteiro a partir do estado privado (mesmo espírito de `rebuildCity`,
+  sem particionamento — universo opt-in por submódulo é pequeno). Um
+  arquivo agrega TODOS os corretores que ligaram aquele submódulo — não é
+  um arquivo por corretor. Só inclui anúncio com projeção pública
+  `status: "active"` de corretor `status: "active"` + opt-in nesse
+  submódulo — isso já exclui corretor suspenso "de graça" (mesma cascata
+  da Etapa 8a).
+- `worker/api.js`, `worker/admin.js`: `regenerateFeeds` chamado nos
+  pontos onde `business/publishing.js` já é chamado, gated por "o
+  corretor afetado tem QUALQUER submódulo habilitado" (evita recompute
+  completo em toda escrita de qualquer corretor).
+- `frontend/painel/`: nova seção "Exportação" (`/exportacao`, nav
+  própria) — lista os submódulos a partir do registry (nunca hardcoded),
+  um checkbox por submódulo, um botão salva tudo.
+  `scripts/generate-feeds-assets.js` (novo, `npm run generate:feeds`,
+  mesmo padrão de outros módulos desta etapa) gera
+  `frontend/shared/feeds.generated.js` (metadados `{id, displayName}` +
+  `readFeedSubmoduleConfig` — nunca a função `generate`, que é lógica
+  server-only).
+- `scripts/rebuild-feeds.js` (renomeado de `generate-feeds.js` — nome
+  antigo colidia com a convenção `generate:X` = bundle de frontend;
+  `npm run rebuild:feeds`, mesmo padrão de `rebuild:listing`/`broker`/`city`)
+  — caminho manual/externo, já que nenhum Cron Trigger foi implementado
+  neste lote.
+- 51 novos testes (`tests/modules/feeds/`, incluindo `registry.test.js`
+  novo) — formatter puro com fixtures, config por submódulo, registry, e
+  end-to-end sobre `FakeR2Bucket` cobrindo o filtro de quem entra/sai
+  (opt-in por submódulo, corretor ativo/suspenso, anúncio
+  active/paused/sold/draft, CEP ausente). Suíte completa (476 testes)
+  passando, `wrangler deploy --dry-run` validado. Verificado também
+  ponta a ponta com `wrangler dev` real (login, `PUT /api/me/profile`
+  com `modules.feeds.vrsync`, `feeds/vrsync.xml` gravado corretamente em
+  R2 DATA) e visualmente num browser via Playwright (seção Exportação:
+  navegação, checkbox refletindo estado, submissão, mensagem de
+  sucesso) — nenhum erro de console inesperado.
 
 ### Pendências abertas
 
-- `formatters/olx.js` foi escrito sem acesso à documentação oficial da
-  OLX/Grupo ZAP nesta sessão (rede bloqueada) — precisa de revisão contra
-  a página real antes de qualquer submissão de verdade ao Canal Pro.
-- `formatters/zap.js` não existe (VRSync é compartilhado, mas registrar o
-  portal e confirmar diferenças ficou fora do escopo deste lote).
-- Sem UI no painel para o corretor ligar/desligar o módulo (o
-  backend/config já aceita `modules.feeds.enabled` pelo caminho genérico
-  existente).
-- Sem endereço/CEP no schema do anúncio — o feed omite `PostalCode`, que
-  uma fonte encontrada via busca chamou de obrigatório; não confirmado.
-- Sem Cron Trigger da Cloudflare (`worker/cron.js` continua placeholder).
+- `formatters/vrsync.js` foi escrito sem acesso à documentação oficial
+  completa (developers.grupozap.com/feeds/vrsync/elements/ ficou
+  bloqueada para rede nesta sessão o tempo todo) — a estrutura raiz e a
+  lista de campos vieram do solicitante; `PropertyType` (lista completa)
+  e o item de vídeo em `<Media>` vieram de WebSearch com exemplos
+  citados, não da página em si. Revisar contra a doc real antes de
+  produção.
+- Só `vrsync` — nenhum outro submódulo de exportação implementado
+  (arquitetura pronta para receber um, conforme pedido).
 - `Header.Email`/`Header.Telephone` do XML usam placeholders até
   `FEED_CONTACT_EMAIL`/`FEED_CONTACT_PHONE` serem configurados.
+- Sem Cron Trigger da Cloudflare (`worker/cron.js` continua placeholder).
+- Ordem exata dos elementos dentro de `<Details>` não verificada contra
+  o XSD real (VrSync é um schema com sequência — ordem pode importar).
 
 ## Etapa 9 (lote 6/N) — Módulo financing-calculator (§90, §44)
 

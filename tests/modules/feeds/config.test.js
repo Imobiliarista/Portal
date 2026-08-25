@@ -1,39 +1,59 @@
-// modules/feeds/config.js — leitura/validação de `broker.modules.feeds`
-// (§46, decisão de opt-in por corretor, Etapa 9).
+// modules/feeds/config.js — leitura/validação de `broker.modules.feeds`,
+// um objeto por submódulo (§46, "Modo Exportação", Etapa 9).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FEEDS_MODULE_KEY, DEFAULT_FEEDS_CONFIG, readFeedsConfig, validateFeedsConfig } from "../../../modules/feeds/config.js";
+import {
+  FEEDS_MODULE_KEY,
+  DEFAULT_FEED_SUBMODULE_CONFIG,
+  readFeedSubmoduleConfig,
+  validateFeedSubmoduleConfig,
+  hasAnyFeedSubmoduleEnabled,
+} from "../../../modules/feeds/config.js";
 
-test("readFeedsConfig defaults to disabled for a broker that never configured the module", () => {
-  assert.deepEqual(readFeedsConfig({}), DEFAULT_FEEDS_CONFIG);
-  assert.deepEqual(readFeedsConfig({ modules: {} }), DEFAULT_FEEDS_CONFIG);
-  assert.deepEqual(readFeedsConfig(null), DEFAULT_FEEDS_CONFIG);
-  assert.deepEqual(readFeedsConfig(undefined), DEFAULT_FEEDS_CONFIG);
+test("readFeedSubmoduleConfig defaults to disabled for a broker that never configured that submodule", () => {
+  assert.deepEqual(readFeedSubmoduleConfig({}, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
+  assert.deepEqual(readFeedSubmoduleConfig({ modules: {} }, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
+  assert.deepEqual(readFeedSubmoduleConfig({ modules: { [FEEDS_MODULE_KEY]: {} } }, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
+  assert.deepEqual(readFeedSubmoduleConfig(null, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
 });
 
-test("readFeedsConfig reads an explicit enabled:true", () => {
-  assert.deepEqual(readFeedsConfig({ modules: { [FEEDS_MODULE_KEY]: { enabled: true } } }), { enabled: true });
+test("readFeedSubmoduleConfig reads an explicit enabled:true for the requested submodule only", () => {
+  const broker = { modules: { [FEEDS_MODULE_KEY]: { vrsync: { enabled: true } } } };
+  assert.deepEqual(readFeedSubmoduleConfig(broker, "vrsync"), { enabled: true });
+  assert.deepEqual(readFeedSubmoduleConfig(broker, "outro-submodulo"), DEFAULT_FEED_SUBMODULE_CONFIG);
 });
 
-test("readFeedsConfig never throws on a malformed modules.feeds value", () => {
-  assert.deepEqual(readFeedsConfig({ modules: { feeds: "not-an-object" } }), DEFAULT_FEEDS_CONFIG);
-  assert.deepEqual(readFeedsConfig({ modules: { feeds: null } }), DEFAULT_FEEDS_CONFIG);
-  assert.deepEqual(readFeedsConfig({ modules: { feeds: { enabled: "yes" } } }), { enabled: false });
+test("readFeedSubmoduleConfig never throws on a malformed modules.feeds[submoduleId] value", () => {
+  assert.deepEqual(readFeedSubmoduleConfig({ modules: { feeds: { vrsync: "not-an-object" } } }, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
+  assert.deepEqual(readFeedSubmoduleConfig({ modules: { feeds: { vrsync: null } } }, "vrsync"), DEFAULT_FEED_SUBMODULE_CONFIG);
+  assert.deepEqual(readFeedSubmoduleConfig({ modules: { feeds: { vrsync: { enabled: "yes" } } } }, "vrsync"), { enabled: false });
 });
 
-test("validateFeedsConfig accepts a boolean enabled", () => {
-  assert.deepEqual(validateFeedsConfig({ enabled: true }), { valid: true, config: { enabled: true } });
-  assert.deepEqual(validateFeedsConfig({ enabled: false }), { valid: true, config: { enabled: false } });
+test("validateFeedSubmoduleConfig accepts a boolean enabled", () => {
+  assert.deepEqual(validateFeedSubmoduleConfig({ enabled: true }), { valid: true, config: { enabled: true } });
+  assert.deepEqual(validateFeedSubmoduleConfig({ enabled: false }), { valid: true, config: { enabled: false } });
 });
 
-test("validateFeedsConfig rejects a non-boolean enabled", () => {
-  const result = validateFeedsConfig({ enabled: "true" });
+test("validateFeedSubmoduleConfig rejects a non-boolean enabled", () => {
+  const result = validateFeedSubmoduleConfig({ enabled: "true" });
   assert.equal(result.valid, false);
   assert.ok(result.error);
 });
 
-test("validateFeedsConfig rejects missing input entirely", () => {
-  assert.equal(validateFeedsConfig().valid, false);
-  assert.equal(validateFeedsConfig({}).valid, false);
+test("validateFeedSubmoduleConfig rejects missing input entirely", () => {
+  assert.equal(validateFeedSubmoduleConfig().valid, false);
+  assert.equal(validateFeedSubmoduleConfig({}).valid, false);
+});
+
+test("hasAnyFeedSubmoduleEnabled is true when any of the given submodules is enabled", () => {
+  const broker = { modules: { [FEEDS_MODULE_KEY]: { vrsync: { enabled: true } } } };
+  assert.equal(hasAnyFeedSubmoduleEnabled(broker, ["vrsync"]), true);
+  assert.equal(hasAnyFeedSubmoduleEnabled(broker, ["outro-submodulo", "vrsync"]), true);
+});
+
+test("hasAnyFeedSubmoduleEnabled is false when none of the given submodules is enabled", () => {
+  assert.equal(hasAnyFeedSubmoduleEnabled({}, ["vrsync"]), false);
+  const broker = { modules: { [FEEDS_MODULE_KEY]: { vrsync: { enabled: false } } } };
+  assert.equal(hasAnyFeedSubmoduleEnabled(broker, ["vrsync"]), false);
 });

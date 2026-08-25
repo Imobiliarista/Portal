@@ -8,6 +8,12 @@
 // modules/publications/index.js + config.js — see
 // frontend/shared/publications.generated.js.
 import { readPublicationsConfig } from "../shared/publications.generated.js";
+// modules/feeds (§46, "Modo Exportação"): FEED_SUBMODULES_PUBLIC/
+// readFeedSubmoduleConfig are generated from modules/feeds/registry.js +
+// config.js — see frontend/shared/feeds.generated.js. The submodule list
+// rendered below always comes from this import, never a hardcoded array
+// — adding a submodule to the registry is enough for it to show up here.
+import { FEED_SUBMODULES_PUBLIC, readFeedSubmoduleConfig } from "../shared/feeds.generated.js";
 
 function el(tag, { className, text, attrs, value } = {}, children = []) {
   const node = document.createElement(tag);
@@ -76,6 +82,7 @@ export function renderAppShell(container, { activeRoute, brokerName } = {}, hand
     el("span", { className: "imob-nav-broker", text: brokerName ?? "" }),
     link("/perfil", "Perfil", "profile"),
     link("/imoveis", "Imóveis", "listings"),
+    link("/exportacao", "Exportação", "export"),
     logoutButton,
   ]);
 
@@ -181,6 +188,46 @@ function renderMediaSlot(label, url, onUpload, onDelete) {
   removeButton?.addEventListener("click", () => onDelete());
 
   return el("div", { className: "imob-media-slot" }, [el("span", { text: label }), preview, input, removeButton]);
+}
+
+// --- exportação (§46, "Modo Exportação" — PUT /api/me/profile) ------------------
+// Uma seção própria (não dentro do form de perfil, ao contrário de
+// Publicações) porque a lista de submódulos vem do registry e deve
+// crescer sem tocar este componente — um único form com N checkboxes (um
+// por submódulo), submetido de uma vez, mesmo espírito "1 botão salva
+// tudo" do form de perfil.
+export function renderExportForm(content, { profile, error, saving, saved } = {}, handlers = {}) {
+  clear(content);
+
+  const rows = FEED_SUBMODULES_PUBLIC.map((submodule) => {
+    const current = readFeedSubmoduleConfig(profile, submodule.id);
+    return el("label", { className: "imob-field imob-field-checkbox" }, [
+      el("input", {
+        attrs: { type: "checkbox", name: submodule.id, ...(current.enabled ? { checked: "true" } : {}) },
+      }),
+      el("span", { text: submodule.displayName }),
+    ]);
+  });
+
+  const form = el("form", { className: "imob-export-form" }, [
+    messageBox(error),
+    saved ? messageBox("Exportação atualizada.", "success") : null,
+    el("p", { className: "imob-hint", text: "Escolha quais formatos de feed incluem seus anúncios publicados." }),
+    ...rows,
+    el("button", { attrs: { type: "submit" }, text: saving ? "Salvando…" : "Salvar" }),
+  ]);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const feedsPatch = {};
+    for (const submodule of FEED_SUBMODULES_PUBLIC) {
+      feedsPatch[submodule.id] = { enabled: data.get(submodule.id) === "on" };
+    }
+    handlers.onSubmit?.(feedsPatch);
+  });
+
+  content.append(el("h1", { text: "Exportação" }), form);
 }
 
 // --- imóveis: lista (§54, GET /api/me/listings) ---------------------------------
