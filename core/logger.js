@@ -11,23 +11,37 @@ const REDACTED_VALUE = "[REDACTED]";
 // Field names are matched case-insensitively and as substrings, so
 // "passwordHash", "userPassword" and "PASSWORD" are all caught.
 //
-// §27 hotfix additions: `pbkdf2Result` (the browser's derived key — never
-// the password itself, but a password-equivalent credential over the
-// wire: whoever has it can log in without ever knowing the password) and
-// `pbkdf2Salt`/`verifier`/`pepper` (the stored-record and secret-binding
-// fields the new browser-side flow introduced). Salts aren't secret by
-// design, but redacting them too costs nothing and stays consistent with
-// this file's "when in doubt, redact" posture (§79).
+// §27 hotfix pt.1 additions: `pbkdf2Result` (the browser's derived key —
+// never the password itself, but a password-equivalent credential over
+// the wire: whoever has it can log in without ever knowing the password)
+// and `pbkdf2Salt`/`verifier`/`pepper` (the stored-record and
+// secret-binding fields the new browser-side flow introduced). Salts
+// aren't secret by design, but redacting them too costs nothing and stays
+// consistent with this file's "when in doubt, redact" posture (§79).
+//
+// §27 hotfix pt.2/pt.3: `identifier` (the login-flow field that now holds
+// a CPF — or MASTER/TESTE, not sensitive by itself, but the pattern can't
+// tell which without parsing the value, so it redacts either way) and
+// `loginIndexSecret`/`LOGIN_INDEX_SECRET` (the new pt.3 secret).
+//
+// `cpf` and `secret` below were `\bcpf\b`/`\bsecret` (word-boundary
+// anchored) before this hotfix — verified empirically that this misses
+// camelCase field names entirely: `\b` only matches at a transition
+// between a word char and a non-word char, and `_` counts as a word char,
+// so neither boundary ever appears inside "cpfHash", "sessionSecret", or
+// this hotfix's own new "loginIndexSecret"/"LOGIN_INDEX_SECRET". Dropped
+// both anchors — plain substring match, same as `/password/i` etc. above.
 const SENSITIVE_KEY_PATTERNS = [
   /password/i,
   /passwordhash/i,
   /pbkdf2/i,
   /verifier/i,
   /pepper/i,
+  /identifier/i,
   /\bcookie\b/i,
   /\btoken\b/i,
-  /\bsecret/i,
-  /\bcpf\b/i,
+  /secret/i,
+  /cpf/i,
   /\bauthorization\b/i,
   /\bsession(id)?\b/i,
 ];

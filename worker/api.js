@@ -81,7 +81,13 @@ export async function handlePutProfile(request, env) {
 
   const body = await readJsonBody(request);
   try {
-    const updated = await updateBrokerProfile(env, brokerId, body);
+    // §27 hotfix pt.3 — LOGIN_INDEX_SECRET only actually gets used by
+    // business/brokers.js#updateBrokerProfile when the patch touches
+    // email/cpf; passed through as-is (possibly undefined) rather than
+    // eagerly required here, so a profile edit that never touches either
+    // field (phone, about, logo, ...) isn't blocked on it — the function's
+    // own guard throws a clear ValidationError if it's actually needed.
+    const updated = await updateBrokerProfile(env, brokerId, body, { loginIndexSecret: env.LOGIN_INDEX_SECRET });
     // Etapa 6 (§31-32): keep brokers/{slug}/profile.json in sync with the
     // private profile right away — publishBroker() itself skips the write
     // when nothing publish-relevant changed (staleness check) or the

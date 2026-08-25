@@ -5,7 +5,7 @@
   "description": "brokers/{brokerId}/profile-draft.json in R2 PRIVATE — §16, §29. Editable, authoritative source the publisher normalizes into broker-public.schema.json.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "brokerId", "userId", "slug", "status", "plan", "name", "cpf", "updatedAt"],
+  "required": ["schemaVersion", "brokerId", "userId", "slug", "status", "plan", "name", "updatedAt"],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "brokerId": { "type": "string", "minLength": 1 },
@@ -21,7 +21,7 @@
     "cpf": {
       "type": "string",
       "pattern": "^[0-9]{11}$",
-      "description": "Normalizado (só dígitos). Identificador de login do corretor (§27 hotfix) — nunca aparece em broker-public.schema.json e nunca é logado (core/logger.js#SENSITIVE_KEY_PATTERNS)."
+      "description": "Normalizado (só dígitos). Identificador de login do corretor (§27 hotfix) — obrigatório em business/brokers.js#createBroker para todo corretor real; omitido só na conta especial TESTE (§27 hotfix pt.2, business/auth.js#SPECIAL_IDENTIFIERS — sem CPF, loga por identificador fixo). Nunca aparece em broker-public.schema.json e nunca é logado (core/logger.js#SENSITIVE_KEY_PATTERNS)."
     },
     "creci": { "type": "string", "description": "Número completo do CRECI — não confundir com creciPublic (broker-public.schema.json)." },
     "phone": { "type": "string" },

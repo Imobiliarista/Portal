@@ -18,7 +18,7 @@ import {
 import { resolveTenant } from "../core/tenant.js";
 import {
   login as loginBusiness,
-  getSaltForCpf,
+  getSaltForIdentifier,
   InvalidCredentialsError,
 } from "../business/auth.js";
 import { getBrokerById } from "../business/brokers.js";
@@ -48,6 +48,18 @@ function passwordPepper(env) {
     throw new Error("worker/auth: binding PASSWORD_PEPPER ausente em env.");
   }
   return env.PASSWORD_PEPPER;
+}
+
+// §27 hotfix pt.3 — keys the CPF/e-mail lookup-index hashes
+// (storage/indexes.js#loginIdentifierHash); provisioned via
+// `wrangler secret put LOGIN_INDEX_SECRET`. Deliberately separate from
+// PASSWORD_PEPPER above — different job (protects the lookup index, not
+// the password verifier).
+function loginIndexSecret(env) {
+  if (!env?.LOGIN_INDEX_SECRET) {
+    throw new Error("worker/auth: binding LOGIN_INDEX_SECRET ausente em env.");
+  }
+  return env.LOGIN_INDEX_SECRET;
 }
 
 /** Verifies the signed session cookie on `request`. Returns claims or `null` — never throws on a missing/invalid/expired cookie. */
@@ -95,10 +107,11 @@ export async function requireTenant(request, env) {
 
 /**
  * POST /api/auth/salt (§27 hotfix). Step 1 of the browser-side login flow:
- * returns the PBKDF2 salt/iterations for a CPF so the browser can derive
- * its PBKDF2 result locally — identical response shape for an existing or
- * nonexistent CPF (§26 "resposta genérica"), never a 404/differentiated
- * error that would leak which CPFs are registered.
+ * returns the PBKDF2 salt/iterations for `identifier` (a CPF, or the
+ * MASTER/TESTE special identifiers, §27 hotfix pt.2) so the browser can
+ * derive its PBKDF2 result locally — identical response shape whether or
+ * not the identifier exists/is provisioned (§26 "resposta genérica"),
+ * never a 404/differentiated error that would leak which ones are real.
  */
 export async function handleAuthSalt(request, env) {
   let body;
@@ -108,14 +121,17 @@ export async function handleAuthSalt(request, env) {
     return badRequest("JSON inválido.");
   }
 
-  const cpf = typeof body?.cpf === "string" ? body.cpf : "";
+  const identifier = typeof body?.identifier === "string" ? body.identifier : "";
 
   try {
-    const payload = await getSaltForCpf(env, cpf, passwordPepper(env));
+    const payload = await getSaltForIdentifier(env, identifier, {
+      pepper: passwordPepper(env),
+      loginIndexSecret: loginIndexSecret(env),
+    });
     return success(payload);
   } catch (error) {
     if (error instanceof ValidationError) {
-      return badRequest("CPF inválido.");
+      return badRequest("Identificador inválido.");
     }
     throw error;
   }
@@ -126,7 +142,9 @@ export async function handleAuthSalt(request, env) {
  * `pbkdf2Result` locally (never the password) against the salt from
  * `handleAuthSalt` above; the Worker only applies PASSWORD_PEPPER
  * (HMAC-SHA256, core/auth.js) and compares — see §27 hotfix notes in
- * business/auth.js.
+ * business/auth.js. `identifier` is a CPF for almost everyone, or MASTER/
+ * TESTE for the two special homologação accounts (§27 hotfix pt.2) — same
+ * request shape either way, business/auth.js#login sorts out which.
  */
 export async function handleLogin(request, env) {
   let body;
@@ -136,17 +154,17 @@ export async function handleLogin(request, env) {
     return badRequest("JSON inválido.");
   }
 
-  const cpf = typeof body?.cpf === "string" ? body.cpf : "";
+  const identifier = typeof body?.identifier === "string" ? body.identifier : "";
   const pbkdf2Result = typeof body?.pbkdf2Result === "string" ? body.pbkdf2Result : "";
 
   try {
     const { token, claims } = await loginBusiness(
       env,
-      { cpf, pbkdf2Result },
-      { sessionSecret: sessionSecret(env), pepper: passwordPepper(env) },
+      { identifier, pbkdf2Result },
+      { sessionSecret: sessionSecret(env), pepper: passwordPepper(env), loginIndexSecret: loginIndexSecret(env) },
     );
     return success(
-      { userId: claims.userId, brokerId: claims.brokerId, slug: claims.slug, role: claims.role },
+      { userId: claims.userId, brokerId: claims.brokerId ?? null, slug: claims.slug ?? null, role: claims.role },
       { headers: { "Set-Cookie": buildSessionCookie(token) } },
     );
   } catch (error) {

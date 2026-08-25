@@ -45,9 +45,13 @@ export function renderLogin(container, { error, submitting } = {}, handlers = {}
 
   // §27 hotfix: CPF substituiu e-mail como identificador de login — ver
   // frontend/painel/data.js#login (PBKDF2 no navegador) e
-  // business/brokers.js#getBrokerByCpf.
-  const cpfInput = el("input", {
-    attrs: { type: "text", name: "cpf", inputmode: "numeric", required: "true", placeholder: "CPF" },
+  // business/brokers.js#getBrokerByCpf. §27 hotfix pt.2: o mesmo campo
+  // também aceita o identificador especial TESTE (conta comercial de
+  // homologação, business/auth.js#SPECIAL_IDENTIFIERS) — sem
+  // `inputmode="numeric"` de propósito, para não atrapalhar digitar letras
+  // num teclado mobile.
+  const identifierInput = el("input", {
+    attrs: { type: "text", name: "identifier", required: "true", placeholder: "CPF" },
   });
   const passwordInput = el("input", { attrs: { type: "password", name: "password", required: "true", placeholder: "Senha" } });
   const submit = el("button", { attrs: { type: "submit" }, text: submitting ? "Entrando…" : "Entrar" });
@@ -59,14 +63,14 @@ export function renderLogin(container, { error, submitting } = {}, handlers = {}
   const form = el("form", { className: "imob-login-form" }, [
     el("h1", { text: "Painel do corretor" }),
     messageBox(error),
-    cpfInput,
+    identifierInput,
     passwordInput,
     submit,
   ]);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    handlers.onLogin?.(cpfInput.value.trim(), passwordInput.value);
+    handlers.onLogin?.(identifierInput.value.trim(), passwordInput.value);
   });
 
   container.append(el("div", { className: "imob-login-page" }, [form]));

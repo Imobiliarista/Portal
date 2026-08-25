@@ -42,10 +42,10 @@ export function mount(container) {
     renderLogin(container, { error }, { onLogin: handleLogin });
   }
 
-  async function handleLogin(cpf, password) {
+  async function handleLogin(identifier, password) {
     renderLogin(container, { submitting: true }, { onLogin: handleLogin });
     try {
-      await api.login(cpf, password);
+      await api.login(identifier, password);
       history.pushState({}, "", "/imoveis");
       await renderCurrentRoute();
     } catch (error) {

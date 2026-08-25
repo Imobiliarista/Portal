@@ -1,5 +1,68 @@
 # Changelog
 
+## Hotfix — PBKDF2 no navegador (§27, §90)
+
+Etapa 4 rodava 210k iterações de PBKDF2 dentro do handler de login do
+Worker — bem acima do orçamento de 10ms de CPU do Workers Free por
+requisição. Este hotfix (1 branch, 1 PR, três lotes internos) move a
+derivação para o navegador e reformula o identificador de login.
+**Sem testes neste lote** — pedido explícito do solicitante, etapa
+dedicada de testes fica para o final do projeto; ver
+`docs/OPERATIONS.md` pendência 14 para o estado exato de `npm test`
+até lá.
+
+- **Lote 1 — fluxo browser-PBKDF2 + CPF como identificador.**
+  `core/auth.js` reescrito: sem mais `hashPassword`/`verifyPassword`
+  (PBKDF2 completo server-side); agora `generateSalt`/`deriveDummySalt`/
+  `hashPbkdf2Result`/`verifyPbkdf2Result` (HMAC-SHA256 com
+  `PASSWORD_PEPPER` sobre o resultado que o navegador já derivou) e
+  `deriveClientPbkdf2` (só para provisionamento admin/script, nunca num
+  handler do Worker). Novo `POST /api/auth/salt`
+  (`business/auth.js#getSaltForIdentifier`, `worker/auth.js#handleAuthSalt`)
+  — passo 1 do login, resposta idêntica pra identificador existente/
+  inexistente. CPF substitui e-mail como identificador de login
+  (`business/brokers.js` ganha campo `cpf` + índice `broker-cpf`,
+  mirroring `email`/`broker-email`; e-mail continua só contato).
+  `frontend/{painel,admin}/data.js#login` implementa a derivação PBKDF2
+  real via Web Crypto (duplicado entre os dois — cada SPA host é
+  self-contained). `core/logger.js` ganha padrões de redação para
+  `pbkdf2*`/`verifier`/`pepper`.
+- **Lote 2 — identificadores especiais MASTER/TESTE.**
+  `business/auth.js#SPECIAL_IDENTIFIERS` — allowlist exata e fechada de
+  dois identificadores (case-insensitive/trim), nunca um sistema de
+  login por username genérico. MASTER: SuperAdmin de homologação, sem
+  CPF, sem corretor associado (`role: "superadmin"`, sem `brokerId`
+  na sessão — já suportado por `core/tenant.js#resolveTenant` sem
+  nenhuma mudança). TESTE: corretor/anunciante de homologação
+  (`role: "broker"`), sem CPF, mas com um corretor de verdade
+  (`business/brokers.js#createBroker` ganha `{ allowMissingCpf: true }`
+  para esse único caso). Credenciais em
+  `indexes/login-special/{master,teste}.json`
+  (`business/auth.js#provisionSpecialAccount`), sempre marcadas
+  `temporary: true` — trocar/desativar antes de produção definitiva é
+  passo manual (sem fluxo de troca de senha self-service ainda, ver
+  `docs/OPERATIONS.md` pendência 18). `business/brokers.js#RESERVED_SLUGS`
+  bloqueia "master"/"teste" como slug de um corretor de verdade.
+- **Lote 3 — índice de login com secret dedicado.**
+  `storage/indexes.js#loginIdentifierHash` era SHA-256 puro sem
+  secret — força-bruteável pra CPF (espaço de ~10^8 valores válidos).
+  Virou HMAC-SHA256 com `LOGIN_INDEX_SECRET`
+  (`wrangler secret put LOGIN_INDEX_SECRET`), secret deliberadamente
+  separado de `PASSWORD_PEPPER` (protege o índice de lookup, não o
+  verificador de senha). Aplicado às três famílias de chave que dependem
+  dele (`broker-cpf`, `broker-email`, `login` genérico) —
+  `login-special/{master,teste}` usa path literal fixo, não hash, então
+  não precisa do secret. `business/brokers.js#createBroker`/
+  `updateBrokerProfile` ganham guarda explícita: sem `loginIndexSecret`
+  quando cpf/email estão presentes, `ValidationError` clara em vez de um
+  `DOMException` opaco do WebCrypto (verificado empiricamente: uma chave
+  HMAC vazia/`undefined` lança "Zero-length key is not supported", não
+  faz silenciosamente um hash com chave fraca previsível).
+
+Pendências completas (provisionamento de `PASSWORD_PEPPER`/
+`LOGIN_INDEX_SECRET`, runbook MASTER/TESTE, mudança de contrato
+`cpf`→`identifier`, estado de `npm test`) em `docs/OPERATIONS.md`.
+
 ## Etapa 9 (lote 8/N) — Módulo feeds: "Modo Exportação" (§90, §46)
 
 Seção "Exportação" no painel do corretor com submódulos independentes —

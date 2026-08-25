@@ -85,11 +85,17 @@ async function derivePbkdf2(password, saltB64, iterations) {
   return pbkdf2ToBase64(new Uint8Array(derived));
 }
 
-/** Fetches the CPF's PBKDF2 salt, derives the result locally, then logs in. */
-export async function login(cpf, password) {
-  const { salt, iterations } = await apiFetch("/api/auth/salt", { method: "POST", body: JSON.stringify({ cpf }) });
+/**
+ * Fetches `identifier`'s PBKDF2 salt, derives the result locally, then logs
+ * in. `identifier` is normally the MASTER special identifier here (§27
+ * hotfix pt.2, business/auth.js#SPECIAL_IDENTIFIERS — the SuperAdmin
+ * homologação login this SPA is for), or a real corretor's CPF for the
+ * rarer case of a broker reaching this host; same request shape either way.
+ */
+export async function login(identifier, password) {
+  const { salt, iterations } = await apiFetch("/api/auth/salt", { method: "POST", body: JSON.stringify({ identifier }) });
   const pbkdf2Result = await derivePbkdf2(password, salt, iterations);
-  return apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ cpf, pbkdf2Result }) });
+  return apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ identifier, pbkdf2Result }) });
 }
 
 export function logout() {
