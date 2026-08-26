@@ -4,8 +4,8 @@
 // modules/pwa/service-worker.js — não editar à mão (§48, módulo pwa).
 // Regenerar com: npm run generate:pwa
 
-const SHELL_CACHE_NAME = "imob-pwa-shell-v1";
-const JSON_CACHE_NAME = "imob-pwa-json-v1";
+const SHELL_CACHE_NAME = "imob-pwa-shell-v6b2d3324ec33";
+const JSON_CACHE_NAME = "imob-pwa-json-v6b2d3324ec33";
 const SHELL_ASSETS = [
   "/",
   "/manifest.json",
