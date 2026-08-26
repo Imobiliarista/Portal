@@ -56,7 +56,15 @@
     verdade, mas sem CPF. Nenhuma das duas existe até ser provisionada —
     até lá, `/api/auth/salt`/`/api/auth/login` respondem com o mesmo salt
     dummy/erro genérico de sempre (§26), nunca revelando que ainda não
-    foram criadas. Provisionar via script/console:
+    foram criadas. **Caminho preferido**: `npm run bootstrap:special-accounts`
+    (`scripts/bootstrap-special-accounts.js`) — CLI interativa que pede as
+    duas senhas no terminal (nunca como argumento/hardcoded, eco desligado
+    durante a digitação), é idempotente (avisa e pede confirmação extra
+    antes de sobrescrever uma conta já provisionada) e chama exatamente as
+    mesmas funções do runbook abaixo por baixo dos panos. O snippet
+    seguinte documenta o que a CLI faz internamente — use-o direto no
+    console só se precisar de algo fora do que a CLI cobre (ex.: um
+    `userId`/`brokerId` diferente dos fixos que ela usa por padrão):
 
     ```js
     import { createBroker } from "./business/brokers.js";
@@ -469,4 +477,7 @@ npm run rebuild:all            # 1 lote e para; use -- --all para processar até
 npm run generate:feeds              # regenera frontend/shared/feeds.generated.js (bundle do painel)
 npm run rebuild:feeds               # regenera feeds/{submódulo}.xml em R2 DATA (todos os submódulos registrados)
 npm run rebuild:feeds -- vrsync     # só um submódulo
+
+# §27 hotfix pt.2 — provisionamento manual de MASTER/TESTE (pendência 18)
+npm run bootstrap:special-accounts  # pede as senhas interativamente, nunca hardcoded
 ```
