@@ -1,5 +1,28 @@
 # Changelog
 
+## `scripts/bootstrap-special-accounts.js` — CLI de provisionamento das contas MASTER/TESTE (§27 hotfix pt.2)
+
+Até este lote, provisionar as senhas iniciais de MASTER/TESTE
+(`business/auth.js#provisionSpecialAccount`, docs/OPERATIONS.md
+pendência 18) só era possível colando o snippet do runbook direto num
+console Node — sem prompt interativo, o caminho óbvio era passar a senha
+como literal no próprio snippet, correndo o risco de ficar em histórico
+de shell/scrollback. Este lote adiciona `scripts/bootstrap-special-accounts.js`
+(`npm run bootstrap:special-accounts`): pergunta as duas senhas
+interativamente no terminal (eco desligado, nunca aceita como argumento
+de linha de comando), é idempotente (detecta um registro
+`login-special/{master,teste}.json` já existente, avisa, e exige uma
+confirmação extra explícita antes de sobrescrever), e reaproveita
+`userId`/`brokerId` já gravados numa reprovisionamento em vez de mintar
+identidade nova. Não reimplementa a derivação PBKDF2+pepper — chama
+`business/auth.js#provisionSpecialAccount` diretamente (mesma função do
+runbook), então o verificador gravado é idêntico ao que
+`business/auth.js#login` espera comparar. Não roda em CI nem é invocado
+por nenhum outro script — manual, com `wrangler` autenticado apontando
+para o ambiente certo. `docs/OPERATIONS.md` pendência 18 atualizada para
+apontar a CLI como caminho preferido, mantendo o snippet de console como
+referência do que ela faz por baixo.
+
 ## Etapa 11 (sub-lote 5/N) — Revisão de headers/CORS/cache (§90, §80, §81, §59-§61)
 
 Auditoria: o CSP/CORS/cache escritos na Etapa 1 (Fundação) ainda cobrem
