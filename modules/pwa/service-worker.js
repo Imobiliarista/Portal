@@ -19,6 +19,11 @@
 //   - App shell (frontend/portal/*) → cache-first no `install`, sempre
 //     com fallback de rede — mesmo espírito do cache automático de Static
 //     Assets da Cloudflare (§59), só que também disponível offline.
+//     Cache-first nunca revalida sozinho, então SHELL_CACHE_NAME precisa
+//     mudar a cada deploy que altera o shell para o `activate` (abaixo)
+//     apagar a versão antiga e a próxima visita buscar a nova — daí
+//     `computeShellVersion` hashear o conteúdo real dos assets em vez de
+//     um número fixo (ver esse comentário mais abaixo).
 //   - JSONs públicos (portal/cities.json, cities/{slug}/manifest|index|
 //     NNN.json, listings/{slug}.json, brokers/{slug}/profile.json) →
 //     network-first (a versão mais nova é sempre a fonte de verdade,
@@ -27,8 +32,16 @@
 //     constantes de storage/cache.js#CACHE_TTL_SECONDS) — nunca serve algo
 //     mais velho do que o próprio edge consideraria fresco.
 
+import { createHash } from "node:crypto";
 import { CACHE_TTL_SECONDS } from "../../storage/cache.js";
 
+/**
+ * Fallback usado só quando `renderServiceWorkerSource` é chamado sem um
+ * `version` explícito (ex.: os testes deste módulo, que não têm os
+ * arquivos reais de frontend/ em mãos). Em produção,
+ * scripts/generate-pwa-assets.js sempre passa `version` = o hash real do
+ * conteúdo do shell (ver `computeShellVersion` abaixo) — nunca este valor.
+ */
 export const PWA_CACHE_VERSION = 1;
 
 /** App shell do portal (frontend/portal/) — únicos arquivos precacheados neste lote (§48, escopo do módulo). */
@@ -87,6 +100,34 @@ export function jsonCacheTtlSeconds(ttlSeconds = CACHE_TTL_SECONDS) {
     result[kind] = ttlSeconds[kind];
   }
   return result;
+}
+
+/**
+ * Deriva a versão do cache do shell a partir do conteúdo real dos shell
+ * assets, em vez de um número fixo bumpado à mão — era exatamente esse
+ * número fixo (`PWA_CACHE_VERSION` nunca mudando de deploy pra deploy) que
+ * fazia `SHELL_CACHE_NAME` nunca mudar, e portanto `handleShellRequest`
+ * (cache-first, sem revalidação) nunca buscar a rede de novo depois do
+ * primeiro `install`: quem já tinha visitado o site ficava preso na
+ * versão antiga do app shell para sempre, mesmo após um deploy novo.
+ *
+ * `assetContents` é `{ path: conteúdo }` — o generator (único lugar com
+ * acesso a disco) lê o conteúdo real de cada `shellAssets` em frontend/ e
+ * passa aqui. Pura e determinística: mesmo conteúdo sempre produz o mesmo
+ * hash, então re-rodar o generator sem nenhuma mudança de shell não força
+ * invalidação de cache à toa — só um shell asset realmente diferente muda
+ * a versão, e o `activate` já existente cuida de apagar o cache antigo
+ * assim que o nome mudar.
+ */
+export function computeShellVersion(assetContents, shellAssets = PWA_SHELL_ASSETS) {
+  const hash = createHash("sha256");
+  for (const path of shellAssets) {
+    hash.update(path);
+    hash.update("\0");
+    hash.update(assetContents[path] ?? "");
+    hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 12);
 }
 
 /**
