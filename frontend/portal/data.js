@@ -30,9 +30,26 @@ export function getDataBaseUrl() {
   return PRODUCTION_DATA_BASE_URL;
 }
 
-/** GETs and parses JSON; treats HTTP 404 as "doesn't exist" (§75, §77), not an error. */
+/**
+ * GETs and parses JSON; treats HTTP 404 as "doesn't exist" (§75, §77), not
+ * an error. A `fetch()` that never gets a response at all — network down,
+ * or a CORS-blocked request (§80, docs/OPERATIONS.md item 4: CORS on the
+ * R2 DATA Custom Domain is manual config, not a default; a bucket with
+ * nothing published yet can surface its missing-object response to the
+ * browser as an opaque CORS failure rather than a readable 404) — is
+ * treated the same way: a site with no data published yet is a legitimate
+ * state the UI must render, not an unhandled rejection that leaves callers
+ * stuck on "Carregando…" forever. The real error is still logged so it
+ * isn't silently swallowed.
+ */
 export async function fetchJson(url) {
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    console.error(`Falha ao buscar ${url}:`, error);
+    return null;
+  }
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Falha ao buscar ${url}: HTTP ${response.status}`);

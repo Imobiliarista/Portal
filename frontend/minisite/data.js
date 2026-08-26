@@ -50,8 +50,20 @@ export function getDataBaseUrl() {
   return PRODUCTION_DATA_BASE_URL;
 }
 
+/**
+ * Same contract as frontend/portal/data.js#fetchJson — see that file's
+ * header comment for why a `fetch()` that never gets a response at all
+ * (network down, or a CORS-blocked request) is treated the same as an
+ * HTTP 404 instead of left as an unhandled rejection.
+ */
 export async function fetchJson(url) {
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    console.error(`Falha ao buscar ${url}:`, error);
+    return null;
+  }
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Falha ao buscar ${url}: HTTP ${response.status}`);
