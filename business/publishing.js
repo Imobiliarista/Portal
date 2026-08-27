@@ -595,9 +595,17 @@ export async function republishBrokerListings(env, brokerId) {
  *   encolheu) são apagados explicitamente — `manifest.shards` normalmente
  *   só cresce (decisão 4c), mas aqui, que recalcula tudo do zero, não faz
  *   sentido deixar `004.json` órfão apontando pra nada se a cidade agora
- *   cabe em 3 shards.
+ *   cabe em 3 shards. **Só quando `pruneOrphanShards` (default `true`) está
+ *   ligado** — `false` grava/atualiza manifest+index+shards via `putPublic`
+ *   normalmente, mas nunca chama `deletePublic`. Existe para
+ *   `business/r2ReadModelsAdapter.js` (Etapa 4, missão "materializa read
+ *   models"), cujo próprio requisito explícito é nunca reutilizar uma
+ *   capacidade de exclusão do publicador dentro do adapter de publicação
+ *   protegida — chamadores diretos (`scripts/rebuild-city.js`,
+ *   `rebuildAll` abaixo) continuam com o default `true`, comportamento
+ *   inalterado.
  */
-export async function rebuildCity(env, citySlug) {
+export async function rebuildCity(env, citySlug, { pruneOrphanShards = true } = {}) {
   const cityRef = requireCityBySlug(citySlug);
   const listingIds = await getCityListingIds(env, citySlug);
 
@@ -644,10 +652,12 @@ export async function rebuildCity(env, citySlug) {
     }
   }
 
-  const previousManifest = await getPublic(env, dataKeys.cityManifest(citySlug));
-  const previousShardCount = previousManifest?.shards?.length ?? 0;
-  for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
-    await deletePublic(env, dataKeys.cityShard(citySlug, shardNumber));
+  if (pruneOrphanShards) {
+    const previousManifest = await getPublic(env, dataKeys.cityManifest(citySlug));
+    const previousShardCount = previousManifest?.shards?.length ?? 0;
+    for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
+      await deletePublic(env, dataKeys.cityShard(citySlug, shardNumber));
+    }
   }
 
   return touchCityManifest(env, citySlug, { totalListings: items.length, shardCount: shards.length }, cityRef);

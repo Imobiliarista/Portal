@@ -18,12 +18,20 @@
 // abrir conexão remota").
 //
 // SEM delete em nenhuma função deste arquivo — nem `deletePublic`, nem
-// `deletePrivate`. `rebuildCity`/`rebuildAll` (business/publishing.js,
-// Etapa 6, não deste lote) já apagavam shard órfão como parte do próprio
-// contrato antes deste adapter existir; nenhuma chamada nova introduzida
-// aqui adiciona uma exclusão que não existisse antes, e nenhuma função
-// exportada por este arquivo aceita ou expõe essa operação (Etapa 4
-// "não ofereça delete/remove/purge ou equivalente no adapter").
+// `deletePrivate`, ESTRUTURALMENTE, não por sorte de estado. Nenhuma
+// função exportada aqui chama uma dessas diretamente, e a única função
+// reutilizada de `business/publishing.js` que TEM capacidade de exclusão
+// (`rebuildCity`, que por padrão apaga shard órfão de cidade que
+// encolheu) só é chamada daqui com `{ pruneOrphanShards: false }`
+// (ver `reconcileKnownBrokersAndCities` abaixo) — sem esse guard,
+// reutilizar `rebuildCity` teria reintroduzido exatamente a exclusão que
+// a Etapa 4 proíbe explicitamente para este adapter ("não apagar shards
+// órfãos nesta primeira implementação protegida" / "não reutilize [a
+// capacidade de exclusão] no adapter de publicação inicial"), apesar de
+// `rebuildCity` em si continuar podando órfãos normalmente para quem a
+// chama fora deste arquivo (`scripts/rebuild-city.js`, `rebuildAll`).
+// Nenhuma função exportada por este arquivo aceita ou expõe essa operação
+// (Etapa 4 "não ofereça delete/remove/purge ou equivalente no adapter").
 
 import { getKnownCitySlugs, getKnownBrokerIds } from "../storage/indexes.js";
 import { getPublic } from "../storage/public.js";
@@ -182,6 +190,18 @@ export async function applyGlobalCatalogsPlan(env, plan) {
  * como script Node de vida longa (Etapa 5), então um laço simples sobre
  * todas as cidades válidas já é, na prática, "um lote só", sem precisar do
  * mecanismo de retomada.
+ *
+ * **Sempre com `{ pruneOrphanShards: false }`** (Etapa 4 "não apagar
+ * shards órfãos nesta primeira implementação protegida" /
+ * "não reutilize [a capacidade de exclusão] no adapter de publicação
+ * inicial"): `rebuildCity` por padrão apaga arquivos de shard que
+ * sobraram de uma cidade que encolheu (`deletePublic`, ver seu próprio
+ * cabeçalho em business/publishing.js) — comportamento correto para o
+ * caminho normal de reconstrução manual (`npm run rebuild:city`), mas
+ * proibido explicitamente aqui. Sem essa flag, este adapter poderia
+ * disparar uma exclusão real de R2 durante uma publicação comum, apesar
+ * do cabeçalho deste arquivo dizer "sem delete" — exatamente o que essa
+ * flag existe para impedir estruturalmente, não por sorte de estado.
  */
 export async function reconcileKnownBrokersAndCities(env, enumeration, validation) {
   const brokerResults = [];
@@ -194,7 +214,7 @@ export async function reconcileKnownBrokersAndCities(env, enumeration, validatio
 
   const validCitySlugs = enumeration.citySlugs.filter((slug) => !validation.unknownCitySlugs.includes(slug));
   for (const citySlug of validCitySlugs) {
-    await rebuildCity(env, citySlug);
+    await rebuildCity(env, citySlug, { pruneOrphanShards: false });
   }
 
   return {

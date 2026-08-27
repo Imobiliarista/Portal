@@ -16,7 +16,7 @@ import { publishListing } from "../../business/publishing.js";
 import { createBroker } from "../../business/brokers.js";
 import { createListing } from "../../business/listings.js";
 import { registerCitySlug } from "../../storage/indexes.js";
-import { getPublic } from "../../storage/public.js";
+import { getPublic, putPublic } from "../../storage/public.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
 import { nextCpf } from "../support/cpf.js";
 
@@ -193,6 +193,74 @@ test("reconcileKnownBrokersAndCities skips an unknown city slug instead of throw
   const result = await reconcileKnownBrokersAndCities(env, enumeration, validation);
   assert.equal(result.citiesProcessed, 0);
   assert.equal(result.totalCities, 1);
+});
+
+// Regressão (missão "materializa read models R2", ajuste pós-review):
+// reconcileKnownBrokersAndCities reaproveitava rebuildCity, que por padrão
+// apaga um shard órfão quando uma cidade encolhe (deletePublic) — um
+// caminho real de exclusão dentro de uma publicação supostamente
+// "protegida, sem delete". Fixed com `rebuildCity(..., { pruneOrphanShards:
+// false })`; este teste reproduz exatamente o cenário de encolhimento e
+// prova, espionando `env.IMOB_DATA.delete`, que nada aqui chama delete.
+test("reconcileKnownBrokersAndCities never calls delete, even when a city has an orphaned shard from before (regression)", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  await makeActiveListing(env, broker.brokerId, { slug: "encolheu-adapter" });
+
+  // Estado que simula uma cidade que já teve 2 shards e agora só precisa
+  // de 1 — exatamente o gatilho que faria rebuildCity(citySlug) (sem a
+  // flag) apagar cities/londrina/002.json.
+  await putPublic(env, "cities/londrina/002.json", []);
+  const existingManifest = await getPublic(env, "cities/londrina/manifest.json");
+  await putPublic(env, "cities/londrina/manifest.json", { ...existingManifest, shards: ["001.json", "002.json"] });
+
+  const originalDelete = env.IMOB_DATA.delete.bind(env.IMOB_DATA);
+  env.IMOB_DATA.delete = () => {
+    throw new Error("reconcileKnownBrokersAndCities must never call IMOB_DATA.delete");
+  };
+  let enumeration;
+  let validation;
+  try {
+    enumeration = await enumerate(env);
+    validation = await validate(env, enumeration);
+    await reconcileKnownBrokersAndCities(env, enumeration, validation);
+  } finally {
+    env.IMOB_DATA.delete = originalDelete;
+  }
+
+  // A cidade foi de fato reconciliada (não é um no-op) — só a exclusão do
+  // órfão que não aconteceu.
+  assert.equal(validation.valid, true);
+  assert.notEqual(
+    await getPublic(env, "cities/londrina/002.json"),
+    null,
+    "the orphaned shard must still exist — pruning is out of scope for this adapter",
+  );
+});
+
+test("publishReadModels (full pipeline) never calls delete on IMOB_PRIVATE or IMOB_DATA, even in a city-shrink scenario", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  await makeActiveListing(env, broker.brokerId, { slug: "encolheu-pipeline" });
+
+  await putPublic(env, "cities/londrina/002.json", []);
+  const existingManifest = await getPublic(env, "cities/londrina/manifest.json");
+  await putPublic(env, "cities/londrina/manifest.json", { ...existingManifest, shards: ["001.json", "002.json"] });
+
+  const originalDataDelete = env.IMOB_DATA.delete.bind(env.IMOB_DATA);
+  const originalPrivateDelete = env.IMOB_PRIVATE.delete.bind(env.IMOB_PRIVATE);
+  env.IMOB_DATA.delete = () => {
+    throw new Error("publishReadModels must never call IMOB_DATA.delete");
+  };
+  env.IMOB_PRIVATE.delete = () => {
+    throw new Error("publishReadModels must never call IMOB_PRIVATE.delete");
+  };
+  try {
+    await assert.doesNotReject(publishReadModels(env));
+  } finally {
+    env.IMOB_DATA.delete = originalDataDelete;
+    env.IMOB_PRIVATE.delete = originalPrivateDelete;
+  }
 });
 
 test("reconcileKnownBrokersAndCities skips a brokerId with no private profile instead of throwing", async () => {

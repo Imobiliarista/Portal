@@ -56,6 +56,27 @@ duplica essa lógica. **Nenhuma função deste arquivo chama
 `deletePublic`/`deletePrivate`** — nem exporta nada com "delete"/"remove"/
 "purge" no nome (testado).
 
+**Correção pós-revisão (mesmo lote, antes do merge)**: a primeira versão
+reaproveitava `rebuildCity` sem guarda — mas `rebuildCity` por padrão
+apaga (`deletePublic`) o shard órfão de uma cidade que encolheu, o que
+tornava a garantia "sem delete" verdadeira só por sorte de estado (só não
+disparava se nenhuma cidade precisasse de poda naquela execução), violando
+diretamente a Etapa 4 ("não apagar shards órfãos nesta primeira
+implementação protegida" / "não reutilize [a capacidade de exclusão] no
+adapter de publicação inicial"). Corrigido com um novo parâmetro
+`rebuildCity(env, citySlug, { pruneOrphanShards = true })`
+(`business/publishing.js`) — `false` grava manifest/index/shards
+normalmente via `putPublic`, mas nunca chama `deletePublic`; o adapter
+agora sempre passa `{ pruneOrphanShards: false }`
+(`reconcileKnownBrokersAndCities`). Chamadores existentes
+(`scripts/rebuild-city.js`, `rebuildAll`) mantêm o default `true`,
+comportamento inalterado. Testes novos travam os dois lados: `rebuildCity`
+continua podando por padrão, `{ pruneOrphanShards: false }` nunca poda, e
+`publishReadModels`/`reconcileKnownBrokersAndCities` nunca chamam
+`IMOB_DATA.delete`/`IMOB_PRIVATE.delete` mesmo num cenário reproduzido de
+cidade que encolheu (`tests/publishing/publishing.test.js`,
+`tests/business/r2-read-models-adapter.test.js`).
+
 ### 3. Executor + workflow protegido
 
 - `scripts/r2-read-models.js` (`npm run r2-read-models:validate`/
