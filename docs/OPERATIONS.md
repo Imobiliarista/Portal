@@ -1,5 +1,153 @@
 # Operações
 
+## Publicação de read models R2 (corrige o "Carregando…" eterno em produção)
+
+**Causa raiz** (confirmada nesta sessão): `storage/keys.js#dataKeys.portalCities/portalTaxonomy/portalModules`
+sempre soube nomear `portal/cities.json`/`portal/taxonomy.json`/`portal/modules.json`,
+e `frontend/portal/data.js`/`app.js` sempre soube LER esses 3 objetos — mas
+nenhum código em `business/` jamais os ESCREVIA. `GET
+https://dados.imobiliarista.net/portal/cities.json` sempre respondia
+404/CORS, e o frontend antigo colapsava essa falha em uma promessa sem
+tratamento — a tela ficava presa em "Carregando…" para sempre. Corrigido
+por dois lados independentes:
+
+1. **Geração dos 3 catálogos** (`business/taxonomy.js`,
+   `business/catalogs.js`, `business/publishing.js#publishPortalCatalogs`)
+   — agora sempre produzidos, inclusive vazios e válidos (`{"cities":
+   []}`, nunca 404) quando `IMOB_PRIVATE` não tem nenhum corretor/imóvel.
+2. **Frontend com estados distintos** (`frontend/shared/public-data-errors.js`,
+   `frontend/portal/{data,app,render}.js`, `frontend/minisite/{data,app}.js`)
+   — 404 real, erro HTTP, falha de rede/CORS e JSON inválido nunca mais
+   colapsam numa promessa sem tratamento; cada um renderiza um estado
+   final (nunca "Carregando…" indefinido) com "Tentar novamente" quando
+   aplicável.
+
+Publicar esses 3 catálogos em produção pela primeira vez (e sempre que
+`IMOB_PRIVATE` mudar por fora do fluxo normal do painel) usa o workflow
+manual e protegido abaixo — nunca escrita automática em push, nunca deploy
+do Worker.
+
+### Recursos esperados
+
+```text
+IMOB_PRIVATE → imob-private   (sem Custom Domain, nunca público)
+IMOB_DATA    → imob-data      (Custom Domain: dados.imobiliarista.net)
+IMOB_MEDIA   → imob-media     (Custom Domain: media.imobiliarista.net)
+```
+
+`imob-private` **não pode** ter Custom Domain nem URL pública — é lido
+apenas pelo Worker (rotas `/api/*`) e pelo adapter/executor abaixo, nunca
+pelo visitante.
+
+### Aplicar a política CORS versionada (painel Cloudflare)
+
+O conteúdo canônico está em [`config/r2/imob-data-cors.json`](../config/r2/imob-data-cors.json)
+(validado localmente por `npm run validate:r2-cors` — só `GET`/`HEAD`,
+sem headers de autenticação, sem domínio privado). Aplicar manualmente,
+uma vez (e sempre que o arquivo mudar):
+
+1. Cloudflare Dashboard;
+2. R2 Object Storage;
+3. bucket `imob-data`;
+4. Settings;
+5. CORS Policy;
+6. Add CORS policy;
+7. colar o conteúdo de `config/r2/imob-data-cors.json`;
+8. Save;
+9. aguardar propagação (minutos, não instantâneo);
+10. executar Purge Cache para `dados.imobiliarista.net`.
+
+Respostas já em cache de antes da política CORS existir podem continuar
+sem os cabeçalhos novos até o purge — por isso o passo 10 não é opcional.
+Repita os mesmos 10 passos para o bucket `imob-media` (mesmo conteúdo,
+já que ambos são leitura pública somente-GET/HEAD).
+
+### GitHub Environment `production-r2`
+
+Antes da primeira publicação, criar no repositório (Settings → Environments):
+
+```text
+Environment: production-r2
+Secret:      CLOUDFLARE_API_TOKEN     (token com permissão de editar objetos R2 —
+                                        "Workers R2 Storage: Edit" — escopo
+                                        mínimo necessário; não reutilizar um
+                                        token de deploy do Worker aqui)
+Variable:    CLOUDFLARE_ACCOUNT_ID
+Reviewer:    proprietário autorizado do repositório (obrigatório —
+             sem isso qualquer `publish` aprovado por qualquer colaborador
+             passaria direto)
+```
+
+### Primeira publicação
+
+1. GitHub → aba **Actions**;
+2. escolher **"Validar e publicar read models no R2"**;
+3. **Run workflow**, branch `main`;
+4. modo `validate`, executar — confere que a suíte inteira, os schemas, a
+   política CORS e o adapter (contra fixtures locais, sem credenciais)
+   passam;
+5. confirmar sucesso total no resumo do job;
+6. **Run workflow** de novo, modo `publish`, campo de confirmação com
+   exatamente `PUBLICAR_R2`;
+7. iniciar;
+8. aprovar o Environment `production-r2` quando solicitado;
+9. aguardar;
+10. no resumo do job `publish`, confirmar "Exclusões: nenhuma" e "Deploy
+    do Worker: NÃO executado";
+11. verificar os 3 objetos (próxima seção).
+
+### Verificação pós-publicação
+
+Estas URLs devem responder `200` com JSON válido — nunca HTML/404 — mesmo
+antes de qualquer corretor existir (a primeira pode ser um catálogo vazio,
+`{"cities": []}`, o que é um sucesso, não uma falha):
+
+```text
+https://dados.imobiliarista.net/portal/cities.json
+https://dados.imobiliarista.net/portal/taxonomy.json
+https://dados.imobiliarista.net/portal/modules.json
+```
+
+Testar CORS a partir do navegador em `https://imobiliarista.net` (DevTools
+→ Console):
+
+```js
+fetch("https://dados.imobiliarista.net/portal/cities.json")
+  .then((r) => console.log(r.status, r.headers.get("access-control-allow-origin"), r.headers.get("content-type")))
+```
+
+Esperado: `200`, `access-control-allow-origin: *` (ou o valor específico
+configurado), `content-type: application/json...`. Se o CORS ainda não
+tiver propagado, veja o passo 9 (purge) acima.
+
+### Rerun seguro — o que nunca publica sozinho
+
+- Abrir a tela de Actions **não** publica.
+- Rodar o modo `validate` **nunca** publica (não recebe nenhuma credencial
+  — `scripts/r2-read-models.js validate` roda inteiramente contra
+  fixtures locais em memória).
+- Selecionar `publish` sem digitar exatamente `PUBLICAR_R2` **não**
+  publica (o job nem inicia — guard no `if:` do workflow).
+- Rodar em qualquer branch além de `main` **não** publica.
+- Reprovar o Environment `production-r2` **não** publica.
+- Este workflow **nunca** roda `wrangler deploy`/`wrangler versions
+  upload` — o Worker ativo não é tocado.
+- Este workflow **nunca** altera DNS, bindings ou secrets do Worker.
+- O adapter (`business/r2ReadModelsAdapter.js`) **não oferece** nenhuma
+  operação de exclusão — só `create`/`update`/`unchanged`.
+
+### Comandos locais equivalentes
+
+```bash
+npm run r2-read-models:validate   # mesmo que o job `validate` do workflow — sem credenciais
+npm run r2-read-models:publish    # exige CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+                                   # IMOB_R2_ENVIRONMENT=production-r2 e
+                                   # IMOB_R2_AUTHORIZATION=PUBLICAR_R2 no ambiente —
+                                   # rodar fora do workflow só para depuração local,
+                                   # nunca como substituto do Environment protegido
+npm run validate:r2-cors          # valida config/r2/imob-data-cors.json
+```
+
 ## Pendências não-bloqueantes (§27 hotfix — PBKDF2 no navegador)
 
 13. **`PASSWORD_PEPPER` PENDENTE de provisionamento.** `wrangler secret put
@@ -324,18 +472,25 @@ até ele existir).
    em `storage/cache.js` (`CACHE_TTL_SECONDS`); a Cache Rule no painel deve
    refletir esses mesmos valores.
 4. **CORS no Custom Domain de R2 DATA/MEDIA** (§80) — mesma categoria do
-   item 3 (config manual no painel Cloudflare, nunca existiu por padrão),
-   mas nunca tinha sido listada aqui. `core/security.js#PUBLIC_READ_CORS_HEADERS`/
-   `buildCorsHeaders` são a definição canônica, testada
-   (`tests/core/security.test.js`), mas **não têm nenhum call site** —
-   R2 DATA/MEDIA são lidos direto do Custom Domain, nunca através deste
-   Worker (§73/§89), então nenhuma resposta deste Worker corresponde a
-   uma leitura de R2. A política real (GET/HEAD/OPTIONS, header
-   `Content-Type`, origem restrita à allowlist de hoje —
-   `portal.imobiliarista.net`/`painel.imobiliarista.net`/
-   `admin.imobiliarista.net`/minisites por corretor) precisa ser
-   replicada na configuração de CORS do bucket/Custom Domain no painel
-   Cloudflare, espelhando essa constante.
+   item 3 (config manual no painel Cloudflare, nunca existiu por padrão).
+   **Atualizado**: a definição canônica e versionada agora é
+   [`config/r2/imob-data-cors.json`](../config/r2/imob-data-cors.json) —
+   ver a seção "Publicação de read models R2" no topo deste documento para
+   o passo a passo de aplicação. Essa política usa `AllowedOrigins: ["*"]`
+   (leitura pública irrestrita, só `GET`/`HEAD`) em vez de uma allowlist de
+   origem: `IMOB_DATA` contém exclusivamente projeções públicas (nunca
+   dado privado — isso é garantido pelo publicador,
+   `business/publishing.js`/`business/r2ReadModelsAdapter.js`, nunca pelo
+   CORS), e o R2 não valida wildcards parciais de subdomínio de forma
+   confiável (`https://*.imobiliarista.net` não é uma origem CORS válida
+   para todo minisite por corretor), então restringir a origem não reduz
+   exposição real e quebraria minisites novos até a allowlist ser
+   atualizada manualmente. `core/security.js#PUBLIC_READ_CORS_HEADERS`/
+   `buildCorsHeaders` continuam existindo e testados
+   (`tests/core/security.test.js`) como a política que um Worker
+   aplicaria SE algum dia servisse uma leitura de R2 diretamente — hoje
+   nenhum serve (§73/§89), então esse código nunca é exercitado em
+   produção; não confundir com a política que de fato vai no painel.
 
 ## Pendências não-bloqueantes (Etapa 11, sub-lote 5 — revisão headers/CORS/cache)
 

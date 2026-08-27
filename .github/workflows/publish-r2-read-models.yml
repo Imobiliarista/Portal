@@ -1,0 +1,144 @@
+name: Validar e publicar read models no R2
+
+# Missão: corrigir https://imobiliarista.net preso em "Carregando..." de
+# forma reproduzível e protegida — NUNCA um deploy do Worker, NUNCA uma
+# escrita automática em push. Disparo exclusivamente manual
+# (workflow_dispatch); publicação real exige main + a confirmação literal
+# PUBLICAR_R2 + aprovação do Environment protegido `production-r2`.
+#
+# Este workflow nunca roda `wrangler deploy`/`wrangler versions upload`,
+# nunca altera o Worker ativo, DNS, bindings ou secrets — só grava objetos
+# JSON em R2 (bucket `imob-data`) via scripts/r2-read-models.js, que fala
+# com a API REST oficial da Cloudflare para objetos R2, nunca com wrangler.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Operação solicitada
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - publish
+      confirmation:
+        description: Para publish, digite exatamente PUBLICAR_R2
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: imob-r2-read-models-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validar (sem credenciais, sem acesso remoto)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instala dependências
+        run: npm ci
+
+      - name: Suíte de testes completa
+        run: npm test
+
+      - name: Validação de schemas (schemas/*.schema.json)
+        run: npm run validate:schemas
+
+      - name: Validação da política CORS versionada (config/r2/imob-data-cors.json)
+        run: npm run validate:r2-cors
+
+      - name: Validação do adapter de read models (fixtures locais, sem R2)
+        run: npm run r2-read-models:validate
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Validar read models R2"
+            echo ""
+            echo "- Modo solicitado: \`${{ inputs.mode }}\`"
+            echo "- Resultado: sucesso"
+            echo "- Credenciais disponibilizadas a este job: **nenhuma**"
+            echo "- Acesso remoto realizado: **nenhum**"
+            echo "- Objetos alterados em R2: **zero**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publicar (production-r2)
+    needs: validate
+    if: |
+      inputs.mode == 'publish' &&
+      inputs.confirmation == 'PUBLICAR_R2' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production-r2
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      IMOB_R2_ENVIRONMENT: production-r2
+      IMOB_R2_AUTHORIZATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instala dependências
+        run: npm ci
+
+      - name: Confere credenciais sem revelar valores
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN ausente — abortando antes de qualquer escrita." >&2
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_ACCOUNT_ID ausente — abortando antes de qualquer escrita." >&2
+            exit 1
+          fi
+          echo "Credenciais presentes (valores nunca exibidos neste log)."
+
+      - name: Suíte de testes completa
+        run: npm test
+
+      - name: Validação de schemas (schemas/*.schema.json)
+        run: npm run validate:schemas
+
+      - name: Validação da política CORS versionada (config/r2/imob-data-cors.json)
+        run: npm run validate:r2-cors
+
+      - name: Validação do adapter antes de publicar (fixtures locais, sem R2)
+        run: npm run r2-read-models:validate
+
+      - name: Publica os read models em R2 (imob-private -> imob-data)
+        run: npm run r2-read-models:publish
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Publicar read models R2"
+            echo ""
+            echo "- Environment: production-r2"
+            echo "- Origem: imob-private (somente leitura) — Destino: imob-data"
+            echo "- Deploy do Worker: **NÃO executado**"
+            echo "- DNS/bindings/secrets: **NÃO alterados**"
+            echo "- Exclusões disponíveis/executadas: **nenhuma** (o adapter não oferece delete)"
+          } >> "$GITHUB_STEP_SUMMARY"

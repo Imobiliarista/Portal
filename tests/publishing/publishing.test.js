@@ -461,6 +461,77 @@ test("rebuildCity reconstructs the same shard/index/manifest state as incrementa
   assert.equal(index.length, 2);
 });
 
+// --- rebuildCity's pruneOrphanShards option (adapter regression, Etapa 4) --
+//
+// Missão "materializa read models R2": business/r2ReadModelsAdapter.js
+// reused rebuildCity for its read-only "reconcile" step, but rebuildCity's
+// default behavior deletes an orphaned trailing shard file when a city
+// shrinks — that reused rebuildCity call was the one code path capable of
+// a real R2 delete happening during a normal read-models publish, despite
+// the adapter's own header claiming "sem delete". These tests lock the
+// fix: the flag must actually suppress the delete, and must default to
+// `true` so every OTHER caller (scripts/rebuild-city.js, rebuildAll below)
+// keeps its original orphan-pruning behavior unchanged.
+
+test("rebuildCity prunes an orphaned trailing shard by default (pruneOrphanShards defaults to true)", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const active = await createListing(env, broker.brokerId, baseListingInput({ slug: "encolheu-1", status: "active" }));
+  await publishListing(env, active.listingId);
+
+  // Simula uma cidade que já teve 2 shards publicados (ex.: antes de vários
+  // anúncios saírem do ar) — 002.json ficaria órfão depois de um rebuild
+  // que agora só precisa de 1 shard.
+  await putPublic(env, "cities/londrina/002.json", []);
+  await putPublic(env, "cities/londrina/manifest.json", {
+    schemaVersion: 1,
+    city: { slug: "londrina", name: "Londrina", uf: "PR" },
+    publicationVersion: 1,
+    totalListings: 1,
+    pageSize: 300,
+    shards: ["001.json", "002.json"],
+    lastUpdated: new Date().toISOString(),
+  });
+
+  await rebuildCity(env, "londrina");
+
+  assert.equal(await getPublic(env, "cities/londrina/002.json"), null, "the orphaned shard must be deleted by default");
+});
+
+test("rebuildCity({ pruneOrphanShards: false }) never deletes the orphaned trailing shard — used by business/r2ReadModelsAdapter.js", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const active = await createListing(env, broker.brokerId, baseListingInput({ slug: "encolheu-2", status: "active" }));
+  await publishListing(env, active.listingId);
+
+  await putPublic(env, "cities/londrina/002.json", []);
+  await putPublic(env, "cities/londrina/manifest.json", {
+    schemaVersion: 1,
+    city: { slug: "londrina", name: "Londrina", uf: "PR" },
+    publicationVersion: 1,
+    totalListings: 1,
+    pageSize: 300,
+    shards: ["001.json", "002.json"],
+    lastUpdated: new Date().toISOString(),
+  });
+
+  const originalDelete = env.IMOB_DATA.delete.bind(env.IMOB_DATA);
+  env.IMOB_DATA.delete = () => {
+    throw new Error("rebuildCity(..., { pruneOrphanShards: false }) must never call delete");
+  };
+  try {
+    await rebuildCity(env, "londrina", { pruneOrphanShards: false });
+  } finally {
+    env.IMOB_DATA.delete = originalDelete;
+  }
+
+  assert.notEqual(
+    await getPublic(env, "cities/londrina/002.json"),
+    null,
+    "the orphaned shard must survive when pruneOrphanShards is false",
+  );
+});
+
 // --- rebuild em lote (§34) --------------------------------------------------
 
 test("rebuildAll processes cities in batches, checkpoints between calls, and is idempotent", async () => {

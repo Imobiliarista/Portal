@@ -37,6 +37,17 @@ test("privateKeys build the §23 layout", () => {
   assert.equal(privateKeys.planRegistry(), "indexes/plans.json");
 });
 
+// Etapa 2 (missão "materializa read models R2") — contrato canônico das 3
+// chaves globais do portal. Este teste deve falhar se qualquer uma delas
+// mudar de valor silenciosamente: frontend/portal/data.js,
+// business/publishing.js#publishPortalCatalogs e
+// business/r2ReadModelsAdapter.js dependem dos 3 literais exatos abaixo.
+test("dataKeys.portal{Cities,Taxonomy,Modules} are the exact canonical global read model keys", () => {
+  assert.equal(dataKeys.portalCities(), "portal/cities.json");
+  assert.equal(dataKeys.portalTaxonomy(), "portal/taxonomy.json");
+  assert.equal(dataKeys.portalModules(), "portal/modules.json");
+});
+
 test("dataKeys build the §24 layout, including city shards (§12)", () => {
   assert.equal(dataKeys.portalCities(), "portal/cities.json");
   assert.equal(dataKeys.cityManifest("sao-paulo"), "cities/sao-paulo/manifest.json");

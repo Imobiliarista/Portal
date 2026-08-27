@@ -8,6 +8,22 @@
 // see frontend/portal/data.js's header comment for why (Static Assets only
 // serves frontend/, so a cross-boundary import 404s at runtime). These
 // paths must stay in sync with storage/keys.js#dataKeys.
+//
+// `fetchJson` + the 4 typed error classes moved to
+// ../shared/public-data-errors.js (Etapa 8) — shared with
+// frontend/portal/data.js, same reasoning: both SPAs need the exact same
+// distinction between "not found" (§75), an HTTP error, a network/CORS
+// failure, and an invalid JSON body.
+
+import {
+  fetchJson,
+  PublicDataNotFoundError,
+  PublicDataHttpError,
+  PublicDataNetworkError,
+  PublicDataContractError,
+} from "../shared/public-data-errors.js";
+
+export { fetchJson, PublicDataNotFoundError, PublicDataHttpError, PublicDataNetworkError, PublicDataContractError };
 
 const APEX = "imobiliarista.net";
 const PRODUCTION_DATA_BASE_URL = `https://dados.${APEX}`;
@@ -50,31 +66,20 @@ export function getDataBaseUrl() {
   return PRODUCTION_DATA_BASE_URL;
 }
 
-/**
- * Same contract as frontend/portal/data.js#fetchJson — see that file's
- * header comment for why a `fetch()` that never gets a response at all
- * (network down, or a CORS-blocked request) is treated the same as an
- * HTTP 404 instead of left as an unhandled rejection.
- */
-export async function fetchJson(url) {
-  let response;
-  try {
-    response = await fetch(url);
-  } catch (error) {
-    console.error(`Falha ao buscar ${url}:`, error);
-    return null;
-  }
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`Falha ao buscar ${url}: HTTP ${response.status}`);
-  }
-  return response.json();
-}
-
 function shardFileName(shardNumber) {
   return `${String(shardNumber).padStart(3, "0")}.json`;
 }
 
+/**
+ * Every method throws one of the 4 typed errors from
+ * ../shared/public-data-errors.js instead of returning `null` on any
+ * failure (Etapa 8) — frontend/minisite/app.js decides, per key, whether
+ * `PublicDataNotFoundError` means "corretor não encontrado"/"imóvel não
+ * encontrado" (§75, legitimate absence) or, for `profile`, needs to be
+ * distinguished from a temporary outage (a broker that exists but whose
+ * profile fetch failed for network/CORS/HTTP reasons is NOT the same as a
+ * minisite that never existed — see app.js).
+ */
 export function createDataClient(baseUrl = getDataBaseUrl()) {
   const at = (key) => `${baseUrl}/${key}`;
   return {

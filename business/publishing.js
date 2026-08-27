@@ -106,9 +106,11 @@
 
 import { getListingById, ListingNotFoundError } from "./listings.js";
 import { getBrokerById, BrokerNotFoundError } from "./brokers.js";
-import { requireCityBySlug } from "./cities.js";
+import { requireCityBySlug, getCityBySlug } from "./cities.js";
 import { buildListingCard, buildIndexEntry } from "./cards.js";
 import { cardFitsInShard, partitionCardsIntoShards } from "./sharding.js";
+import { buildPortalTaxonomy } from "./taxonomy.js";
+import { buildPortalCitiesCatalog, buildPortalModulesCatalog } from "./catalogs.js";
 import { getPrivate, putPrivate, deletePrivate } from "../storage/private.js";
 import { getPublic, putPublic, deletePublic } from "../storage/public.js";
 import { privateKeys, dataKeys, shardFileName, MAX_CARDS_PER_SHARD, REBUILD_BATCH_SIZE } from "../storage/keys.js";
@@ -593,9 +595,17 @@ export async function republishBrokerListings(env, brokerId) {
  *   encolheu) são apagados explicitamente — `manifest.shards` normalmente
  *   só cresce (decisão 4c), mas aqui, que recalcula tudo do zero, não faz
  *   sentido deixar `004.json` órfão apontando pra nada se a cidade agora
- *   cabe em 3 shards.
+ *   cabe em 3 shards. **Só quando `pruneOrphanShards` (default `true`) está
+ *   ligado** — `false` grava/atualiza manifest+index+shards via `putPublic`
+ *   normalmente, mas nunca chama `deletePublic`. Existe para
+ *   `business/r2ReadModelsAdapter.js` (Etapa 4, missão "materializa read
+ *   models"), cujo próprio requisito explícito é nunca reutilizar uma
+ *   capacidade de exclusão do publicador dentro do adapter de publicação
+ *   protegida — chamadores diretos (`scripts/rebuild-city.js`,
+ *   `rebuildAll` abaixo) continuam com o default `true`, comportamento
+ *   inalterado.
  */
-export async function rebuildCity(env, citySlug) {
+export async function rebuildCity(env, citySlug, { pruneOrphanShards = true } = {}) {
   const cityRef = requireCityBySlug(citySlug);
   const listingIds = await getCityListingIds(env, citySlug);
 
@@ -642,10 +652,12 @@ export async function rebuildCity(env, citySlug) {
     }
   }
 
-  const previousManifest = await getPublic(env, dataKeys.cityManifest(citySlug));
-  const previousShardCount = previousManifest?.shards?.length ?? 0;
-  for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
-    await deletePublic(env, dataKeys.cityShard(citySlug, shardNumber));
+  if (pruneOrphanShards) {
+    const previousManifest = await getPublic(env, dataKeys.cityManifest(citySlug));
+    const previousShardCount = previousManifest?.shards?.length ?? 0;
+    for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
+      await deletePublic(env, dataKeys.cityShard(citySlug, shardNumber));
+    }
   }
 
   return touchCityManifest(env, citySlug, { totalListings: items.length, shardCount: shards.length }, cityRef);
@@ -691,4 +703,82 @@ export async function rebuildAll(env, { batchSize = REBUILD_BATCH_SIZE, cursor }
   }
 
   return { processedCities: batch, nextCursor, totalCities: citySlugs.length, done };
+}
+
+// --- catálogos globais do portal (§65-§66, Etapa 3) -----------------------
+//
+// Materializa os 3 read models globais que `storage/keys.js#dataKeys`
+// sempre soube nomear (`portalCities`/`portalTaxonomy`/`portalModules`) mas
+// que nenhum código gravava até este lote — a causa raiz do
+// `https://imobiliarista.net` preso em "Carregando…" (portal/cities.json
+// nunca existiu em IMOB_DATA, então `GET
+// https://dados.imobiliarista.net/portal/cities.json` sempre respondia
+// 404/CORS, nunca um catálogo vazio válido). Ver docs/CHANGELOG.md.
+//
+// Reaproveita o publicador oficial (`putPublic`, mesmo `buildCacheControl`
+// que todo outro objeto de `IMOB_DATA` já usa) em vez de introduzir um
+// caminho de escrita paralelo — é a mesma exigência do adapter (Etapa 4,
+// business/r2ReadModelsAdapter.js) "reutilizar o publicador oficial
+// existente".
+
+/**
+ * Resolve `{ slug, name, uf, totalListings }` para cada cidade do registro
+ * (`storage/indexes.js#getKnownCitySlugs` — cresce monotonicamente, nunca
+ * varre bucket, §26) a partir do manifest público já publicado dessa
+ * cidade. Uma cidade sem manifest ainda (registrada mas nunca teve
+ * `touchCityManifest` chamado — não deveria acontecer, já que
+ * `registerCitySlug` só é chamado depois de `applyCardToCity`, mas o
+ * fallback é defensivo, mesmo espírito de `rebuildCity`'s "não deixar um
+ * registro corrompido derrubar o rebuild inteiro") entra com
+ * `totalListings: 0` em vez de ser omitida.
+ *
+ * Uma cidade cujo slug não resolve mais no catálogo IBGE
+ * (`business/cities.js#getCityBySlug`) é pulada, não fatal — retornada
+ * separadamente em `skippedCitySlugs` para o chamador decidir se registra
+ * isso no relatório (Etapa 4 "não deixar estado inválido travar tudo").
+ */
+export async function resolveKnownCitiesForCatalog(env) {
+  const citySlugs = await getKnownCitySlugs(env);
+  const cities = [];
+  const skippedCitySlugs = [];
+
+  for (const slug of citySlugs) {
+    const cityRef = getCityBySlug(slug);
+    if (!cityRef) {
+      skippedCitySlugs.push(slug);
+      continue;
+    }
+    const manifest = await getPublic(env, dataKeys.cityManifest(slug));
+    cities.push({ slug, name: cityRef.name, uf: cityRef.uf, totalListings: manifest?.totalListings ?? 0 });
+  }
+
+  return { cities, skippedCitySlugs };
+}
+
+/**
+ * Publica (upsert) os 3 catálogos globais do portal a partir do estado
+ * privado atual — idempotente (mesmo estado privado sempre produz o mesmo
+ * conteúdo, já que nenhum dos 3 builders inclui timestamp instável, ver
+ * `business/taxonomy.js`/`business/catalogs.js`) e sem operação de exclusão.
+ * Produz objetos válidos mesmo quando `IMOB_PRIVATE` está inteiramente
+ * vazio (`portal/cities.json` vira `{ schemaVersion: 1, cities: [] }`, não
+ * um 404 — Etapa 3 "estado vazio obrigatório").
+ */
+export async function publishPortalCatalogs(env) {
+  const { cities, skippedCitySlugs } = await resolveKnownCitiesForCatalog(env);
+
+  const citiesCatalog = buildPortalCitiesCatalog(cities);
+  const taxonomyCatalog = buildPortalTaxonomy();
+  const modulesCatalog = buildPortalModulesCatalog();
+
+  await putPublic(env, dataKeys.portalCities(), citiesCatalog, { cacheControl: buildCacheControl("portalCatalog") });
+  await putPublic(env, dataKeys.portalTaxonomy(), taxonomyCatalog, { cacheControl: buildCacheControl("portalCatalog") });
+  await putPublic(env, dataKeys.portalModules(), modulesCatalog, { cacheControl: buildCacheControl("portalCatalog") });
+
+  return {
+    citiesPublished: citiesCatalog.cities.length,
+    skippedCitySlugs,
+    taxonomyTypesPublished: taxonomyCatalog.types.length,
+    modulesPublished: modulesCatalog.modules.length,
+  };
 }
