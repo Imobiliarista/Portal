@@ -1,5 +1,153 @@
 # Changelog
 
+## Materializa os read models globais do portal R2 e encerra o "Carregando…" eterno em produção
+
+**Causa raiz confirmada**: `storage/keys.js#dataKeys.portalCities`/
+`portalTaxonomy`/`portalModules` sempre souberam nomear
+`portal/cities.json`/`portal/taxonomy.json`/`portal/modules.json`, e
+`frontend/portal/data.js`/`app.js` sempre souberam LER esses 3 objetos —
+mas nenhuma função em `business/` jamais os ESCREVIA (grep confirmou:
+nenhuma ocorrência de `putPublic`/`portalCities`/etc. fora de
+`storage/keys.js` e do próprio frontend antes deste lote). Em produção,
+`GET https://dados.imobiliarista.net/portal/cities.json` sempre respondia
+404 — e, antes do CORS do bucket ser configurado, um `TypeError: Failed to
+fetch` por CORS bloqueado. A versão anterior de `fetchJson`
+(`frontend/portal/data.js`, commit `697f1a3`) já evitava travar numa
+promessa sem handler, mas colapsava 404/rede/CORS/HTTP em `null`/`Error`
+genérico sem distinção — o suficiente para a tela nunca sair de
+"Carregando…" quando a causa raiz de dados (abaixo) ainda não existia.
+
+### 1. Gerador dos catálogos globais (antes inexistente)
+
+- `business/taxonomy.js` (era placeholder, §70) — `buildPortalTaxonomy()`,
+  pura, deriva `purposes` de `business/listings.js#PURPOSES` (agora
+  exportado), `types` das chaves de
+  `modules/feeds/formatters/vrsync.js#PROPERTY_TYPE_BY_LISTING_TYPE` (único
+  vocabulário real de `listing.type` já no código), `features` das
+  dimensões de filtro de `frontend/portal/filters.js`. `priceRanges` é o
+  único campo sem precedente no código — valor inicial documentado como
+  ajustável por produto.
+- `business/catalogs.js` (novo) — `buildPortalCitiesCatalog`/
+  `buildPortalModulesCatalog`, puras. Uma cidade sem anúncio ativo
+  continua listada com `totalListings: 0` (mesma filosofia do §77 já
+  aplicada a `city-manifest.schema.json`). `portal/modules.json` nunca
+  expõe `financial`/`plans`/`pwa` (administrativo/interno, não
+  visitante-facing).
+- `business/publishing.js#publishPortalCatalogs`/
+  `resolveKnownCitiesForCatalog` (novo) — escreve os 3 via `putPublic`
+  (mesmo publicador oficial, mesmo `buildCacheControl("portalCatalog")`
+  que já existia). Produz `{"cities": []}` válido (nunca 404) mesmo com
+  `IMOB_PRIVATE` inteiramente vazio.
+
+### 2. Adapter oficial IMOB_PRIVATE → IMOB_DATA
+
+`business/r2ReadModelsAdapter.js` (novo) — pipeline
+`enumerate → validate → (reconciliar corretores/cidades) → plan → apply →
+report`. `enumerate` só usa os registros já existentes
+(`getKnownCitySlugs`/`getKnownBrokerIds`, sem varredura, §26). `plan`/
+`apply` (`planGlobalCatalogs`/`applyGlobalCatalogsPlan`) são as únicas
+funções deste arquivo que tocam R2 diretamente (leitura para comparar,
+escrita via `putPublic`) e rodam inteiramente contra um `env` de teste
+(`FakeR2Bucket`) sem credenciais. Idempotente: uma segunda execução sem
+mudança de estado privado reporta `unchanged: 3`, zero `PUT`. Reconcilia
+corretores/imóveis/cidades reaproveitando `rebuildBroker`/
+`republishBrokerListings`/`rebuildCity` (Etapa 6, não deste lote) — nunca
+duplica essa lógica. **Nenhuma função deste arquivo chama
+`deletePublic`/`deletePrivate`** — nem exporta nada com "delete"/"remove"/
+"purge" no nome (testado).
+
+### 3. Executor + workflow protegido
+
+- `scripts/r2-read-models.js` (`npm run r2-read-models:validate`/
+  `:publish`) — `validate` roda só contra
+  `scripts/fixtures/r2-read-models-fixture.js` (fixture local construída
+  com as funções de negócio reais, nunca um JSON hand-copiado), inclusive
+  o caso `IMOB_PRIVATE` vazio; nunca abre conexão remota. `publish` exige,
+  na ordem: confirmação literal `PUBLICAR_R2`, `IMOB_R2_ENVIRONMENT ===
+  "production-r2"`, `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`
+  presentes (valores nunca logados), roda `validate` de novo antes de
+  qualquer escrita real, e confere que origem/destino são exatamente
+  `imob-private`/`imob-data`. Fala com a API REST oficial da Cloudflare
+  para objetos R2 (`RemoteR2Bucket`, Bearer token) — nunca `wrangler
+  deploy`/`whoami`, e a classe nem implementa `delete`/`list`.
+- `.github/workflows/publish-r2-read-models.yml` (novo) — só
+  `workflow_dispatch`. Job `publish` depende de `validate`, roda somente
+  quando `mode == 'publish' && confirmation == 'PUBLICAR_R2' && ref ==
+  'refs/heads/main'`, usa o Environment protegido `production-r2`
+  (`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` só existem nesse job).
+  `concurrency: cancel-in-progress: false`. Resumo em
+  `$GITHUB_STEP_SUMMARY` nos dois jobs, confirmando "Worker: NÃO
+  alterado", "Exclusões: zero".
+
+### 4. Política CORS versionada
+
+`config/r2/imob-data-cors.json` (novo, validado por
+`scripts/validate-r2-cors.js`/`npm run validate:r2-cors`) — só `GET`/
+`HEAD`, `AllowedOrigins: ["*"]` (justificativa completa em
+`docs/OPERATIONS.md`: `IMOB_DATA` só contém projeções já públicas, e um
+wildcard parcial de subdomínio não é uma origem CORS confiável no R2).
+Nunca aplicado remotamente por este lote — só documentado (passo a passo
+manual em `docs/OPERATIONS.md`) e validado localmente.
+
+### 5. Frontend: fim do "Carregando…" eterno
+
+- `frontend/shared/public-data-errors.js` (novo, compartilhado entre
+  `frontend/portal/data.js` e `frontend/minisite/data.js`) —
+  `PublicDataNotFoundError`/`PublicDataHttpError`/`PublicDataNetworkError`/
+  `PublicDataContractError`, e `fetchJson` com timeout (`AbortController`,
+  10s) que sempre resolve ou lança uma dessas 4 classes, nunca `null`/
+  `Error` genérico, nunca uma rejeição sem tratamento.
+- `frontend/portal/app.js` — cada rota (`renderHomeRoute`/`renderCityRoute`/
+  `renderListingRoute`/`renderComparisonRoute`, agora exportadas) decide,
+  por chave, se um 404 é "não encontrado" legítimo (cidade/imóvel) ou
+  inesperado (os 3 catálogos globais, sempre publicados desde a Etapa 3
+  acima); qualquer outro erro tipado renderiza `renderDataUnavailable`
+  (novo em `render.js`) com "Tentar novamente". Um `renderCurrentRoute`
+  com try/catch final garante que nenhum bug futuro trave em
+  "Carregando…". Perfil do corretor na página de imóvel (dado auxiliar,
+  só para WhatsApp) é best-effort — uma falha nele não derruba a página.
+- `frontend/minisite/app.js` — `renderMinisiteRoute` (novo, exportado)
+  distingue "corretor não encontrado" (404 real, §75) de "dados
+  temporariamente indisponíveis" (rede/CORS/HTTP/contrato) — a segunda
+  nunca vira "Minisite não encontrado" na tela.
+- Service worker (`modules/pwa/service-worker.js`) — o `fetch` handler
+  passou a nunca interceptar uma requisição cross-origin (antes,
+  `classifyJsonRequestKind` olhava só o pathname, então uma leitura de
+  `https://dados.imobiliarista.net/...` feita por uma página em
+  `https://imobiliarista.net/` também passava por este service worker).
+  `SERVICE_WORKER_LOGIC_VERSION` (novo) garante que essa mudança de lógica
+  invalida o cache instalado mesmo sem nenhum shell asset ter mudado de
+  conteúdo — `frontend/service-worker.js` regenerado
+  (`npm run generate:pwa`).
+
+### Testes
+
++110 testes novos (579 → 696, todos os anteriores preservados):
+`tests/business/{taxonomy,catalogs,r2-read-models-adapter}.test.js`,
+`tests/publishing/read-models.test.js`, `tests/scripts/r2-read-models.test.js`,
+`tests/workflows/publish-r2-read-models.test.js`,
+`tests/config/r2-cors.test.js`, `tests/frontend/portal/app.test.js`,
+`tests/frontend/minisite/app.test.js`,
+`tests/frontend/shared/public-data-errors.test.js`, mais os testes novos
+em `tests/modules/pwa/service-worker.test.js` e o contrato de chaves em
+`tests/storage/keys.test.js`. `tests/support/fake-dom.js` (novo) — DOM
+mínimo sem dependência nova (jsdom), só o suficiente para provar que
+nenhum dos 4 erros tipados deixa "Carregando…" travado e que "Tentar
+novamente" de fato reexecuta a rota.
+
+### Pendências manuais (fora do escopo de código)
+
+- Configurar o Environment `production-r2` no GitHub (secret
+  `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`, reviewer).
+- Aplicar `config/r2/imob-data-cors.json` no painel Cloudflare (bucket
+  `imob-data`, e `imob-media` com o mesmo conteúdo) + purge cache.
+- Rodar o workflow `publish-r2-read-models.yml` (`validate` primeiro,
+  depois `publish` com `PUBLICAR_R2`) — nada disso foi executado nesta
+  sessão.
+- Pendências bloqueantes já documentadas em `docs/OPERATIONS.md` (buckets
+  R2, `SESSION_SECRET`, catálogo IBGE completo) continuam pendentes,
+  inalteradas por este lote.
+
 ## `scripts/bootstrap-special-accounts.js` — CLI de provisionamento das contas MASTER/TESTE (§27 hotfix pt.2)
 
 Até este lote, provisionar as senhas iniciais de MASTER/TESTE

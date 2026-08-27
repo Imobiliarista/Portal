@@ -42,7 +42,32 @@ import { CACHE_TTL_SECONDS } from "../../storage/cache.js";
  * scripts/generate-pwa-assets.js sempre passa `version` = o hash real do
  * conteúdo do shell (ver `computeShellVersion` abaixo) — nunca este valor.
  */
-export const PWA_CACHE_VERSION = 1;
+export const PWA_CACHE_VERSION = 2; // Etapa 9 — ver SERVICE_WORKER_LOGIC_VERSION abaixo
+
+/**
+ * Versão da LÓGICA do service worker em si (estratégia de fetch/cache),
+ * independente do conteúdo dos shell assets. `computeShellVersion` inclui
+ * este valor no hash — sem isso, uma mudança só na lógica deste arquivo
+ * (ex.: Etapa 9 abaixo, "parar de interceptar origens cross-origin como
+ * dados.imobiliarista.net") nunca mudaria `SHELL_CACHE_NAME`/
+ * `JSON_CACHE_NAME` se nenhum shell asset também mudasse de conteúdo — e
+ * `activate` só apaga um cache cujo NOME mudou, então a lógica velha
+ * continuaria instalada indefinidamente em quem já tinha visitado o site.
+ * Incrementar este número é o "bump" que a Etapa 9 pede ("incremente a
+ * versão do cache para invalidar a versão atualmente instalada") sempre
+ * que a estratégia de fetch mudar, mesmo sem nenhum shell asset ter mudado.
+ *
+ * Etapa 9 (missão "corrigir a falha de produção... encerra o carregamento
+ * infinito"): o `fetch` handler passou a nunca interceptar uma requisição
+ * cross-origin (antes, `classifyJsonRequestKind` era aplicado a QUALQUER
+ * origem, então uma leitura de `https://dados.imobiliarista.net/...` feita
+ * por uma página em `https://imobiliarista.net/` também passava por este
+ * service worker — nunca deveria: R2 DATA é lido direto do Custom Domain,
+ * nunca por um intermediário, e a arquitetura já exige acesso de rede
+ * normal com o CORS correto para esse domínio, não uma estratégia de cache
+ * pensada para o mesmo-origin shell/JSON local de desenvolvimento).
+ */
+export const SERVICE_WORKER_LOGIC_VERSION = 2;
 
 /** App shell do portal (frontend/portal/) — únicos arquivos precacheados neste lote (§48, escopo do módulo). */
 export const PWA_SHELL_ASSETS = Object.freeze([
@@ -121,6 +146,8 @@ export function jsonCacheTtlSeconds(ttlSeconds = CACHE_TTL_SECONDS) {
  */
 export function computeShellVersion(assetContents, shellAssets = PWA_SHELL_ASSETS) {
   const hash = createHash("sha256");
+  hash.update(String(SERVICE_WORKER_LOGIC_VERSION));
+  hash.update("\0");
   for (const path of shellAssets) {
     hash.update(path);
     hash.update("\0");
@@ -184,7 +211,13 @@ async function handleJsonRequest(request, kind) {
   const cache = await caches.open(JSON_CACHE_NAME);
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    // response.type === "opaque" só pode acontecer para uma requisição
+    // cross-origin em modo no-cors — este handler agora só é alcançado
+    // para o mesmo-origin deste service worker (ver o filtro no listener
+    // de "fetch" abaixo), então isto nunca deveria disparar; mantido como
+    // guarda explícita (Etapa 9 "não deve colocar em cache respostas
+    // opacas") em vez de confiar implicitamente nisso.
+    if (response.ok && response.type !== "opaque") {
       const cachedAt = new Response(response.clone().body, response);
       cachedAt.headers.set("x-imob-pwa-cached-at", String(Date.now()));
       await cache.put(request, cachedAt);
@@ -212,13 +245,23 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+  // Etapa 9 — nunca intercepta uma requisição cross-origin (em especial
+  // dados.imobiliarista.net/media.imobiliarista.net, os Custom Domains de
+  // R2 DATA/MEDIA): essas leituras devem sempre ir por acesso de rede
+  // normal, com o CORS do próprio Custom Domain, nunca mascaradas por este
+  // service worker (que só existe para o shell/JSON do MESMO origin em
+  // que está registrado). Sem este filtro, classifyJsonRequestKind (que só
+  // olha o pathname) casaria "/portal/cities.json" mesmo quando a URL
+  // completa é https://dados.imobiliarista.net/portal/cities.json.
+  if (url.origin !== self.location.origin) return;
+
   const jsonKind = classifyJsonRequestKind(url.pathname);
   if (jsonKind) {
     event.respondWith(handleJsonRequest(request, jsonKind));
     return;
   }
 
-  if (url.origin === self.location.origin && SHELL_ASSETS.includes(url.pathname)) {
+  if (SHELL_ASSETS.includes(url.pathname)) {
     event.respondWith(handleShellRequest(request));
   }
 });

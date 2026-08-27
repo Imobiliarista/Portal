@@ -56,10 +56,14 @@ test("createDataClient builds requests against storage/keys.js broker paths", as
     },
     async () => {
       const client = createDataClient("https://dados.imobiliarista.net");
-      await client.profile("joao");
-      await client.listingsFlat("joao");
-      await client.listingsManifest("joao");
-      await client.listingsShard("joao", 1);
+      // Every call 404s by design (Etapa 8: fetchJson now THROWS
+      // PublicDataNotFoundError on 404, it no longer resolves to null) —
+      // caught individually so all 4 requests still happen; this test only
+      // cares about which URLs got requested, not the outcome.
+      await client.profile("joao").catch(() => {});
+      await client.listingsFlat("joao").catch(() => {});
+      await client.listingsManifest("joao").catch(() => {});
+      await client.listingsShard("joao", 1).catch(() => {});
     },
   );
 

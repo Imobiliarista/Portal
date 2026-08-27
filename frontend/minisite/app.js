@@ -3,11 +3,19 @@
 // Mirrors frontend/portal/app.js's shape (data → render, click
 // interception for SPA navigation) but scoped to one broker resolved from
 // the hostname (§74). Reuses frontend/portal/render.js for the imóvel
-// completo page and the card markup — see that file's header comment.
+// completo page, the card markup, and the data-unavailable error state
+// (Etapa 8) — see that file's header comment.
+//
+// `renderMinisiteRoute` is exported (mirroring frontend/portal/app.js's
+// route functions) so tests/frontend/minisite/app.test.js can exercise the
+// not-found/suspended/temporarily-unavailable distinction directly,
+// without simulating `window`/`history`/`location` — same reasoning as
+// portal/app.js's header comment.
 
-import { resolveBrokerSlug, createDataClient } from "./data.js";
+import { resolveBrokerSlug, createDataClient, PublicDataNotFoundError } from "./data.js";
+import { classifyPublicDataErrorReason } from "../shared/public-data-errors.js";
 import { renderLoading, renderSiteNotFound, renderSuspended, renderProfile } from "./render.js";
-import { renderListingDetail, renderNotFound } from "../portal/render.js";
+import { renderListingDetail, renderNotFound, renderDataUnavailable } from "../portal/render.js";
 // modules/publications (§47): gerado a partir de
 // modules/publications/index.js + config.js — ver
 // frontend/shared/publications.generated.js. Consumo 100% client-side,
@@ -21,7 +29,7 @@ import { mountFinancingCalculator } from "../portal/components/financing-calcula
 // modules/appointments (§41): mesmo componente reaproveitado do portal —
 // ver frontend/portal/components/appointments.js. Diferente do portal, o
 // minisite já tem `profile.whatsapp` em mãos (buscado abaixo, em
-// renderCurrentRoute, antes de chegar na rota de imóvel), então não
+// renderMinisiteRoute, antes de chegar na rota de imóvel), então não
 // precisa de um fetch extra.
 import { mountAppointmentForm } from "../portal/components/appointments.js";
 
@@ -52,20 +60,52 @@ async function loadPublications(profile) {
   }
 }
 
+/**
+ * §17 — a listagem de imóveis do corretor tenta o arquivo único primeiro
+ * (`listingsFlat`, corretor pequeno) e cai para o manifest+shards
+ * (corretor grande) só quando o primeiro não existe. Desde a Etapa 8, um
+ * `PublicDataNotFoundError` é exatamente esse "não existe, tente o
+ * próximo formato" — qualquer outro erro (rede/CORS/HTTP/contrato) já não
+ * pode ser tratado como "tente o próximo formato": é uma falha real, com
+ * "Tentar novamente" oferecido ao visitante.
+ */
 async function renderProfileRoute(container, dataClient, brokerSlug, profile) {
   // Roda em paralelo com os imóveis — um blog externo lento/fora do ar
   // não deveria atrasar a listagem de imóveis, que é o conteúdo
   // principal do minisite.
   const publicationsPromise = loadPublications(profile);
 
-  const flat = await dataClient.listingsFlat(brokerSlug);
+  let flat = null;
+  try {
+    flat = await dataClient.listingsFlat(brokerSlug);
+  } catch (error) {
+    if (!(error instanceof PublicDataNotFoundError)) {
+      console.error(`Falha ao carregar listings.json do corretor "${brokerSlug}":`, error);
+      renderDataUnavailable(container, {
+        reason: classifyPublicDataErrorReason(error),
+        onRetry: () => renderProfileRoute(container, dataClient, brokerSlug, profile),
+      });
+      return;
+    }
+  }
   if (flat) {
     renderProfile(container, { profile, cards: flat, hasMore: false, publications: await publicationsPromise }, {});
     return;
   }
 
-  // §17 — broker cresceu além do arquivo único: mesma partição por shard da cidade.
-  const manifest = await dataClient.listingsManifest(brokerSlug);
+  let manifest = null;
+  try {
+    manifest = await dataClient.listingsManifest(brokerSlug);
+  } catch (error) {
+    if (!(error instanceof PublicDataNotFoundError)) {
+      console.error(`Falha ao carregar manifest de listings do corretor "${brokerSlug}":`, error);
+      renderDataUnavailable(container, {
+        reason: classifyPublicDataErrorReason(error),
+        onRetry: () => renderProfileRoute(container, dataClient, brokerSlug, profile),
+      });
+      return;
+    }
+  }
   const shardCount = manifest?.shards?.length ?? 0;
   if (shardCount === 0) {
     renderProfile(container, { profile, cards: [], hasMore: false, publications: await publicationsPromise }, {});
@@ -77,12 +117,97 @@ async function renderProfileRoute(container, dataClient, brokerSlug, profile) {
   let cursor = 0;
   async function loadNextShard() {
     if (cursor >= shardCount) return;
-    cursor += 1;
-    const shardCards = (await dataClient.listingsShard(brokerSlug, cursor)) ?? [];
-    cards = [...cards, ...shardCards];
-    renderProfile(container, { profile, cards, hasMore: cursor < shardCount, publications }, { onLoadMore: loadNextShard });
+    const shardNumber = cursor + 1;
+    try {
+      const shardCards = await dataClient.listingsShard(brokerSlug, shardNumber);
+      cursor += 1;
+      cards = [...cards, ...shardCards];
+      renderProfile(container, { profile, cards, hasMore: cursor < shardCount, publications }, { onLoadMore: loadNextShard });
+    } catch (error) {
+      if (error instanceof PublicDataNotFoundError) {
+        cursor += 1;
+        renderProfile(container, { profile, cards, hasMore: cursor < shardCount, publications }, { onLoadMore: loadNextShard });
+        return;
+      }
+      console.error(`Falha ao carregar shard ${shardNumber} de listings do corretor "${brokerSlug}":`, error);
+      renderDataUnavailable(container, { reason: classifyPublicDataErrorReason(error), onRetry: loadNextShard });
+    }
   }
   await loadNextShard();
+}
+
+/**
+ * Ponto único de decisão de rota do minisite (perfil vs. imóvel), incluindo
+ * a distinção de 3 estados que a Etapa 8 pede explicitamente (§75/§76):
+ *
+ *   - corretor não existe/não publicado (404 no profile)  -> "não encontrado"
+ *   - corretor existe mas está suspenso (profile.status)  -> "indisponível" (§76)
+ *   - profile existe mas o fetch falhou por rede/CORS/HTTP/contrato -> NUNCA
+ *     vira "não encontrado" — é "dados temporariamente indisponíveis",
+ *     com retry.
+ */
+export async function renderMinisiteRoute(container, dataClient, brokerSlug, pathname) {
+  renderLoading(container);
+
+  let profile;
+  try {
+    profile = await dataClient.profile(brokerSlug);
+  } catch (error) {
+    if (error instanceof PublicDataNotFoundError) {
+      renderSiteNotFound(container); // §75 — corretor não existe/não publicado
+      return;
+    }
+    console.error(`Falha ao carregar perfil do corretor "${brokerSlug}":`, error);
+    renderDataUnavailable(container, {
+      reason: classifyPublicDataErrorReason(error),
+      onRetry: () => renderMinisiteRoute(container, dataClient, brokerSlug, pathname),
+    });
+    return;
+  }
+
+  if (profile.status !== "active") {
+    renderSuspended(container); // §76
+    return;
+  }
+
+  const listingMatch = pathname.match(/^\/imovel\/([^/]+)\/?$/);
+  if (listingMatch) {
+    let listing;
+    try {
+      listing = await dataClient.listing(decodeURIComponent(listingMatch[1]));
+    } catch (error) {
+      if (error instanceof PublicDataNotFoundError) {
+        renderNotFound(container, "Imóvel não encontrado.");
+        return;
+      }
+      console.error("Falha ao carregar imóvel:", error);
+      renderDataUnavailable(container, {
+        reason: classifyPublicDataErrorReason(error),
+        onRetry: () => renderMinisiteRoute(container, dataClient, brokerSlug, pathname),
+      });
+      return;
+    }
+    renderListingDetail(container, listing);
+    // §44 — appended after the fact, same reasoning as the portal's app.js.
+    mountFinancingCalculator(container, { propertyValue: listing.price });
+    // §41 — appended after the fact, same reasoning. `profile` here is
+    // this minisite's own broker (§74), already resolved above.
+    mountAppointmentForm(container, { listing, brokerWhatsapp: profile.whatsapp });
+    return;
+  }
+
+  try {
+    await renderProfileRoute(container, dataClient, brokerSlug, profile);
+  } catch (error) {
+    // Rede de segurança final (mesmo espírito de frontend/portal/app.js)
+    // — renderProfileRoute já trata os 4 erros tipados internamente; isto
+    // só existe para um bug inesperado não travar em "Carregando…".
+    console.error("Erro inesperado ao renderizar minisite:", error);
+    renderDataUnavailable(container, {
+      reason: "network",
+      onRetry: () => renderMinisiteRoute(container, dataClient, brokerSlug, pathname),
+    });
+  }
 }
 
 export async function mount(container) {
@@ -96,37 +221,7 @@ export async function mount(container) {
 
   const dataClient = createDataClient();
 
-  async function renderCurrentRoute() {
-    renderLoading(container);
-
-    const profile = await dataClient.profile(brokerSlug);
-    if (!profile) {
-      renderSiteNotFound(container); // §75 — corretor não existe/não publicado
-      return;
-    }
-    if (profile.status !== "active") {
-      renderSuspended(container); // §76
-      return;
-    }
-
-    const listingMatch = location.pathname.match(/^\/imovel\/([^/]+)\/?$/);
-    if (listingMatch) {
-      const listing = await dataClient.listing(decodeURIComponent(listingMatch[1]));
-      if (!listing) {
-        renderNotFound(container, "Imóvel não encontrado.");
-        return;
-      }
-      renderListingDetail(container, listing);
-      // §44 — appended after the fact, same reasoning as the portal's app.js.
-      mountFinancingCalculator(container, { propertyValue: listing.price });
-      // §41 — appended after the fact, same reasoning. `profile` here is
-      // this minisite's own broker (§74), already resolved above.
-      mountAppointmentForm(container, { listing, brokerWhatsapp: profile.whatsapp });
-      return;
-    }
-
-    await renderProfileRoute(container, dataClient, brokerSlug, profile);
-  }
+  const renderCurrentRoute = () => renderMinisiteRoute(container, dataClient, brokerSlug, location.pathname);
 
   container.addEventListener("click", (event) => {
     const anchor = event.target.closest?.("a");

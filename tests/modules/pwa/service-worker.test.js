@@ -1,11 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   classifyJsonRequestKind,
   jsonCacheTtlSeconds,
   renderServiceWorkerSource,
+  computeShellVersion,
   PWA_SHELL_ASSETS,
   PWA_CACHE_VERSION,
+  SERVICE_WORKER_LOGIC_VERSION,
 } from "../../../modules/pwa/service-worker.js";
 import { CACHE_TTL_SECONDS } from "../../../storage/cache.js";
 
@@ -175,6 +178,95 @@ test("fetch: a stale-beyond-TTL cache entry is not served when the network fails
   jsonStore.set(url, staleEntry);
 
   await assert.rejects(() => doFetch().then((p) => p));
+});
+
+// --- Etapa 9 (missão "encerra o carregamento infinito") -------------------
+// O service worker nunca deve interceptar uma requisição cross-origin —
+// em especial dados.imobiliarista.net/media.imobiliarista.net (os Custom
+// Domains de R2 DATA/MEDIA), que precisam de acesso de rede normal com o
+// CORS do próprio Custom Domain, nunca mascarado por este arquivo.
+
+test("fetch never intercepts a cross-origin request to dados.imobiliarista.net, even on a recognized public JSON path", async () => {
+  const { listeners } = loadServiceWorker({ origin: "https://imobiliarista.net", fetchImpl: async () => new Response("x") });
+  let intercepted = false;
+  await listeners.fetch({
+    request: new Request("https://dados.imobiliarista.net/portal/cities.json", { method: "GET" }),
+    respondWith: () => {
+      intercepted = true;
+    },
+  });
+  assert.equal(intercepted, false, "a cross-origin R2 DATA request must never be intercepted by this service worker");
+});
+
+test("fetch never intercepts a cross-origin request to media.imobiliarista.net", async () => {
+  const { listeners } = loadServiceWorker({ origin: "https://imobiliarista.net", fetchImpl: async () => new Response("x") });
+  let intercepted = false;
+  await listeners.fetch({
+    request: new Request("https://media.imobiliarista.net/brokers/joao/logo.webp", { method: "GET" }),
+    respondWith: () => {
+      intercepted = true;
+    },
+  });
+  assert.equal(intercepted, false);
+});
+
+test("fetch still intercepts the same-origin JSON path it was always meant to (no regression from the origin filter)", async () => {
+  const url = "https://imobiliarista.net/portal/cities.json";
+  const { listeners } = loadServiceWorker({ fetchImpl: async () => new Response(JSON.stringify({ cities: [] }), { status: 200 }) });
+  let responded;
+  await listeners.fetch({
+    request: new Request(url, { method: "GET" }),
+    respondWith: (promise) => {
+      responded = promise;
+    },
+  });
+  assert.deepEqual(await (await responded).json(), { cities: [] });
+});
+
+test("activate deletes every cache whose name isn't the current SHELL/JSON cache name", async () => {
+  const { listeners, cacheStores } = loadServiceWorker();
+  cacheStores.set("imob-pwa-shell-v-old-stale-version", new Map());
+  cacheStores.set("imob-pwa-json-v-old-stale-version", new Map());
+  cacheStores.set(`imob-pwa-shell-v${PWA_CACHE_VERSION}`, new Map());
+  cacheStores.set(`imob-pwa-json-v${PWA_CACHE_VERSION}`, new Map());
+
+  await listeners.activate({ waitUntil: (promise) => promise });
+
+  assert.deepEqual(
+    [...cacheStores.keys()].sort(),
+    [`imob-pwa-json-v${PWA_CACHE_VERSION}`, `imob-pwa-shell-v${PWA_CACHE_VERSION}`].sort(),
+  );
+});
+
+// --- computeShellVersion ---------------------------------------------------
+
+test("computeShellVersion is deterministic for identical inputs", () => {
+  const contents = { "/": "shell-body" };
+  assert.equal(computeShellVersion(contents, ["/"]), computeShellVersion(contents, ["/"]));
+});
+
+test("computeShellVersion changes when any shell asset's content changes", () => {
+  const a = computeShellVersion({ "/": "v1" }, ["/"]);
+  const b = computeShellVersion({ "/": "v2" }, ["/"]);
+  assert.notEqual(a, b);
+});
+
+test("computeShellVersion factors in SERVICE_WORKER_LOGIC_VERSION, not only shell asset content (Etapa 9)", () => {
+  assert.ok(SERVICE_WORKER_LOGIC_VERSION >= 2, "expected the Etapa 9 fix to have bumped this at least once");
+
+  const contents = { "/": "shell-body" };
+  const real = computeShellVersion(contents, ["/"]);
+
+  // Reference hash using the PRE-Etapa-9 algorithm (asset contents only,
+  // no logic-version prefix) — if computeShellVersion still matched this,
+  // the logic-version bump this Etapa introduces would be a no-op and old
+  // browsers' caches would never invalidate for a logic-only change.
+  const legacyHash = createHash("sha256");
+  legacyHash.update("/");
+  legacyHash.update("\0");
+  legacyHash.update("shell-body");
+  legacyHash.update("\0");
+  assert.notEqual(real, legacyHash.digest("hex").slice(0, 12));
 });
 
 test("fetch does not intercept non-GET requests or unrecognized paths", async () => {

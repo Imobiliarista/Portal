@@ -138,6 +138,51 @@ export function renderNotFound(container, message = "Página não encontrada.") 
   container.append(el("div", { className: "imob-not-found" }, [el("h2", { text: "404" }), el("p", { text: message })]));
 }
 
+const DATA_UNAVAILABLE_COPY = Object.freeze({
+  network: {
+    title: "Não foi possível carregar os dados do portal.",
+    detail: "Verifique sua conexão e tente novamente.",
+  },
+  http: {
+    title: "Não foi possível carregar os dados do portal.",
+    detail: "O servidor respondeu com um erro. Tente novamente em instantes.",
+  },
+  contract: {
+    title: "Não foi possível exibir estes dados agora.",
+    detail: "Tente novamente em instantes.",
+  },
+});
+
+/**
+ * Estado de erro genérico para falha de rede/CORS, HTTP inesperado ou
+ * contrato de JSON inválido (Etapa 8 — missão "encerra o carregamento
+ * infinito"). Usado por frontend/portal/app.js (e reaproveitado por
+ * frontend/minisite/app.js, mesmo padrão de reuso de renderCard/
+ * renderListingDetail/renderNotFound já documentado no header deste
+ * arquivo) sempre que um `fetchJson` (frontend/shared/public-data-errors.js)
+ * lança `PublicDataNetworkError`/`PublicDataHttpError`/
+ * `PublicDataContractError` — nunca deixa `renderLoading` como último
+ * estado visível. `reason` só escolhe a mensagem; o botão "Tentar
+ * novamente" (quando `onRetry` é passado) se comporta igual nos 3 casos.
+ */
+export function renderDataUnavailable(container, { reason = "network", onRetry } = {}) {
+  clear(container);
+  const copy = DATA_UNAVAILABLE_COPY[reason] ?? DATA_UNAVAILABLE_COPY.network;
+
+  const retryButton = onRetry
+    ? el("button", { className: "imob-retry", text: "Tentar novamente", attrs: { type: "button" } })
+    : null;
+  if (retryButton) retryButton.addEventListener("click", () => onRetry());
+
+  container.append(
+    el("div", { className: "imob-data-unavailable", attrs: { role: "alert" } }, [
+      el("h2", { text: copy.title }),
+      el("p", { text: copy.detail }),
+      retryButton,
+    ]),
+  );
+}
+
 /**
  * Renders the home view: a list of cities from portal/cities.json (§66).
  * `cities` items: { slug, name, uf, totalListings? }.

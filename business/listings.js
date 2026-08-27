@@ -70,7 +70,14 @@ export class GalleryLimitExceededError extends ListingConflictError {
 }
 
 const LISTING_STATUSES = ["draft", "active", "paused", "sold", "removed"];
-const PURPOSES = ["venda", "aluguel"];
+/**
+ * Exported (not just module-local) so `business/taxonomy.js#buildPortalTaxonomy`
+ * has a single source of truth for the real `purpose` enum instead of
+ * re-declaring it — the public `portal/taxonomy.json` catalog must reflect
+ * exactly the values `createListing`/`updateListing` accept, never a
+ * hand-copied duplicate that could drift.
+ */
+export const PURPOSES = ["venda", "aluguel"];
 
 function isValidFeatures(value) {
   if (typeof value !== "object" || value === null) return false;

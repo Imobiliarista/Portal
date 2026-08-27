@@ -13,6 +13,7 @@
     "deploy": "wrangler deploy",
     "test": "node --test \"tests/**/*.test.js\"",
     "validate:schemas": "node scripts/validate-json.js",
+    "validate:r2-cors": "node scripts/validate-r2-cors.js",
     "generate:cities": "node scripts/generate-cities-catalog.js",
     "generate:pwa": "node scripts/generate-pwa-assets.js",
     "generate:video-youtube": "node scripts/generate-video-youtube-assets.js",
@@ -27,7 +28,9 @@
     "rebuild:city": "node scripts/rebuild-city.js",
     "rebuild:all": "node scripts/rebuild-all.js",
     "rebuild:feeds": "node scripts/rebuild-feeds.js",
-    "bootstrap:special-accounts": "node scripts/bootstrap-special-accounts.js"
+    "bootstrap:special-accounts": "node scripts/bootstrap-special-accounts.js",
+    "r2-read-models:validate": "node scripts/r2-read-models.js validate",
+    "r2-read-models:publish": "node scripts/r2-read-models.js publish"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"
