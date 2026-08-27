@@ -11,7 +11,7 @@
     "dev": "wrangler dev",
     "versions:upload": "wrangler versions upload",
     "deploy": "wrangler deploy",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/",
     "validate:schemas": "node scripts/validate-json.js",
     "validate:r2-cors": "node scripts/validate-r2-cors.js",
     "generate:cities": "node scripts/generate-cities-catalog.js",
