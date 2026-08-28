@@ -88,6 +88,16 @@ export function parseRoute(pathname, search = "") {
     return { name: "comparison" };
   }
 
+  // painel/admin are reserved paths dispatched straight to their own SPA
+  // modules by frontend/dispatch.js (they never reach this router in
+  // normal operation) — reserved here too, defensively, so a future bug
+  // in that dispatch can never fall through to this portal router
+  // treating "painel"/"admin" as a city slug and 404ing a lookup for a
+  // city that doesn't exist.
+  if ((segments[0] === "painel" || segments[0] === "admin") && segments.length === 1) {
+    return { name: "not-found" };
+  }
+
   if (segments.length === 1) {
     const { filters, sortBy } = parseCityQuery(search);
     return { name: "city", citySlug: segments[0], filters, sortBy };

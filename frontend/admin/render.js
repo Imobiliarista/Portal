@@ -71,7 +71,7 @@ export function renderAppShell(container, handlers = {}) {
   logoutButton.addEventListener("click", () => handlers.onLogout?.());
 
   const nav = el("nav", { className: "imob-nav" }, [
-    el("span", { className: "imob-nav-title", text: "admin.imobiliarista.net" }),
+    el("span", { className: "imob-nav-title", text: "imobiliarista.net/admin" }),
     logoutButton,
   ]);
 

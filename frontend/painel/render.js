@@ -89,9 +89,9 @@ export function renderAppShell(container, { activeRoute, brokerName } = {}, hand
 
   const nav = el("nav", { className: "imob-nav" }, [
     el("span", { className: "imob-nav-broker", text: brokerName ?? "" }),
-    link("/perfil", "Perfil", "profile"),
-    link("/imoveis", "Imóveis", "listings"),
-    link("/exportacao", "Exportação", "export"),
+    link("/painel/perfil", "Perfil", "profile"),
+    link("/painel/imoveis", "Imóveis", "listings"),
+    link("/painel/exportacao", "Exportação", "export"),
     logoutButton,
   ]);
 
