@@ -1,6 +1,6 @@
 name: Deploy do Worker (manual)
 
-# Publica o Worker "imobiliarista-net" (código + assets estáticos) via
+# Publica o Worker "portal" (código + assets estáticos) via
 # wrangler deploy. Disparo exclusivamente manual (workflow_dispatch) — não
 # roda em push, de propósito, para nunca publicar um commit sem alguém
 # decidir isso explicitamente. Reaproveita as mesmas credenciais já
@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy do Worker imobiliarista-net
+    name: Deploy do Worker portal
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production-r2
@@ -74,7 +74,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Deploy do Worker imobiliarista-net"
+            echo "## Deploy do Worker portal"
             echo ""
             echo "- Commit: \`${{ github.sha }}\`"
             echo "- Environment: production-r2"
