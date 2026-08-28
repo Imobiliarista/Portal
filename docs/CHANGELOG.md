@@ -1,5 +1,40 @@
 # Changelog
 
+## Painel e admin deixam de ser subdomínio e passam a ser caminho sob o domínio principal (PR #36)
+
+**O que mudou**: `painel.imobiliarista.net` e `admin.imobiliarista.net`
+deixam de existir como subdomínios — a partir do commit `8604921`, painel e
+admin são servidos como caminhos sob o domínio raiz
+(`imobiliarista.net/painel`, `imobiliarista.net/admin`). O subdomínio
+wildcard (`*.imobiliarista.net`) fica reservado só para minisites de
+corretor e, futuramente, onepages. `dados.imobiliarista.net` e
+`media.imobiliarista.net` não mudam.
+
+Duas entradas anteriores deste CHANGELOG (§1051, "Materializa read models…",
+e §1328, "PWA…") ainda descrevem `admin.imobiliarista.net`/
+`painel.imobiliarista.net` como a implementação — eram corretas no momento
+em que foram escritas (essa era de fato a arquitetura até este commit) e
+ficam como estão, por serem histórico; esta entrada é o registro de que
+isso mudou.
+
+- `frontend/dispatch.js` (novo) — extrai a decisão de módulo
+  (portal/painel/admin/minisite) do inline script de `frontend/index.html`
+  para uma função pura testável. Painel/admin agora resolvidos por
+  pathname (checado antes de `isMinisite`, que continua só por hostname);
+  `painel.${APEX}`/`admin.${APEX}` continuam em `RESERVED_HOSTS` (decisão:
+  evita que um bookmark antigo para o subdomínio seja lido como slug de
+  corretor — nenhum redirect automático foi implementado, fora de escopo).
+- `frontend/painel/router.js` — `parseRoute` descarta um prefixo `/painel`
+  antes de segmentar; `buildListingEditUrl` retorna `/painel/imoveis/:id`.
+- `frontend/painel/app.js`/`render.js` — navegação (login/logout, nav de
+  perfil/imóveis/exportação) passa a usar `/painel`/`/painel/imoveis` em
+  vez de caminho absoluto sem prefixo.
+- `frontend/admin/app.js` — confirmado que não há roteamento por pathname
+  (só seções por estado interno); nenhuma mudança de rota necessária.
+- `wrangler.toml` e `IMOBILIARISTA_ARQUITETURA_TECNICA_OFICIAL_JSON_R2.md`
+  atualizados no mesmo commit para refletir painel/admin como caminho, não
+  subdomínio.
+
 ## Materializa os read models globais do portal R2 e encerra o "Carregando…" eterno em produção
 
 **Causa raiz confirmada**: `storage/keys.js#dataKeys.portalCities`/
