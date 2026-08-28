@@ -12,6 +12,7 @@ import {
   rebuildCity,
   rebuildAll,
   republishBrokerListings,
+  publishBrokerListingsAggregate,
   PublishValidationError,
   ListingNotFoundError,
 } from "../../business/publishing.js";
@@ -20,6 +21,7 @@ import { createBroker, suspendBroker, reactivateBroker } from "../../business/br
 import { createListing, updateListing } from "../../business/listings.js";
 import { getPublic, putPublic } from "../../storage/public.js";
 import { getPrivate } from "../../storage/private.js";
+import { MAX_CARDS_PER_SHARD } from "../../storage/keys.js";
 import { FakeR2Bucket } from "../storage/fake-r2-bucket.js";
 import { nextCpf } from "../support/cpf.js";
 
@@ -568,4 +570,144 @@ test("rebuildAll processes cities in batches, checkpoints between calls, and is 
   await rebuildAll(env, { batchSize: 10 });
   const shardAfter = await getPublic(env, "cities/londrina/001.json");
   assert.deepEqual(shardAfter, shardBefore);
+});
+
+// --- agregado por corretor (§17) — brokers/{slug}/listings.json -----------
+//
+// Até agora, nada em business/publishing.js gravava
+// brokers/{slug}/listings.json (nem o par manifest+shards) — o read model
+// que frontend/minisite/app.js#renderProfileRoute já lê ativamente (tenta
+// o arquivo único primeiro, cai para manifest+shards). Resultado: todo
+// minisite de corretor mostrava a listagem de imóveis sempre vazia, mesmo
+// com anúncios ativos publicados normalmente por cidade. Estes testes
+// travam o fix: `publishBrokerListingsAggregate` (chamada por
+// `publishListing` a cada publicação individual, e uma única vez ao final
+// de `republishBrokerListings`) materializa esse agregado.
+
+test("publishListing keeps brokers/{slug}/listings.json (flat) in sync for a small broker (§17), with the exact same card shape as the city shard", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const draft1 = await createListing(env, broker.brokerId, baseListingInput({ slug: "casa-1", status: "active" }));
+  const draft2 = await createListing(
+    env,
+    broker.brokerId,
+    baseListingInput({ slug: "casa-2", status: "active", price: 300000 }),
+  );
+
+  await publishListing(env, draft1.listingId);
+  await publishListing(env, draft2.listingId);
+
+  const flat = await getPublic(env, "brokers/joao/listings.json");
+  assert.equal(Array.isArray(flat), true, "small broker must publish a plain array, no wrapper");
+  assert.equal(flat.length, 2);
+  assert.deepEqual(flat.map((card) => card.slug).sort(), ["casa-1", "casa-2"]);
+
+  // Corretor pequeno nunca também tem manifest+shards.
+  assert.equal(await getPublic(env, "brokers/joao/listings/manifest.json"), null);
+  assert.equal(await getPublic(env, "brokers/joao/listings/001.json"), null);
+
+  // O card no agregado do corretor deve ser idêntico ao card no shard da
+  // cidade — nenhuma transformação/wrapper a mais, exatamente o que
+  // frontend/minisite/app.js espera (renderProfileRoute -> `cards: flat`).
+  const cityShard = await getPublic(env, "cities/londrina/001.json");
+  const cardFromCity = cityShard.find((card) => card.slug === "casa-1");
+  const cardFromBroker = flat.find((card) => card.slug === "casa-1");
+  assert.deepEqual(cardFromBroker, cardFromCity);
+});
+
+test("publishBrokerListingsAggregate materializes manifest+shards for a large broker (>1 shard, §9), never writing the flat file", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const total = MAX_CARDS_PER_SHARD + 1; // 301 -> abre um 2º shard (§9)
+
+  for (let i = 1; i <= total; i += 1) {
+    const draft = await createListing(env, broker.brokerId, baseListingInput({ slug: `lote-${i}`, status: "active" }));
+    // updateBrokerAggregate:false durante o setup — o agregado é
+    // recalculado uma única vez abaixo, não uma vez por anúncio (senão
+    // custaria O(N²) só para montar o cenário do teste).
+    await publishListing(env, draft.listingId, { updateBrokerAggregate: false });
+  }
+
+  const result = await publishBrokerListingsAggregate(env, broker.brokerId);
+  assert.equal(result.format, "sharded");
+  assert.equal(result.shardCount, 2);
+  assert.equal(result.totalListings, total);
+
+  const manifest = await getPublic(env, "brokers/joao/listings/manifest.json");
+  assert.deepEqual(manifest.shards, ["001.json", "002.json"]);
+  assert.equal(manifest.totalListings, total);
+
+  const shard1 = await getPublic(env, "brokers/joao/listings/001.json");
+  const shard2 = await getPublic(env, "brokers/joao/listings/002.json");
+  assert.equal(shard1.length, MAX_CARDS_PER_SHARD);
+  assert.equal(shard2.length, 1);
+
+  assert.equal(
+    await getPublic(env, "brokers/joao/listings.json"),
+    null,
+    "large broker must never also have the flat file",
+  );
+});
+
+test("publishBrokerListingsAggregate cleans up the previous format when a broker crosses the 1-shard boundary — grows into sharded, then shrinks back into flat", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+
+  // Começa pequeno: flat.
+  const first = await createListing(env, broker.brokerId, baseListingInput({ slug: "base-1", status: "active" }));
+  await publishListing(env, first.listingId);
+  assert.notEqual(await getPublic(env, "brokers/joao/listings.json"), null, "sanity: starts flat");
+
+  // Cresce além de 1 shard: vira sharded.
+  const extraDrafts = [];
+  for (let i = 1; i <= MAX_CARDS_PER_SHARD; i += 1) {
+    const draft = await createListing(env, broker.brokerId, baseListingInput({ slug: `extra-${i}`, status: "active" }));
+    extraDrafts.push(draft);
+    await publishListing(env, draft.listingId, { updateBrokerAggregate: false });
+  }
+  await publishBrokerListingsAggregate(env, broker.brokerId);
+
+  assert.notEqual(
+    await getPublic(env, "brokers/joao/listings/manifest.json"),
+    null,
+    "grew past 1 shard into the sharded format",
+  );
+  assert.equal(await getPublic(env, "brokers/joao/listings.json"), null, "flat file must be gone once sharded");
+
+  // Encolhe de volta: remove todos os "extra-N", sobrando só o primeiro.
+  for (const draft of extraDrafts) {
+    await updateListing(env, broker.brokerId, draft.listingId, { status: "removed" });
+  }
+  await publishBrokerListingsAggregate(env, broker.brokerId);
+
+  const flatAgain = await getPublic(env, "brokers/joao/listings.json");
+  assert.notEqual(flatAgain, null, "shrank back into flat format");
+  assert.equal(flatAgain.length, 1);
+  assert.equal(flatAgain[0].slug, "base-1");
+
+  assert.equal(await getPublic(env, "brokers/joao/listings/manifest.json"), null, "stale manifest must be pruned");
+  assert.equal(await getPublic(env, "brokers/joao/listings/001.json"), null, "stale shard 1 must be pruned");
+  assert.equal(await getPublic(env, "brokers/joao/listings/002.json"), null, "stale shard 2 must be pruned");
+});
+
+test("suspending a broker empties its brokers/{slug}/listings.json aggregate (§53 cascade); reactivating restores it", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+  await publishListing(env, draft.listingId);
+
+  let flat = await getPublic(env, "brokers/joao/listings.json");
+  assert.equal(flat.length, 1, "sanity: the listing was live before suspension");
+
+  await suspendBroker(env, broker.brokerId);
+  await republishBrokerListings(env, broker.brokerId);
+
+  flat = await getPublic(env, "brokers/joao/listings.json");
+  assert.deepEqual(flat, [], "a suspended broker's own aggregate must go empty, not stay stale");
+
+  await reactivateBroker(env, broker.brokerId);
+  await republishBrokerListings(env, broker.brokerId);
+
+  flat = await getPublic(env, "brokers/joao/listings.json");
+  assert.equal(flat.length, 1);
 });

@@ -19,19 +19,30 @@
 //
 // SEM delete em nenhuma função deste arquivo — nem `deletePublic`, nem
 // `deletePrivate`, ESTRUTURALMENTE, não por sorte de estado. Nenhuma
-// função exportada aqui chama uma dessas diretamente, e a única função
-// reutilizada de `business/publishing.js` que TEM capacidade de exclusão
-// (`rebuildCity`, que por padrão apaga shard órfão de cidade que
-// encolheu) só é chamada daqui com `{ pruneOrphanShards: false }`
-// (ver `reconcileKnownBrokersAndCities` abaixo) — sem esse guard,
-// reutilizar `rebuildCity` teria reintroduzido exatamente a exclusão que
-// a Etapa 4 proíbe explicitamente para este adapter ("não apagar shards
-// órfãos nesta primeira implementação protegida" / "não reutilize [a
-// capacidade de exclusão] no adapter de publicação inicial"), apesar de
-// `rebuildCity` em si continuar podando órfãos normalmente para quem a
-// chama fora deste arquivo (`scripts/rebuild-city.js`, `rebuildAll`).
-// Nenhuma função exportada por este arquivo aceita ou expõe essa operação
-// (Etapa 4 "não ofereça delete/remove/purge ou equivalente no adapter").
+// função exportada aqui chama uma dessas diretamente, e as duas funções
+// reutilizadas de `business/publishing.js` que TÊM capacidade de exclusão
+// só são chamadas daqui com essa capacidade explicitamente desligada (ver
+// `reconcileKnownBrokersAndCities` abaixo):
+//
+//   - `rebuildCity` (por padrão apaga shard órfão de cidade que encolheu)
+//     é chamada com `{ pruneOrphanShards: false }`.
+//   - `republishBrokerListings` (que por baixo também recalcula
+//     `brokers/{slug}/listings.json`/manifest+shards via
+//     `publishBrokerListingsAggregate`, por padrão apagando o formato
+//     antigo quando um corretor cruza a fronteira de 1 shard) é chamada
+//     com `{ pruneObsoleteFormat: false }`.
+//
+// Sem qualquer um desses dois guards, reutilizar a função correspondente
+// teria reintroduzido exatamente a exclusão que a Etapa 4 proíbe
+// explicitamente para este adapter ("não apagar shards órfãos nesta
+// primeira implementação protegida" / "não reutilize [a capacidade de
+// exclusão] no adapter de publicação inicial"), apesar de `rebuildCity` e
+// `republishBrokerListings`/`publishBrokerListingsAggregate` em si
+// continuarem podando/trocando formato normalmente para quem os chama
+// fora deste arquivo (`scripts/rebuild-city.js`, `rebuildAll`,
+// `publishListing`). Nenhuma função exportada por este arquivo aceita ou
+// expõe essa operação (Etapa 4 "não ofereça delete/remove/purge ou
+// equivalente no adapter").
 
 import { getKnownCitySlugs, getKnownBrokerIds } from "../storage/indexes.js";
 import { getPublic } from "../storage/public.js";
@@ -202,13 +213,23 @@ export async function applyGlobalCatalogsPlan(env, plan) {
  * disparar uma exclusão real de R2 durante uma publicação comum, apesar
  * do cabeçalho deste arquivo dizer "sem delete" — exatamente o que essa
  * flag existe para impedir estruturalmente, não por sorte de estado.
+ *
+ * Mesmo raciocínio, mesma exigência estrutural para
+ * `republishBrokerListings`: **sempre com `{ pruneObsoleteFormat: false
+ * }`**. Por baixo, `republishBrokerListings` agora também recalcula o
+ * agregado de listagens do corretor (`publishBrokerListingsAggregate`),
+ * que por padrão apaga o formato antigo (arquivo único vs.
+ * manifest+shards) quando o corretor cruza a fronteira de 1 shard desde
+ * a última reconciliação — sem esta flag, este adapter poderia disparar
+ * essa mesma exclusão real de R2 pelo mesmo motivo do `rebuildCity`
+ * acima.
  */
 export async function reconcileKnownBrokersAndCities(env, enumeration, validation) {
   const brokerResults = [];
   for (const brokerId of enumeration.brokerIds) {
     if (validation.missingBrokerIds.includes(brokerId)) continue;
     const profile = await rebuildBroker(env, brokerId);
-    const listings = await republishBrokerListings(env, brokerId);
+    const listings = await republishBrokerListings(env, brokerId, { pruneObsoleteFormat: false });
     brokerResults.push({ brokerId, profile, listingsRepublished: listings.length });
   }
 
