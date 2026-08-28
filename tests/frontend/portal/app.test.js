@@ -57,7 +57,7 @@ function fakeCompareBar() {
 test("renderHomeRoute with an empty portal/cities.json renders a valid empty home, not an error", async () => {
   await withFakeDocument(async () => {
     const container = new FakeElement("div");
-    const dataClient = { portalCities: async () => [] };
+    const dataClient = { portalCities: async () => ({ schemaVersion: 1, cities: [] }) };
     await renderHomeRoute(container, dataClient);
     assert.equal(isLoading(container), false);
     assert.ok(container.textContent.length > 0);
@@ -98,7 +98,7 @@ test("clicking Tentar novamente retries and a subsequent success renders the hom
       portalCities: async () => {
         attempt += 1;
         if (attempt === 1) throw new PublicDataNetworkError("url", new Error("down"));
-        return [{ slug: "londrina", name: "Londrina", uf: "PR", totalListings: 1 }];
+        return { schemaVersion: 1, cities: [{ slug: "londrina", name: "Londrina", uf: "PR", totalListings: 1 }] };
       },
     };
 

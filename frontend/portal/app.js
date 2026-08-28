@@ -64,8 +64,8 @@ function reportDataUnavailable(container, error, label, onRetry) {
 export async function renderHomeRoute(container, dataClient) {
   renderLoading(container);
   try {
-    const cities = await dataClient.portalCities();
-    renderHome(container, { cities: cities ?? [] });
+    const data = await dataClient.portalCities();
+    renderHome(container, { cities: data?.cities ?? [] });
   } catch (error) {
     // portal/cities.json é publicado incondicionalmente desde a Etapa 3
     // (business/publishing.js#publishPortalCatalogs — mesmo com
