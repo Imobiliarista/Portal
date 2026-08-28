@@ -46,7 +46,7 @@ export function mount(container) {
     renderLogin(container, { submitting: true }, { onLogin: handleLogin });
     try {
       await api.login(identifier, password);
-      history.pushState({}, "", "/imoveis");
+      history.pushState({}, "", "/painel/imoveis");
       await renderCurrentRoute();
     } catch (error) {
       showLogin(error.message);
@@ -55,7 +55,7 @@ export function mount(container) {
 
   async function handleLogout() {
     await api.logout().catch(() => {});
-    history.pushState({}, "", "/");
+    history.pushState({}, "", "/painel");
     showLogin();
   }
 
@@ -215,15 +215,15 @@ export function mount(container) {
     if (!listings) return;
 
     renderListingsList(contentEl, { listings }, {
-      onNew: () => goto("/imoveis/novo"),
-      onEdit: (id) => goto(`/imoveis/${id}`),
+      onNew: () => goto("/painel/imoveis/novo"),
+      onEdit: (id) => goto(`/painel/imoveis/${id}`),
       onDelete: async (id) => {
         try {
           await api.deleteListing(id);
           await renderListingsRoute();
         } catch (deleteError) {
           if (isSessionExpired(deleteError)) return showLogin("Sessão expirada. Entre novamente.");
-          renderListingsList(contentEl, { listings }, { onNew: () => goto("/imoveis/novo"), onEdit: (i) => goto(`/imoveis/${i}`) });
+          renderListingsList(contentEl, { listings }, { onNew: () => goto("/painel/imoveis/novo"), onEdit: (i) => goto(`/painel/imoveis/${i}`) });
         }
       },
     });
@@ -254,7 +254,7 @@ export function mount(container) {
         try {
           const saved =
             mode === "new" ? await api.createListing(withSlug(payload)) : await api.updateListing(listing.listingId, payload);
-          await goto(`/imoveis/${saved.listingId}`);
+          await goto(`/painel/imoveis/${saved.listingId}`);
         } catch (submitError) {
           if (isSessionExpired(submitError)) return showLogin("Sessão expirada. Entre novamente.");
           drawListingForm(contentEl, { mode, listing }, { error: submitError.message });
@@ -263,7 +263,7 @@ export function mount(container) {
       onDeleteListing: async (id) => {
         try {
           await api.deleteListing(id);
-          await goto("/imoveis");
+          await goto("/painel/imoveis");
         } catch (deleteError) {
           if (isSessionExpired(deleteError)) return showLogin("Sessão expirada. Entre novamente.");
           drawListingForm(contentEl, { mode, listing }, { error: deleteError.message });

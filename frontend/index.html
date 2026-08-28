@@ -11,42 +11,21 @@
       // Etapa 2 (§90, §74) — uma única Static Assets deployment atende o
       // domínio raiz e o wildcard *.imobiliarista.net (mesma zona/rota,
       // §1). Não existe roteamento por hostname no servidor (§73 mantém o
-      // Worker fora da navegação pública) — a decisão "portal vs minisite"
-      // é só do Browser, lendo location.hostname, exatamente como §74
-      // descreve para o slug do corretor.
-      const APEX = "imobiliarista.net";
-      const RESERVED_HOSTS = new Set([
-        APEX,
-        `www.${APEX}`,
-        `painel.${APEX}`,
-        `admin.${APEX}`,
-        `dados.${APEX}`,
-        `media.${APEX}`,
-        "localhost",
-        "127.0.0.1",
-      ]);
-
-      const host = location.hostname;
-      const isPainelHost = host === `painel.${APEX}`;
-      const isAdminHost = host === `admin.${APEX}`;
-      // Local dev has no real painel./admin.imobiliarista.net hostname to
-      // hit — `?app=painel`/`?app=admin` is the same kind of escape hatch
-      // as frontend/portal/data.js's `window.__IMOB_DATA_BASE_URL__` override.
-      const devOverrideApp =
-        (host === "localhost" || host === "127.0.0.1") ? new URLSearchParams(location.search).get("app") : null;
-      const isMinisite = host.endsWith(`.${APEX}`) && !RESERVED_HOSTS.has(host);
+      // Worker fora da navegação pública) — a decisão "portal vs painel
+      // vs admin vs minisite" é só do Browser (frontend/dispatch.js):
+      // painel/admin por pathname (caminho sob o domínio raiz), minisite
+      // por location.hostname, exatamente como §74 descreve para o slug
+      // do corretor.
+      const { resolveModule } = await import("/dispatch.js");
       // Absolute path — this same index.html is served (SPA fallback) for
       // every route (e.g. /imovel/{slug}, /{citySlug}, /imoveis/{id}), so a
       // path relative to the current URL would resolve wrong on any route
       // but "/".
-      const modulePath =
-        isAdminHost || devOverrideApp === "admin"
-          ? "/admin/app.js"
-          : isPainelHost || devOverrideApp === "painel"
-            ? "/painel/app.js"
-            : isMinisite
-              ? "/minisite/app.js"
-              : "/portal/app.js";
+      const { modulePath, isPortalHost } = resolveModule({
+        hostname: location.hostname,
+        pathname: location.pathname,
+        search: location.search,
+      });
 
       const { mount } = await import(modulePath);
       mount(document.getElementById("app"));
@@ -58,7 +37,6 @@
       // frontend/service-worker.js não existirem (módulo removido), o
       // <link> é ignorado pelo browser e `register` rejeita — capturado
       // abaixo — sem afetar o resto do portal.
-      const isPortalHost = !isMinisite && !isPainelHost && !isAdminHost;
       if (isPortalHost && "serviceWorker" in navigator) {
         const manifestLink = document.createElement("link");
         manifestLink.rel = "manifest";

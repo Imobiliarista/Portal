@@ -16,14 +16,14 @@ O `imobiliarista.net` é uma plataforma imobiliária com:
 PORTAL PRINCIPAL
 imobiliarista.net
 
-MINISITES DE CORRETORES
+MINISITES DE CORRETORES (E FUTURAMENTE ONEPAGES)
 slug.imobiliarista.net
 
 PAINEL DO CORRETOR
-painel.imobiliarista.net
+imobiliarista.net/painel
 
 SUPERADMIN
-admin.imobiliarista.net
+imobiliarista.net/admin
 
 DADOS PÚBLICOS
 dados.imobiliarista.net
@@ -31,6 +31,12 @@ dados.imobiliarista.net
 MÍDIAS
 media.imobiliarista.net
 ```
+
+`painel` e `admin` são caminhos sob o domínio raiz, não subdomínios — o
+subdomínio wildcard (`*.imobiliarista.net`) fica reservado exclusivamente
+para minisites de corretor e, futuramente, onepages. `dados.` e `media.`
+continuam subdomínios com Custom Domain apontando direto para o R2, sem
+passar pelo Worker — isso não muda.
 
 A arquitetura deve ser simples, modular e orientada a objetos JSON publicados.
 

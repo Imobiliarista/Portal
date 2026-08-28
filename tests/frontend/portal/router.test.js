@@ -37,6 +37,15 @@ test("parseRoute recognizes comparação (§45)", () => {
   assert.equal(buildComparisonUrl(), "/comparar");
 });
 
+// painel/admin are dispatched to their own SPA modules by
+// frontend/dispatch.js before this router ever runs — reserved here too,
+// defensively, so a future dispatch bug can never fall through to the
+// portal treating "painel"/"admin" as a city slug.
+test("parseRoute reserves painel/admin as not-found instead of a city slug", () => {
+  assert.deepEqual(parseRoute("/painel"), { name: "not-found" });
+  assert.deepEqual(parseRoute("/admin"), { name: "not-found" });
+});
+
 test("parseCityQuery ignores blank/invalid numeric values", () => {
   const { filters } = parseCityQuery("?priceMin=&bedroomsMin=abc&district=Centro");
   assert.deepEqual(filters, { district: "Centro" });

@@ -10,9 +10,16 @@
 // gating (login screen vs. these routes) is decided by
 // frontend/painel/app.js from session state, not by this module — a
 // route here doesn't imply the viewer is authenticated.
+//
+// painel is a path under the apex domain now, not a subdomain
+// (frontend/dispatch.js), so real URLs arrive here as "/painel/imoveis"
+// etc. — a leading "painel" segment is stripped before parsing so the
+// routes below stay expressed relative to the painel root, same as
+// before the migration.
 
 export function parseRoute(pathname) {
   const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (segments[0] === "painel") segments.shift();
 
   if (segments.length === 0) {
     return { name: "dashboard" };
@@ -36,5 +43,5 @@ export function parseRoute(pathname) {
 }
 
 export function buildListingEditUrl(id) {
-  return `/imoveis/${id}`;
+  return `/painel/imoveis/${id}`;
 }
