@@ -14,6 +14,9 @@ export const CACHE_TTL_SECONDS = Object.freeze({
   cityIndex: 300,
   listingPublic: 300, // §60 "TTL curto/moderado"
   brokerProfile: 300, // §60 "TTL curto/moderado"
+  brokerListingsFlat: 300, // brokers/{slug}/listings.json — mesmo TTL de cityShard
+  brokerListingsManifest: 60, // mesmo TTL curto de cityManifest
+  brokerListingsShard: 300, // mesmo TTL de cityShard
   portalCatalog: 300, // portal/cities.json, portal/taxonomy.json
   media: 31_536_000, // versioned media objects — TTL longo (§59)
   // feeds/*.xml (§46): the external crawler that consumes this file (OLX)

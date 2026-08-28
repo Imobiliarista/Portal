@@ -238,6 +238,58 @@ test("reconcileKnownBrokersAndCities never calls delete, even when a city has an
   );
 });
 
+// Mesma classe de regressão que o teste acima, agora para
+// `republishBrokerListings` — que por baixo passou a recalcular
+// brokers/{slug}/listings.json (ou manifest+shards) via
+// `publishBrokerListingsAggregate`. Por padrão essa função apaga o
+// formato antigo quando um corretor cruza a fronteira de 1 shard; sem
+// `{ pruneObsoleteFormat: false }` (ver reconcileKnownBrokersAndCities em
+// business/r2ReadModelsAdapter.js), reaproveitá-la aqui reintroduziria
+// exatamente o mesmo tipo de exclusão real dentro de uma publicação
+// supostamente "protegida, sem delete".
+test("reconcileKnownBrokersAndCities never calls delete, even when a broker's aggregate format needs to change (regression)", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  await makeActiveListing(env, broker.brokerId, { slug: "so-um-imovel" });
+
+  // Estado que simula um corretor que já foi "grande" (manifest+shards)
+  // numa reconciliação anterior, mas cujo estado privado atual só produz
+  // 1 anúncio ativo — exatamente o gatilho que faria
+  // publishBrokerListingsAggregate(brokerId) (sem a flag) apagar
+  // brokers/joao/listings/manifest.json e .../001.json/002.json.
+  await putPublic(env, "brokers/joao/listings/001.json", []);
+  await putPublic(env, "brokers/joao/listings/002.json", []);
+  await putPublic(env, "brokers/joao/listings/manifest.json", {
+    schemaVersion: 1,
+    brokerSlug: "joao",
+    totalListings: 0,
+    pageSize: 300,
+    shards: ["001.json", "002.json"],
+    lastUpdated: new Date().toISOString(),
+  });
+
+  const originalDelete = env.IMOB_DATA.delete.bind(env.IMOB_DATA);
+  env.IMOB_DATA.delete = () => {
+    throw new Error("reconcileKnownBrokersAndCities must never call IMOB_DATA.delete");
+  };
+  try {
+    const enumeration = await enumerate(env);
+    const validation = await validate(env, enumeration);
+    await reconcileKnownBrokersAndCities(env, enumeration, validation);
+  } finally {
+    env.IMOB_DATA.delete = originalDelete;
+  }
+
+  // O corretor foi de fato reconciliado (o flat com o anúncio ativo
+  // existe) — só a exclusão do formato antigo que não aconteceu.
+  assert.notEqual(await getPublic(env, "brokers/joao/listings.json"), null, "the new flat format must exist");
+  assert.notEqual(
+    await getPublic(env, "brokers/joao/listings/manifest.json"),
+    null,
+    "the stale manifest must still exist — pruning the old format is out of scope for this adapter",
+  );
+});
+
 test("publishReadModels (full pipeline) never calls delete on IMOB_PRIVATE or IMOB_DATA, even in a city-shrink scenario", async () => {
   const env = makeEnv();
   const broker = await makeBroker(env);

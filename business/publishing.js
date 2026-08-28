@@ -396,7 +396,7 @@ async function applyCardToCity(env, citySlug, listingId, card, cityRef, previous
  * cidade inteira — isso é `rebuildCity`). Se a cidade mudou desde a última
  * publicação, também remove o card da cidade antiga.
  */
-export async function publishListing(env, listingId) {
+export async function publishListing(env, listingId, { updateBrokerAggregate = true } = {}) {
   const draft = await getListingById(env, listingId);
   if (!draft) throw new ListingNotFoundError(listingId);
 
@@ -491,6 +491,18 @@ export async function publishListing(env, listingId) {
     lastPublishedAt: new Date().toISOString(),
   });
 
+  // Keeps brokers/{slug}/listings.json (or manifest+shards) live the
+  // moment this listing's own publish lands — see
+  // `publishBrokerListingsAggregate` below for why this is a full
+  // recompute and not disproportionate here. `updateBrokerAggregate:
+  // false` is only for `republishBrokerListings`, which already rebuilds
+  // the aggregate once for the whole broker after its loop — without the
+  // flag, publishing N listings there would recompute the aggregate N
+  // times (O(N²)) instead of once.
+  if (updateBrokerAggregate) {
+    await publishBrokerListingsAggregate(env, draft.brokerId);
+  }
+
   return { published: true, listingPublic, cardActive, city: draft.city };
 }
 
@@ -564,14 +576,127 @@ export async function rebuildBroker(env, brokerId) {
  * corretor só afetaria seus anúncios na próxima vez que cada um fosse
  * salvo individualmente. Usa o índice broker->listingIds (§26, sem
  * varredura); reaproveita `publishListing`, não reimplementa nada.
+ *
+ * `publishListing` roda aqui com `updateBrokerAggregate: false` — o
+ * agregado (`publishBrokerListingsAggregate`) é recalculado UMA VEZ, ao
+ * final, para o corretor inteiro, não uma vez por anúncio dentro do laço
+ * (isso custaria O(N²) para um corretor com N anúncios). `pruneObsoleteFormat`
+ * só existe para ser propagado por `business/r2ReadModelsAdapter.js`, que
+ * reaproveita esta função no seu passo "sem delete" (ver o cabeçalho
+ * daquele arquivo e `publishBrokerListingsAggregate` abaixo).
  */
-export async function republishBrokerListings(env, brokerId) {
+export async function republishBrokerListings(env, brokerId, { pruneObsoleteFormat = true } = {}) {
   const listingIds = await getBrokerListingIds(env, brokerId);
   const results = [];
   for (const listingId of listingIds) {
-    results.push(await publishListing(env, listingId));
+    results.push(await publishListing(env, listingId, { updateBrokerAggregate: false }));
   }
+  await publishBrokerListingsAggregate(env, brokerId, { pruneObsoleteFormat });
   return results;
+}
+
+/**
+ * Reconstrói `brokers/{slug}/listings.json` (corretor pequeno, um shard
+ * ou menos, §17) OU `brokers/{slug}/listings/manifest.json` +
+ * `.../NNN.json` (corretor grande, mais de um shard) a partir do estado
+ * privado atual — o agregado por corretor que frontend/minisite já lê
+ * (`renderProfileRoute`: tenta o arquivo único primeiro, cai para
+ * manifest+shards) mas que nenhum código gravava até agora (causa raiz de
+ * todo minisite de corretor mostrar a listagem de imóveis sempre vazia —
+ * ver docs/CHANGELOG.md).
+ *
+ * Sempre um recálculo completo, como `rebuildCity` — mas aqui "tudo" é só
+ * os próprios anúncios deste corretor, exatamente o conjunto que qualquer
+ * abordagem precisaria ler de qualquer forma; ao contrário de
+ * `rebuildCity` (cujo "nunca reconstruir tudo por pequena alteração" é
+ * sobre os anúncios de OUTROS corretores na mesma cidade), não há aqui
+ * uma alternativa incremental mais barata que não duplicasse a máquina de
+ * shard "sticky" de `applyCardToCity`/`findOrCreateShardForNewCard` sem
+ * ganho real nesta escala (um corretor tem, na prática, uma fração dos
+ * anúncios de uma cidade inteira).
+ *
+ * Mesmo cascateamento de suspensão que `publishListing` aplica por
+ * anúncio (decisão 8 no cabeçalho do arquivo): um corretor
+ * suspenso/disabled não tem cards no próprio agregado, mesmo que os
+ * drafts privados continuem com status "active".
+ *
+ * Um corretor que cruzou a fronteira de 1 shard desde a última chamada
+ * (cresceu além dela, ou encolheu de volta) nunca fica com os dois
+ * formatos coexistindo em R2 — o formato que deixou de se aplicar é
+ * apagado aqui. `pruneObsoleteFormat: false` (default `true`) suprime
+ * TODA exclusão desta função (troca de formato e poda de shard órfão
+ * dentro do modo particionado), pelo mesmo motivo estrutural do
+ * `pruneOrphanShards` de `rebuildCity`: `business/r2ReadModelsAdapter.js`
+ * reaproveita `republishBrokerListings` (que propaga esta flag) no seu
+ * passo "sem delete, estruturalmente" — ver o cabeçalho daquele arquivo.
+ */
+export async function publishBrokerListingsAggregate(env, brokerId, { pruneObsoleteFormat = true } = {}) {
+  const broker = await getBrokerById(env, brokerId);
+  if (!broker) throw new BrokerNotFoundError(brokerId);
+
+  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled";
+  const listingIds = await getBrokerListingIds(env, brokerId);
+
+  const cards = [];
+  if (!brokerBlocksPublic) {
+    for (const listingId of listingIds) {
+      const draft = await getListingById(env, listingId);
+      if (!draft) continue; // entrada de índice órfã — mesmo tratamento defensivo de rebuildCity
+
+      const status = mapListingStatusForPublic(draft.status);
+      if (status !== "active") continue;
+
+      const listingManifest = (await getPrivate(env, privateKeys.listingManifest(listingId))) ?? {};
+      const publicationVersion = listingManifest.publicationVersion || 1;
+      const listingPublic = normalizeListingForPublic(draft, status, broker, publicationVersion);
+      cards.push(buildListingCard(listingId, listingPublic));
+    }
+  }
+
+  const shards = await partitionCardsIntoShards(cards);
+  const existingManifest = await getPublic(env, dataKeys.brokerListingsManifest(broker.slug));
+  const previousShardCount = existingManifest?.shards?.length ?? 0;
+
+  if (shards.length <= 1) {
+    await putPublic(env, dataKeys.brokerListingsFlat(broker.slug), shards[0] ?? [], {
+      cacheControl: buildCacheControl("brokerListingsFlat"),
+    });
+    if (pruneObsoleteFormat && previousShardCount > 0) {
+      await deletePublic(env, dataKeys.brokerListingsManifest(broker.slug));
+      for (let shardNumber = 1; shardNumber <= previousShardCount; shardNumber += 1) {
+        await deletePublic(env, dataKeys.brokerListingsShard(broker.slug, shardNumber));
+      }
+    }
+  } else {
+    for (let i = 0; i < shards.length; i += 1) {
+      await putPublic(env, dataKeys.brokerListingsShard(broker.slug, i + 1), shards[i], {
+        cacheControl: buildCacheControl("brokerListingsShard"),
+      });
+    }
+    if (pruneObsoleteFormat) {
+      for (let shardNumber = shards.length + 1; shardNumber <= previousShardCount; shardNumber += 1) {
+        await deletePublic(env, dataKeys.brokerListingsShard(broker.slug, shardNumber));
+      }
+    }
+    await putPublic(
+      env,
+      dataKeys.brokerListingsManifest(broker.slug),
+      {
+        schemaVersion: 1,
+        brokerSlug: broker.slug,
+        totalListings: cards.length,
+        pageSize: MAX_CARDS_PER_SHARD,
+        shards: shards.map((_, i) => shardFileName(i + 1)),
+        lastUpdated: new Date().toISOString(),
+      },
+      { cacheControl: buildCacheControl("brokerListingsManifest") },
+    );
+    if (pruneObsoleteFormat) {
+      await deletePublic(env, dataKeys.brokerListingsFlat(broker.slug));
+    }
+  }
+
+  return { totalListings: cards.length, shardCount: shards.length, format: shards.length <= 1 ? "flat" : "sharded" };
 }
 
 /**
