@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Bootstrap MASTER/TESTE</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --border: #d8d8dc;
+    --text: #1c1c1e;
+    --muted: #6b6b70;
+    --accent: #2b6cb0;
+    --accent-disabled: #a9c3dd;
+    --ok-bg: #e6f6ec;
+    --ok-border: #34a853;
+    --ok-text: #175c33;
+    --err-bg: #fdecec;
+    --err-border: #d93025;
+    --err-text: #7a1a12;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+  }
+  main {
+    width: 100%;
+    max-width: 480px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.75rem;
+  }
+  h1 {
+    font-size: 1.15rem;
+    margin: 0 0 0.35rem;
+  }
+  p.intro {
+    color: var(--muted);
+    margin: 0 0 1.5rem;
+    font-size: 0.9rem;
+  }
+  fieldset {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem 1rem;
+    margin: 0 0 1rem;
+  }
+  fieldset.account-fieldset { margin-top: 1.25rem; }
+  legend {
+    padding: 0 0.4rem;
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 0.6rem 0 0.3rem;
+  }
+  label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    margin: 0;
+    cursor: pointer;
+  }
+  input[type="password"], input[type="checkbox"] { accent-color: var(--accent); }
+  input[type="password"] {
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+  input[type="password"]:disabled {
+    background: var(--bg);
+    color: var(--muted);
+  }
+  input[type="checkbox"] {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+  button {
+    width: 100%;
+    margin-top: 1.4rem;
+    padding: 0.7rem;
+    border: none;
+    border-radius: 7px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.98rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: var(--accent-disabled);
+    cursor: not-allowed;
+  }
+  #result {
+    margin-top: 1.25rem;
+    padding: 0.85rem 1rem;
+    border-radius: 7px;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+  }
+  #result[hidden] { display: none; }
+  #result.ok {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-border);
+    color: var(--ok-text);
+  }
+  #result.err {
+    background: var(--err-bg);
+    border: 1px solid var(--err-border);
+    color: var(--err-text);
+  }
+  ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bootstrap de contas especiais</h1>
+  <p class="intro">
+    Provisiona as contas MASTER e/ou TESTE via
+    <code>POST /api/admin/bootstrap-special-accounts</code>. Só funciona
+    enquanto <code>SUPERADMIN_BOOTSTRAP_SECRET</code> estiver configurado no
+    ambiente — remova o secret do painel Cloudflare assim que terminar de
+    usar esta página.
+  </p>
+
+  <form id="bootstrap-form">
+    <label for="secret">Secret de bootstrap</label>
+    <input type="password" id="secret" name="secret" autocomplete="off" required />
+
+    <fieldset class="account-fieldset">
+      <legend>MASTER</legend>
+      <label class="checkbox-label">
+        <input type="checkbox" id="master-enabled" />
+        Criar conta MASTER
+      </label>
+      <label for="master-password">Senha do MASTER</label>
+      <input type="password" id="master-password" name="masterPassword" autocomplete="new-password" minlength="8" disabled />
+    </fieldset>
+
+    <fieldset class="account-fieldset">
+      <legend>TESTE</legend>
+      <label class="checkbox-label">
+        <input type="checkbox" id="teste-enabled" />
+        Criar conta TESTE
+      </label>
+      <label for="teste-password">Senha do TESTE</label>
+      <input type="password" id="teste-password" name="testePassword" autocomplete="new-password" minlength="8" disabled />
+    </fieldset>
+
+    <button type="submit" id="submit-button" disabled>Provisionar</button>
+  </form>
+
+  <div id="result" hidden></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var form = document.getElementById("bootstrap-form");
+  var secretInput = document.getElementById("secret");
+  var masterEnabled = document.getElementById("master-enabled");
+  var masterPassword = document.getElementById("master-password");
+  var testeEnabled = document.getElementById("teste-enabled");
+  var testePassword = document.getElementById("teste-password");
+  var submitButton = document.getElementById("submit-button");
+  var resultBox = document.getElementById("result");
+
+  function syncAccountField(checkbox, passwordInput) {
+    passwordInput.disabled = !checkbox.checked;
+    passwordInput.required = checkbox.checked;
+    if (!checkbox.checked) passwordInput.value = "";
+    updateSubmitState();
+  }
+
+  // At least one account checkbox must be checked to enable submitting —
+  // mirrors the API's own "accounts" requirement, just earlier/friendlier.
+  function updateSubmitState() {
+    submitButton.disabled = !(masterEnabled.checked || testeEnabled.checked);
+  }
+
+  masterEnabled.addEventListener("change", function () {
+    syncAccountField(masterEnabled, masterPassword);
+  });
+  testeEnabled.addEventListener("change", function () {
+    syncAccountField(testeEnabled, testePassword);
+  });
+
+  function showResult(kind, text) {
+    resultBox.className = kind;
+    resultBox.textContent = text;
+    resultBox.hidden = false;
+  }
+
+  function describeSuccess(data) {
+    var lines = [];
+    if (data && data.master) lines.push("MASTER provisionada.");
+    if (data && data.teste) {
+      lines.push(
+        "TESTE provisionada." + (data.brokerId ? " (brokerId: " + data.brokerId + ")" : ""),
+      );
+    }
+    return lines.length > 0 ? lines.join("\n") : "Concluído.";
+  }
+
+  function describeError(status, body) {
+    var message = (body && body.error && body.error.message) || "Erro desconhecido.";
+    if (status === 404) {
+      return "Não encontrado (404): secret incorreto, ou SUPERADMIN_BOOTSTRAP_SECRET não está " +
+        "configurado no ambiente no momento. " + message;
+    }
+    if (status === 409) {
+      return "Conflito (409): " + message;
+    }
+    return "Erro (" + status + "): " + message;
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    var accounts = {};
+    if (masterEnabled.checked) accounts.master = { password: masterPassword.value };
+    if (testeEnabled.checked) accounts.teste = { password: testePassword.value };
+
+    submitButton.disabled = true;
+    resultBox.hidden = true;
+
+    fetch("/api/admin/bootstrap-special-accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: secretInput.value, accounts: accounts }),
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { status: response.status, ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.body && result.body.ok) {
+          showResult("ok", describeSuccess(result.body.data));
+        } else {
+          showResult("err", describeError(result.status, result.body));
+        }
+      })
+      .catch(function (error) {
+        showResult("err", "Falha de rede: " + error.message);
+      })
+      .finally(function () {
+        updateSubmitState();
+      });
+  });
+})();
+</script>
+</body>
+</html>
