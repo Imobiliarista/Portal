@@ -1,0 +1,47 @@
+// frontend/shared/amenities.generated.js
+//
+// GERADO por scripts/generate-amenities-assets.js a partir de
+// business/amenities.js#AMENITIES — não editar à mão. Regenerar com:
+// npm run generate:amenities
+
+export const AMENITIES = Object.freeze([
+  { id: "Pool", label: "Piscina" },
+  { id: "Elevator", label: "Elevador" },
+  { id: "Gym", label: "Academia" },
+  { id: "Sauna", label: "Sauna" },
+  { id: "Playground", label: "Playground" },
+  { id: "Party Room", label: "Salão de Festas" },
+  { id: "Sports Court", label: "Quadra poliesportiva" },
+  { id: "BBQ", label: "Churrasqueira" },
+  { id: "Gourmet Area", label: "Espaço gourmet" },
+  { id: "Balcony", label: "Varanda" },
+  { id: "Garden Area", label: "Jardim" },
+  { id: "Backyard", label: "Quintal" },
+  { id: "Fireplace", label: "Lareira" },
+  { id: "Builtin Wardrobe", label: "Armário embutido" },
+  { id: "Closet", label: "Closet" },
+  { id: "Furnished", label: "Mobiliado" },
+  { id: "Cooling", label: "Ar condicionado" },
+  { id: "Heating", label: "Aquecimento" },
+  { id: "Solar Energy", label: "Energia solar" },
+  { id: "Generator", label: "Gerador elétrico" },
+  { id: "Intercom", label: "Interfone" },
+  { id: "Electronic Gate", label: "Portão eletrônico" },
+  { id: "Security Camera", label: "Câmera de segurança" },
+  { id: "Security Guard on Duty", label: "Segurança 24h" },
+  { id: "Fenced Yard", label: "Condomínio fechado" },
+  { id: "Home Office", label: "Escritório" },
+  { id: "Coworking", label: "Coworking" },
+  { id: "Pet Space", label: "Espaço Pet" },
+  { id: "Pets Allowed", label: "Permite animais" },
+  { id: "American Kitchen", label: "Cozinha americana" },
+  { id: "Gourmet Kitchen", label: "Cozinha Gourmet" },
+  { id: "Laundry", label: "Lavanderia" },
+  { id: "Edicule", label: "Edícula" },
+  { id: "Deck", label: "Deck" },
+  { id: "Close to schools", label: "Perto de escolas" },
+  { id: "Close to hospitals", label: "Perto de hospitais" },
+  { id: "Close to public transportation", label: "Perto de transporte público" },
+  { id: "Close to shopping centers", label: "Perto de shopping center" },
+  { id: "Close to main roads/avenues", label: "Perto de vias de acesso" },
+]);

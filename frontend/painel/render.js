@@ -14,6 +14,10 @@ import { readPublicationsConfig } from "../shared/publications.generated.js";
 // rendered below always comes from this import, never a hardcoded array
 // — adding a submodule to the registry is enough for it to show up here.
 import { FEED_SUBMODULES_PUBLIC, readFeedSubmoduleConfig } from "../shared/feeds.generated.js";
+// business/amenities.js#AMENITIES (§"NOVOS CAMPOS NO MODELO DE IMÓVEL,
+// PARTE 2") is generated for the browser the same way — see
+// frontend/shared/amenities.generated.js.
+import { AMENITIES } from "../shared/amenities.generated.js";
 
 function el(tag, { className, text, attrs, value } = {}, children = []) {
   const node = document.createElement(tag);
@@ -273,6 +277,8 @@ export function renderListingsList(content, { listings } = {}, handlers = {}) {
 // --- imóveis: formulário criar/editar (§54, POST/PUT /api/me/listings) -----------
 const PURPOSES = ["venda", "aluguel"];
 const STATUSES = ["draft", "active", "paused", "sold"]; // "removed" só via botão Excluir
+const ZONES = ["central", "norte", "sul", "leste", "oeste", "rural"];
+const ZONE_LABELS = { central: "Central", norte: "Norte", sul: "Sul", leste: "Leste", oeste: "Oeste", rural: "Rural" };
 
 export function renderListingForm(content, { listing, mode, saving, error, uploading } = {}, handlers = {}) {
   clear(content);
@@ -283,17 +289,34 @@ export function renderListingForm(content, { listing, mode, saving, error, uploa
       el("input", { attrs: { name, type }, value: value ?? "" }),
     ]);
 
-  const select = (labelText, name, options, current) =>
+  const select = (labelText, name, options, current, labelFor = (opt) => opt) =>
     el("label", { className: "imob-field" }, [
       el("span", { text: labelText }),
       el(
         "select",
         { attrs: { name } },
         options.map((opt) => {
-          const optionEl = el("option", { text: opt, attrs: { value: opt } });
+          const optionEl = el("option", { text: labelFor(opt), attrs: { value: opt } });
           if (opt === current) optionEl.setAttribute("selected", "true");
           return optionEl;
         }),
+      ),
+    ]);
+
+  // Único grupo de checkboxes do arquivo (tudo mais aqui é campo único ou
+  // select de valor único) — precisa de vários <input> com o mesmo `name`
+  // (FormData.getAll em forms.js#buildListingPayload), por isso não reusa
+  // field()/select().
+  const checkboxGroup = (labelText, name, options, currentValues = []) =>
+    el("fieldset", { className: "imob-field imob-checkbox-group" }, [
+      el("legend", { text: labelText }),
+      ...options.map(({ id, label }) =>
+        el("label", { className: "imob-checkbox-item" }, [
+          el("input", {
+            attrs: { type: "checkbox", name, value: id, ...(currentValues.includes(id) ? { checked: "true" } : {}) },
+          }),
+          el("span", { text: label }),
+        ]),
       ),
     ]);
 
@@ -312,6 +335,12 @@ export function renderListingForm(content, { listing, mode, saving, error, uploa
     field("Cidade", "city", listing?.city),
     field("Bairro", "district", listing?.district),
     field("CEP", "zipcode", listing?.zipcode),
+    field("Rua", "street", listing?.street),
+    field("Número", "streetNumber", listing?.streetNumber),
+    select("Região", "zone", ZONES, listing?.zone, (opt) => ZONE_LABELS[opt]),
+    field("Zoneamento (ex: ZR3)", "municipalZoning", listing?.municipalZoning),
+    field("Ano de construção", "yearBuilt", listing?.yearBuilt, "number"),
+    field("Inscrição municipal", "municipalRegistrationCode", listing?.municipalRegistrationCode),
     field("Preço", "price", listing?.price, "number"),
     field("Condomínio", "condominium", listing?.condominium, "number"),
     field("IPTU", "iptu", listing?.iptu, "number"),
@@ -320,7 +349,13 @@ export function renderListingForm(content, { listing, mode, saving, error, uploa
     field("Quartos", "bedrooms", f.bedrooms, "number"),
     field("Banheiros", "bathrooms", f.bathrooms, "number"),
     field("Vagas", "parkingSpaces", f.parkingSpaces, "number"),
-    field("Área (m²)", "area", f.area, "number"),
+    field("Área construída (m²)", "livingArea", f.livingArea, "number"),
+    field("Área do terreno (m²)", "lotArea", f.lotArea, "number"),
+    field("Salas", "livingRooms", f.livingRooms, "number"),
+    field("Cozinhas", "kitchens", f.kitchens, "number"),
+    field("Suítes", "suites", f.suites, "number"),
+    field("Andar", "unitFloor", f.unitFloor, "number"),
+    checkboxGroup("Comodidades", "amenities", AMENITIES, listing?.amenities ?? []),
     field("Vídeo (link do YouTube)", "videoUrl", listing?.video ? `https://youtube.com/watch?v=${listing.video.id}` : ""),
     field("Tour 360 (URL)", "tour360Url", listing?.tour360?.url),
     el("button", { attrs: { type: "submit" }, text: saving ? "Salvando…" : "Salvar" }),
