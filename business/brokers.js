@@ -29,6 +29,7 @@ import {
   deleteBrokerCpfIndex,
   getKnownBrokerIds,
   registerBrokerId,
+  nextBrokerSequence,
 } from "../storage/indexes.js";
 import {
   isNonEmptyString,
@@ -38,6 +39,7 @@ import {
   normalizeCpf,
   isUrl,
   isEnum,
+  isZipcode,
   pickAllowed,
   assertValid,
   ValidationError,
@@ -58,7 +60,7 @@ export class BrokerConflictError extends Error {
   }
 }
 
-const BROKER_STATUSES = ["pending", "active", "suspended", "disabled"];
+const BROKER_STATUSES = ["pending", "active", "suspended", "disabled", "deleted"];
 
 // §27 hotfix pt.2 — never let a real broker register a slug that collides
 // with the special-identifier allowlist (business/auth.js#SPECIAL_IDENTIFIERS
@@ -70,6 +72,18 @@ const RESERVED_SLUGS = ["master", "teste"];
 // Fields a caller may set on creation. `brokerId` is intentionally absent —
 // it is always minted or supplied as an explicit argument, never picked out
 // of this object.
+//
+// Gestão completa de cliente/site: cliente (dados privados) e site (dados
+// públicos) são sempre a mesma entidade (1:1) — o corretor tem um único
+// registro com os dois grupos de campos lado a lado, só separados na hora
+// de publicar (`business/publishing.js#normalizeBrokerForPublic` decide o
+// que atravessa pro público). `fullName`/`birthDate`/`nationality`/
+// `personalAddress` são a identidade legal privada do cliente — nunca
+// confundir com `name` (nome de exibição público do site, já existente).
+// `businessPhone`/`businessEmail`/`businessAddress` são os dados de
+// contato públicos do site — distintos de `phone`/`email`, que continuam
+// existindo só como contato privado do cliente (nunca publicados, ver
+// `normalizeBrokerForPublic`).
 const CREATE_ALLOWED_FIELDS = [
   "userId",
   "slug",
@@ -86,6 +100,15 @@ const CREATE_ALLOWED_FIELDS = [
   "logo",
   "cover",
   "modules",
+  // Cliente (privado)
+  "fullName",
+  "birthDate",
+  "nationality",
+  "personalAddress",
+  // Site (público)
+  "businessPhone",
+  "businessEmail",
+  "businessAddress",
 ];
 
 // Fields a broker (or admin, via the same function) may change about an
@@ -103,7 +126,48 @@ const PROFILE_UPDATE_ALLOWED_FIELDS = [
   "logo",
   "cover",
   "modules",
+  "fullName",
+  "birthDate",
+  "nationality",
+  "personalAddress",
+  "businessPhone",
+  "businessEmail",
+  "businessAddress",
 ];
+
+/**
+ * Endereço completo (pessoal ou comercial) — mesma convenção de validação
+ * já usada para os campos de endereço do imóvel (business/listings.js:
+ * `isNonEmptyString` com `maxLength` por subcampo, `isZipcode` para o CEP),
+ * aplicada a um objeto em vez de campos soltos porque aqui os dois
+ * endereços (pessoal/comercial) precisam viver lado a lado no mesmo
+ * registro sem colidir nomes de campo. `complement` é o único subcampo
+ * opcional (nem todo endereço tem complemento).
+ */
+function isValidAddress(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const { country, state, city, street, streetNumber, complement, zipcode } = value;
+  if (!isNonEmptyString(country, { maxLength: 60 })) return false;
+  if (!isNonEmptyString(state, { maxLength: 60 })) return false;
+  if (!isNonEmptyString(city, { maxLength: 120 })) return false;
+  if (!isNonEmptyString(street, { maxLength: 200 })) return false;
+  if (!isNonEmptyString(streetNumber, { maxLength: 20 })) return false;
+  if (complement !== undefined && complement !== null && !isNonEmptyString(complement, { maxLength: 200 })) return false;
+  if (!isZipcode(zipcode)) return false;
+  return true;
+}
+
+/**
+ * `birthDate` — ISO date ("YYYY-MM-DD"), nunca no futuro. Teto DINÂMICO
+ * (a data/hora atual, não um ano fixo), mesmo espírito de
+ * `business/listings.js#isValidYearBuilt`.
+ */
+function isValidBirthDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = new Date(`${value}T00:00:00Z`).getTime();
+  if (Number.isNaN(time)) return false;
+  return time <= Date.now();
+}
 
 const FIELD_RULES = {
   userId: isNonEmptyString,
@@ -121,10 +185,45 @@ const FIELD_RULES = {
   logo: (v) => v === null || isUrl(v),
   cover: (v) => v === null || isUrl(v),
   modules: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
+  fullName: (v) => isNonEmptyString(v, { maxLength: 200 }),
+  birthDate: isValidBirthDate,
+  nationality: (v) => isNonEmptyString(v, { maxLength: 60 }),
+  personalAddress: isValidAddress,
+  businessPhone: (v) => isNonEmptyString(v, { maxLength: 40 }),
+  businessEmail: isEmail,
+  businessAddress: isValidAddress,
 };
 
-function newBrokerId() {
-  return `broker_${crypto.randomUUID()}`;
+/**
+ * Mints the next sequential brokerId: `broker_000001`, `broker_000002`, ...
+ * — replaces the old `broker_${crypto.randomUUID()}` scheme. One id serves
+ * as both the client's id AND the site's id (they're the same 1:1 entity) —
+ * never mint a second number for the site. Best-effort (see
+ * `storage/indexes.js#nextBrokerSequence`'s docstring for the accepted
+ * race) — fine given how rarely a broker is created.
+ *
+ * Existing `broker_<uuid>` ids from before this change are left exactly as
+ * they are (never migrated/renamed) — every lookup here works off the
+ * brokerId string itself, never assumes a particular format, so old and
+ * new ids coexist without conflict.
+ */
+async function newBrokerId(env) {
+  const sequence = await nextBrokerSequence(env);
+  return `broker_${String(sequence).padStart(6, "0")}`;
+}
+
+/**
+ * Derives a userId from a freshly minted sequential brokerId
+ * (`broker_000001` -> `user_000001`) for a caller that didn't supply its
+ * own `userId` — the common case for the SuperAdmin "criar cliente/site"
+ * flow (worker/admin.js), which never asks for a separate userId. Falls
+ * back to a random id for anything that isn't the new sequential shape
+ * (an explicit custom `brokerId` passed by a caller) so this never mints a
+ * colliding/malformed userId.
+ */
+function deriveUserId(brokerId) {
+  const match = /^broker_(\d{6})$/.exec(brokerId);
+  return match ? `user_${match[1]}` : `user_${crypto.randomUUID()}`;
 }
 
 /**
@@ -139,15 +238,21 @@ function newBrokerId() {
  * — keys the email/CPF index hashes, see storage/indexes.js). `allowMissingCpf`
  * is a narrow escape hatch for `business/auth.js#provisionSpecialAccount`
  * to provision the TESTE special account's broker record (§27 hotfix pt.2
- * — "sem CPF"); no HTTP route may ever set it (there is no broker-creation
- * endpoint yet — see docs/OPERATIONS.md pendência 5).
+ * — "sem CPF").
+ *
+ * `userId` is optional: the SuperAdmin "criar cliente/site" flow
+ * (worker/admin.js#handleCreateBroker) never collects one — when omitted,
+ * it's derived from the freshly minted sequential `brokerId` (see
+ * `deriveUserId` above). Passing an explicit `userId` (bootstrap scripts,
+ * tests) still works exactly as before.
  */
 export async function createBroker(env, input, { loginIndexSecret, allowMissingCpf = false } = {}) {
   const picked = assertValid(input, CREATE_ALLOWED_FIELDS, FIELD_RULES, {
-    required: ["userId", "slug", "name", "plan", ...(allowMissingCpf ? [] : ["cpf"])],
+    required: ["slug", "name", "plan", ...(allowMissingCpf ? [] : ["cpf"])],
   });
 
-  const brokerId = isNonEmptyString(input?.brokerId) ? input.brokerId : newBrokerId();
+  const brokerId = isNonEmptyString(input?.brokerId) ? input.brokerId : await newBrokerId(env);
+  const userId = isNonEmptyString(picked.userId) ? picked.userId : deriveUserId(brokerId);
   const cpf = picked.cpf !== undefined ? normalizeCpf(picked.cpf) : null;
 
   if ((cpf || picked.email) && !isNonEmptyString(loginIndexSecret)) {
@@ -180,7 +285,7 @@ export async function createBroker(env, input, { loginIndexSecret, allowMissingC
   const broker = {
     schemaVersion: 1,
     brokerId,
-    userId: picked.userId,
+    userId,
     slug: picked.slug,
     status: picked.status ?? "pending",
     plan: picked.plan,
@@ -195,6 +300,15 @@ export async function createBroker(env, input, { loginIndexSecret, allowMissingC
     ...(picked.logo !== undefined ? { logo: picked.logo } : {}),
     ...(picked.cover !== undefined ? { cover: picked.cover } : {}),
     ...(picked.modules !== undefined ? { modules: picked.modules } : {}),
+    // Cliente (privado)
+    ...(picked.fullName !== undefined ? { fullName: sanitizeText(picked.fullName) } : {}),
+    ...(picked.birthDate !== undefined ? { birthDate: picked.birthDate } : {}),
+    ...(picked.nationality !== undefined ? { nationality: sanitizeText(picked.nationality) } : {}),
+    ...(picked.personalAddress !== undefined ? { personalAddress: picked.personalAddress } : {}),
+    // Site (público)
+    ...(picked.businessPhone !== undefined ? { businessPhone: picked.businessPhone } : {}),
+    ...(picked.businessEmail !== undefined ? { businessEmail: picked.businessEmail } : {}),
+    ...(picked.businessAddress !== undefined ? { businessAddress: picked.businessAddress } : {}),
     updatedAt: now,
   };
 
@@ -263,6 +377,8 @@ export async function updateBrokerProfile(env, brokerId, patch, { loginIndexSecr
 
   if (picked.name !== undefined) picked.name = sanitizeText(picked.name);
   if (picked.about !== undefined) picked.about = sanitizeText(picked.about);
+  if (picked.fullName !== undefined) picked.fullName = sanitizeText(picked.fullName);
+  if (picked.nationality !== undefined) picked.nationality = sanitizeText(picked.nationality);
 
   const updated = {
     ...current,
@@ -328,10 +444,14 @@ export async function getBrokerByCpf(env, cpf, loginIndexSecret) {
 // A broker's private status is the single authoritative flag both login
 // (business/auth.js#login) and the publisher (business/publishing.js —
 // broker-suspension cascades onto its listings) read. Transitions are
-// intentionally narrow: only the 3 moves §53 actually names ("aprovar",
-// "suspender", "reativar"). "disabled" (present in BROKER_STATUSES/the
-// schema enum since an earlier etapa) has no admin action wired to it in
-// this lot — see the PR's pendências.
+// intentionally narrow: the 3 moves §53 originally named ("aprovar",
+// "suspender", "reativar") plus "excluir" (gestão completa de
+// cliente/site) — a logical delete, never a physical one (no code path
+// anywhere deletes the private profile-draft/manifest objects or the
+// public profile.json; "deleted" is just another value of this same
+// status field). "disabled" (present in BROKER_STATUSES/the schema enum
+// since an earlier etapa) has no admin action wired to it in this lot —
+// see the PR's pendências.
 
 export class BrokerStatusError extends BrokerConflictError {}
 
@@ -342,6 +462,12 @@ const STATUS_TRANSITIONS = {
   // already-active broker.
   suspend: { from: ["active", "pending"], to: "suspended" },
   reactivate: { from: ["suspended"], to: "active" },
+  // Terminal by design — no move ever transitions a broker back out of
+  // "deleted" (there is no "undelete" action). The brokerId itself is
+  // never reused afterwards either, but that's already guaranteed for
+  // free: the sequential counter behind `newBrokerId` never goes
+  // backwards, so no later `createBroker` call can ever mint it again.
+  delete: { from: ["pending", "active", "suspended", "disabled"], to: "deleted" },
 };
 
 async function transitionBrokerStatus(env, brokerId, action) {
@@ -381,6 +507,24 @@ export async function suspendBroker(env, brokerId) {
 /** suspended -> active (§53 "reativar"). */
 export async function reactivateBroker(env, brokerId) {
   return transitionBrokerStatus(env, brokerId, "reactivate");
+}
+
+/**
+ * pending/active/suspended/disabled -> deleted — exclusão LÓGICA do
+ * cliente/site (gestão completa de cliente/site no painel do SuperAdmin).
+ * Never a physical delete: this only flips `status`, exactly like
+ * approve/suspend/reactivate above — the private profile-draft/manifest
+ * and the public profile.json (if it exists) are left in place. The
+ * caller (worker/admin.js#handleDeleteBroker) republishes the broker/its
+ * listings afterwards, the same way suspend/reactivate already do, so the
+ * public footprint collapses to the same minimal, no-real-data
+ * publication a suspended broker gets (business/publishing.js —
+ * `deleted` maps to the same public "suspended" status suspended/disabled
+ * already do, since broker-public.schema.json has no separate enum value
+ * for it).
+ */
+export async function deleteBroker(env, brokerId) {
+  return transitionBrokerStatus(env, brokerId, "delete");
 }
 
 /**

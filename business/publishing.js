@@ -150,6 +150,14 @@ const BROKER_STATUS_TO_PUBLIC = Object.freeze({
   active: "active",
   suspended: "suspended",
   disabled: "suspended",
+  // Gestão completa de cliente/site: exclusão lógica. Maps onto the same
+  // "suspended" public value disabled already does — broker-public.schema.json
+  // has no dedicated enum value for it, and the effect is identical to a
+  // suspended broker's minisite (§76: minimal, no-real-data publication) —
+  // deliberately NOT a distinct public status, so frontend/minisite/render.js
+  // needs no new branch at all (any non-"active" status already renders the
+  // same generic "indisponível" page).
+  deleted: "suspended",
 });
 
 export function mapListingStatusForPublic(status) {
@@ -200,7 +208,21 @@ export function normalizeListingForPublic(draft, status, broker, publicationVers
   };
 }
 
-/** broker.schema.json -> broker-public.schema.json (§16). */
+/**
+ * broker.schema.json -> broker-public.schema.json (§16).
+ *
+ * Gestão completa de cliente/site: `broker` here carries BOTH the private
+ * client fields (fullName/birthDate/nationality/personalAddress/cpf/email/
+ * phone) and the public site fields side by side (they're the same 1:1
+ * record) — this function is the one and only place that draws the line
+ * between them. `phone`/`email`/`cpf`/`fullName`/`birthDate`/`nationality`/
+ * `personalAddress` are NEVER projected here, on purpose — `phone` used to
+ * leak into the public projection before this change (confirmed unused by
+ * any frontend, low risk to remove); the rest never did. `businessPhone`/
+ * `businessEmail`/`businessAddress` are the public site's OWN contact
+ * fields, distinct from those private ones, and are the only ones that
+ * belong here.
+ */
 export function normalizeBrokerForPublic(broker, status) {
   return {
     schemaVersion: 1,
@@ -208,13 +230,15 @@ export function normalizeBrokerForPublic(broker, status) {
     status,
     name: broker.name,
     ...(broker.creci !== undefined ? { creciPublic: broker.creci } : {}),
-    ...(broker.phone !== undefined ? { phone: broker.phone } : {}),
     ...(broker.whatsapp !== undefined ? { whatsapp: broker.whatsapp } : {}),
     ...(broker.city !== undefined ? { city: broker.city } : {}),
     ...(broker.about !== undefined ? { about: broker.about } : {}),
     ...(broker.logo !== undefined ? { logo: broker.logo } : {}),
     ...(broker.cover !== undefined ? { cover: broker.cover } : {}),
     ...(broker.modules !== undefined ? { modules: broker.modules } : {}),
+    ...(broker.businessPhone !== undefined ? { businessPhone: broker.businessPhone } : {}),
+    ...(broker.businessEmail !== undefined ? { businessEmail: broker.businessEmail } : {}),
+    ...(broker.businessAddress !== undefined ? { businessAddress: broker.businessAddress } : {}),
   };
 }
 
@@ -435,7 +459,7 @@ export async function publishListing(env, listingId, { updateBrokerAggregate = t
   // listing-public.schema.json já reservava para exatamente este caso. Um
   // anúncio que já era independentemente sold/removed/paused mantém esse
   // status mais específico; a suspensão só rebaixa o que seria "active".
-  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled";
+  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled" || broker.status === "deleted";
   const status = brokerBlocksPublic && listingStatus === "active" ? "suspended" : listingStatus;
 
   const cityRef = requireCityBySlug(draft.city);
@@ -641,7 +665,7 @@ export async function publishBrokerListingsAggregate(env, brokerId, { pruneObsol
   const broker = await getBrokerById(env, brokerId);
   if (!broker) throw new BrokerNotFoundError(brokerId);
 
-  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled";
+  const brokerBlocksPublic = broker.status === "suspended" || broker.status === "disabled" || broker.status === "deleted";
   const listingIds = await getBrokerListingIds(env, brokerId);
 
   const cards = [];

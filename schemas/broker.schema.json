@@ -13,10 +13,10 @@
     "slug": { "type": "string", "minLength": 1 },
     "status": {
       "type": "string",
-      "enum": ["pending", "active", "suspended", "disabled"]
+      "enum": ["pending", "active", "suspended", "disabled", "deleted"]
     },
     "plan": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1, "description": "Nome de exibição PÚBLICO do site — não confundir com fullName (identidade legal privada do cliente)." },
     "email": { "type": "string", "format": "email" },
     "cpf": {
       "type": "string",
@@ -24,7 +24,7 @@
       "description": "Normalizado (só dígitos). Identificador de login do corretor (§27 hotfix) — obrigatório em business/brokers.js#createBroker para todo corretor real; omitido só na conta especial TESTE (§27 hotfix pt.2, business/auth.js#SPECIAL_IDENTIFIERS — sem CPF, loga por identificador fixo). Nunca aparece em broker-public.schema.json e nunca é logado (core/logger.js#SENSITIVE_KEY_PATTERNS)."
     },
     "creci": { "type": "string", "description": "Número completo do CRECI — não confundir com creciPublic (broker-public.schema.json)." },
-    "phone": { "type": "string" },
+    "phone": { "type": "string", "description": "Telefone PRIVADO do cliente — nunca aparece em broker-public.schema.json. Não confundir com businessPhone (telefone comercial do site, público)." },
     "whatsapp": { "type": "string" },
     "city": { "type": "string" },
     "about": { "type": "string" },
@@ -33,6 +33,41 @@
     "modules": {
       "type": "object",
       "additionalProperties": true
+    },
+    "fullName": { "type": "string", "description": "Identidade legal PRIVADA do cliente — nunca aparece em broker-public.schema.json." },
+    "birthDate": { "type": "string", "format": "date", "description": "PRIVADO — nunca aparece em broker-public.schema.json." },
+    "nationality": { "type": "string", "description": "PRIVADO — nunca aparece em broker-public.schema.json." },
+    "personalAddress": {
+      "type": "object",
+      "description": "Endereço pessoal PRIVADO do cliente — nunca aparece em broker-public.schema.json. Não confundir com businessAddress (endereço comercial do site, público).",
+      "additionalProperties": false,
+      "required": ["country", "state", "city", "street", "streetNumber", "zipcode"],
+      "properties": {
+        "country": { "type": "string" },
+        "state": { "type": "string" },
+        "city": { "type": "string" },
+        "street": { "type": "string" },
+        "streetNumber": { "type": "string" },
+        "complement": { "type": "string" },
+        "zipcode": { "type": "string" }
+      }
+    },
+    "businessPhone": { "type": "string", "description": "Telefone comercial PÚBLICO do site." },
+    "businessEmail": { "type": "string", "format": "email", "description": "E-mail comercial PÚBLICO do site." },
+    "businessAddress": {
+      "type": "object",
+      "description": "Endereço comercial PÚBLICO do site.",
+      "additionalProperties": false,
+      "required": ["country", "state", "city", "street", "streetNumber", "zipcode"],
+      "properties": {
+        "country": { "type": "string" },
+        "state": { "type": "string" },
+        "city": { "type": "string" },
+        "street": { "type": "string" },
+        "streetNumber": { "type": "string" },
+        "complement": { "type": "string" },
+        "zipcode": { "type": "string" }
+      }
     },
     "updatedAt": { "type": "string", "format": "date-time" }
   }

@@ -9,10 +9,9 @@
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "slug": { "type": "string", "minLength": 1 },
-    "status": { "type": "string", "enum": ["active", "suspended"] },
+    "status": { "type": "string", "enum": ["active", "suspended"], "description": "\"suspended\" also covers a broker whose private status is \"disabled\" or \"deleted\" (gestão completa de cliente/site — a logically-deleted client's minisite collapses to the exact same minimal publication a suspended one gets)." },
     "name": { "type": "string", "minLength": 1 },
     "creciPublic": { "type": "string" },
-    "phone": { "type": "string" },
     "whatsapp": { "type": "string" },
     "city": { "type": "string" },
     "about": { "type": "string" },
@@ -22,6 +21,22 @@
       "type": "object",
       "description": "Per-module public config (§16, §38). Shape owned by each module, not by core.",
       "additionalProperties": true
+    },
+    "businessPhone": { "type": "string" },
+    "businessEmail": { "type": "string", "format": "email" },
+    "businessAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["country", "state", "city", "street", "streetNumber", "zipcode"],
+      "properties": {
+        "country": { "type": "string" },
+        "state": { "type": "string" },
+        "city": { "type": "string" },
+        "street": { "type": "string" },
+        "streetNumber": { "type": "string" },
+        "complement": { "type": "string" },
+        "zipcode": { "type": "string" }
+      }
     }
   }
 }

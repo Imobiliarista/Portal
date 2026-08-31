@@ -80,15 +80,20 @@ export function renderAppShell(container, handlers = {}) {
   return content;
 }
 
-// --- corretores: lista + ações (§53, GET/POST /api/admin/brokers*) --------------
+// --- corretores: lista + ações (§53, GET/POST /api/admin/brokers*; gestão
+// completa de cliente/site) -----------------------------------------------
 const STATUS_LABELS = {
   pending: "Pendente",
   active: "Ativo",
   suspended: "Suspenso",
   disabled: "Desabilitado",
+  deleted: "Excluído",
 };
 
 export function renderBrokersSection(content, { brokers, plans, busyBrokerId, error } = {}, handlers = {}) {
+  const newButton = el("button", { text: "Novo cliente" });
+  newButton.addEventListener("click", () => handlers.onNew?.());
+
   const rows = (brokers ?? []).map((broker) => {
     const busy = busyBrokerId === broker.brokerId;
 
@@ -102,6 +107,9 @@ export function renderBrokersSection(content, { brokers, plans, busyBrokerId, er
     planSelect.value = broker.plan ?? "";
     planSelect.addEventListener("change", () => handlers.onAssignPlan?.(broker.brokerId, planSelect.value));
     if (busy || !plans?.length) planSelect.setAttribute("disabled", "true");
+
+    const editButton = el("button", { text: "Editar", attrs: { type: "button" } });
+    editButton.addEventListener("click", () => handlers.onEdit?.(broker.brokerId));
 
     const approveButton =
       broker.status === "pending"
@@ -119,10 +127,11 @@ export function renderBrokersSection(content, { brokers, plans, busyBrokerId, er
       broker.status === "suspended" ? el("button", { text: "Reativar" }) : null;
     reactivateButton?.addEventListener("click", () => handlers.onReactivate?.(broker.brokerId));
 
-    const publishButton = el("button", { text: "Republicar" });
-    publishButton.addEventListener("click", () => handlers.onPublish?.(broker.brokerId));
+    const publishButton =
+      broker.status === "deleted" ? null : el("button", { text: "Republicar" });
+    publishButton?.addEventListener("click", () => handlers.onPublish?.(broker.brokerId));
 
-    for (const button of [approveButton, suspendButton, reactivateButton, publishButton]) {
+    for (const button of [editButton, approveButton, suspendButton, reactivateButton, publishButton]) {
       if (button && busy) button.setAttribute("disabled", "true");
     }
 
@@ -135,7 +144,7 @@ export function renderBrokersSection(content, { brokers, plans, busyBrokerId, er
         { className: `imob-status imob-status-${broker.status}` },
         [el("span", { text: STATUS_LABELS[broker.status] ?? broker.status })],
       ),
-      el("td", { className: "imob-actions" }, [approveButton, suspendButton, reactivateButton, publishButton]),
+      el("td", { className: "imob-actions" }, [editButton, approveButton, suspendButton, reactivateButton, publishButton]),
     ]);
   });
 
@@ -156,7 +165,169 @@ export function renderBrokersSection(content, { brokers, plans, busyBrokerId, er
     el("section", { className: "imob-brokers-section" }, [
       el("h2", { text: "Corretores" }),
       messageBox(error),
+      newButton,
       brokers?.length ? table : el("p", { className: "imob-message", text: "Nenhum corretor cadastrado ainda." }),
+    ]),
+  );
+}
+
+// --- corretor: criar/editar (gestão completa de cliente/site) --------------
+// Um único formulário para os dois modos ("create"/"edit"), mesma
+// preferência de `draw()` state-driven do resto deste arquivo
+// (renderPlansSection acima já faz o mesmo criar/editar num só form).
+// Campos organizados em DOIS grupos visuais claros — "Dados do cliente
+// (privado)" e "Dados do site (público)" — pra ninguém confundir os dois
+// na hora de preencher, como pedido: cliente e site são a mesma entidade
+// (1:1), só com visibilidade diferente depois de publicados.
+function addressFieldset(legendText, prefix, current) {
+  const addr = current ?? {};
+  const input = (labelText, name, value) =>
+    el("label", { className: "imob-field" }, [
+      el("span", { text: labelText }),
+      el("input", { attrs: { name: `${prefix}.${name}` }, value: value ?? "" }),
+    ]);
+
+  return {
+    fieldset: el("fieldset", { className: "imob-field-group" }, [
+      el("legend", { text: legendText }),
+      input("País", "country", addr.country),
+      input("Estado", "state", addr.state),
+      input("Cidade", "city", addr.city),
+      input("Rua", "street", addr.street),
+      input("Número", "streetNumber", addr.streetNumber),
+      input("Complemento (opcional)", "complement", addr.complement),
+      input("CEP", "zipcode", addr.zipcode),
+    ]),
+  };
+}
+
+function readAddressFromForm(form, prefix) {
+  const get = (name) => form.querySelector(`[name="${prefix}.${name}"]`)?.value.trim() ?? "";
+  const complement = get("complement");
+  const address = {
+    country: get("country"),
+    state: get("state"),
+    city: get("city"),
+    street: get("street"),
+    streetNumber: get("streetNumber"),
+    zipcode: get("zipcode"),
+    ...(complement ? { complement } : {}),
+  };
+  // Endereço inteiramente vazio (formulário deixado em branco) não vira um
+  // objeto de campos vazios inválido — simplesmente não é enviado.
+  return Object.values(address).some((v) => v) ? address : undefined;
+}
+
+export function renderBrokerForm(content, { mode, broker, saving, deleting, error } = {}, handlers = {}) {
+  const editing = mode === "edit";
+
+  const field = (labelText, name, value, { type = "text", disabled } = {}) =>
+    el("label", { className: "imob-field" }, [
+      el("span", { text: labelText }),
+      el("input", { attrs: { name, type, ...(disabled ? { disabled: "true" } : {}) }, value: value ?? "" }),
+    ]);
+
+  const personalAddress = addressFieldset("Endereço pessoal", "personalAddress", broker?.personalAddress);
+  const businessAddress = addressFieldset("Endereço comercial", "businessAddress", broker?.businessAddress);
+
+  const clientFields = el("fieldset", { className: "imob-field-group" }, [
+    el("legend", { text: "Dados do cliente (privado)" }),
+    field("Nome completo", "fullName", broker?.fullName),
+    field("Data de nascimento", "birthDate", broker?.birthDate, { type: "date" }),
+    field("Nacionalidade", "nationality", broker?.nationality),
+    field("CPF", "cpf", broker?.cpf),
+    field("E-mail (privado)", "email", broker?.email, { type: "email" }),
+    field("Telefone (privado)", "phone", broker?.phone),
+    personalAddress.fieldset,
+    ...(editing ? [] : [field("Senha inicial", "password", "", { type: "password" })]),
+  ]);
+
+  const siteFields = el("fieldset", { className: "imob-field-group" }, [
+    el("legend", { text: "Dados do site (público)" }),
+    field("Nome de exibição", "name", broker?.name),
+    field("Slug (URL do site)", "slug", broker?.slug, { disabled: editing }),
+    field("Plano", "plan", broker?.plan, { disabled: editing }),
+    field("CRECI", "creci", broker?.creci),
+    field("WhatsApp", "whatsapp", broker?.whatsapp),
+    field("Cidade de atuação", "city", broker?.city),
+    field("Telefone comercial", "businessPhone", broker?.businessPhone),
+    field("E-mail comercial", "businessEmail", broker?.businessEmail, { type: "email" }),
+    businessAddress.fieldset,
+    el("label", { className: "imob-field" }, [
+      el("span", { text: "Sobre" }),
+      el("textarea", { attrs: { name: "about" }, text: broker?.about ?? "" }),
+    ]),
+    field("Logo (URL)", "logo", broker?.logo),
+    field("Capa (URL)", "cover", broker?.cover),
+  ]);
+
+  const submitButton = el("button", {
+    attrs: { type: "submit" },
+    text: saving ? "Salvando…" : editing ? "Salvar" : "Criar cliente/site",
+  });
+  if (saving) submitButton.setAttribute("disabled", "true");
+
+  const cancelButton = el("button", { className: "imob-danger", text: "Cancelar", attrs: { type: "button" } });
+  cancelButton.addEventListener("click", () => handlers.onCancel?.());
+
+  const form = el("form", { className: "imob-broker-form" }, [messageBox(error), clientFields, siteFields, submitButton, cancelButton]);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const value = (name) => form.querySelector(`[name="${name}"]`)?.value.trim() ?? "";
+    const optional = (name) => value(name) || undefined;
+
+    const fields = {
+      name: value("name"),
+      creci: optional("creci"),
+      whatsapp: optional("whatsapp"),
+      city: optional("city"),
+      about: optional("about"),
+      logo: optional("logo"),
+      cover: optional("cover"),
+      businessPhone: optional("businessPhone"),
+      businessEmail: optional("businessEmail"),
+      businessAddress: readAddressFromForm(form, "businessAddress"),
+      fullName: optional("fullName"),
+      birthDate: optional("birthDate"),
+      nationality: optional("nationality"),
+      email: optional("email"),
+      phone: optional("phone"),
+      personalAddress: readAddressFromForm(form, "personalAddress"),
+      cpf: optional("cpf"),
+      // slug/plan são imutáveis após a criação (business/brokers.js#
+      // PROFILE_UPDATE_ALLOWED_FIELDS não os inclui) — só enviados no create.
+      ...(editing ? {} : { slug: value("slug"), plan: value("plan") }),
+    };
+
+    if (editing) {
+      handlers.onSubmit?.(fields);
+    } else {
+      handlers.onSubmit?.(fields, value("password"));
+    }
+  });
+
+  const deleteButton =
+    editing && broker?.status !== "deleted"
+      ? el("button", { className: "imob-danger", text: deleting ? "Excluindo…" : "Excluir cliente/site", attrs: { type: "button" } })
+      : null;
+  if (deleteButton) {
+    if (deleting) deleteButton.setAttribute("disabled", "true");
+    deleteButton.addEventListener("click", () => {
+      // Ação destrutiva (muda status pra "deleted" permanentemente) — pede
+      // confirmação explícita antes de executar, mesmo padrão nativo do
+      // navegador que este painel usa pra qualquer ação irreversível.
+      if (window.confirm(`Excluir "${broker?.name}"? Essa ação marca o cliente/site como excluído e não pode ser desfeita por aqui.`)) {
+        handlers.onDelete?.(broker.brokerId);
+      }
+    });
+  }
+
+  content.replaceChildren(
+    el("section", { className: "imob-broker-form-section" }, [
+      el("h2", { text: editing ? `Editar: ${broker?.name ?? ""}` : "Novo cliente/site" }),
+      form,
+      deleteButton,
     ]),
   );
 }

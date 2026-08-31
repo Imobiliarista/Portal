@@ -117,6 +117,17 @@ export const privateKeys = {
     return "indexes/brokers.json";
   },
   /**
+   * Best-effort sequential counter backing `business/brokers.js#newBrokerId`
+   * (gestão completa de cliente/site) — R2 has no atomic increment, so this
+   * is read-then-write like `savedSearchRateLimit`/`bootstrapAttempt` above,
+   * just with a single flat key instead of one per IP/day (broker creation
+   * is far too infrequent to need partitioning). One brokerId doubles as
+   * the site's public id too — see business/brokers.js for the format.
+   */
+  brokerIdCounter() {
+    return "indexes/broker-id-counter.json";
+  },
+  /**
    * Plan catalog entry (§52/§53, Etapa 8b) — a flat record, not a
    * per-entity folder like brokers/listings, since a plan has no
    * draft/manifest split of its own (no publisher touches it).

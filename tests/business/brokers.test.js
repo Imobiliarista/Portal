@@ -9,6 +9,7 @@ import {
   approveBroker,
   suspendBroker,
   reactivateBroker,
+  deleteBroker,
   listBrokers,
   BrokerNotFoundError,
   BrokerConflictError,
@@ -50,6 +51,145 @@ test("createBroker persists a profile matching broker.schema.json's required sha
   assert.equal(broker.plan, "premium");
   assert.equal(broker.name, "João Imóveis");
   assert.ok(broker.updatedAt);
+});
+
+// --- gestão completa de cliente/site: ID sequencial de 6 dígitos ----------
+
+test("newBrokerId (via createBroker) mints a sequential 6-digit id, prefixed and zero-padded, never repeating", async () => {
+  const env = makeEnv();
+  const a = await createBroker(env, baseInput({ userId: "user_1" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  const b = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
+
+  assert.equal(a.brokerId, "broker_000001");
+  assert.equal(b.brokerId, "broker_000002");
+});
+
+test("createBroker derives userId from the minted brokerId when userId is omitted — same number serves as client id and site id", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ userId: undefined }), { loginIndexSecret: LOGIN_INDEX_SECRET });
+
+  assert.equal(broker.brokerId, "broker_000001");
+  assert.equal(broker.userId, "user_000001");
+});
+
+// --- gestão completa de cliente/site: novos campos privados (cliente) ----
+
+test("createBroker accepts fullName/birthDate/nationality/personalAddress", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(
+    env,
+    baseInput({
+      fullName: "João da Silva",
+      birthDate: "1990-05-20",
+      nationality: "brasileira",
+      personalAddress: {
+        country: "Brasil",
+        state: "PR",
+        city: "Londrina",
+        street: "Rua das Flores",
+        streetNumber: "100",
+        complement: "Apto 12",
+        zipcode: "86000-000",
+      },
+    }),
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
+
+  assert.equal(broker.fullName, "João da Silva");
+  assert.equal(broker.birthDate, "1990-05-20");
+  assert.equal(broker.nationality, "brasileira");
+  assert.deepEqual(broker.personalAddress, {
+    country: "Brasil",
+    state: "PR",
+    city: "Londrina",
+    street: "Rua das Flores",
+    streetNumber: "100",
+    complement: "Apto 12",
+    zipcode: "86000-000",
+  });
+});
+
+test("createBroker rejects a birthDate in the future", async () => {
+  const env = makeEnv();
+  const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString().slice(0, 10);
+  await assert.rejects(
+    () => createBroker(env, baseInput({ birthDate: futureDate }), { loginIndexSecret: LOGIN_INDEX_SECRET }),
+    ValidationError,
+  );
+});
+
+test("createBroker rejects a malformed birthDate", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () => createBroker(env, baseInput({ birthDate: "20/05/1990" }), { loginIndexSecret: LOGIN_INDEX_SECRET }),
+    ValidationError,
+  );
+});
+
+test("createBroker rejects an incomplete personalAddress (missing required subfield)", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () =>
+      createBroker(
+        env,
+        baseInput({ personalAddress: { country: "Brasil", state: "PR", city: "Londrina", street: "Rua X" } }),
+        { loginIndexSecret: LOGIN_INDEX_SECRET },
+      ),
+    ValidationError,
+  );
+});
+
+// --- gestão completa de cliente/site: novos campos públicos (site) -------
+
+test("createBroker accepts businessPhone/businessEmail/businessAddress", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(
+    env,
+    baseInput({
+      businessPhone: "4333224455",
+      businessEmail: "contato@joaoimoveis.com.br",
+      businessAddress: {
+        country: "Brasil",
+        state: "PR",
+        city: "Londrina",
+        street: "Av. Comercial",
+        streetNumber: "500",
+        zipcode: "86010-000",
+      },
+    }),
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
+
+  assert.equal(broker.businessPhone, "4333224455");
+  assert.equal(broker.businessEmail, "contato@joaoimoveis.com.br");
+  assert.equal(broker.businessAddress.street, "Av. Comercial");
+});
+
+test("createBroker rejects an invalid businessEmail", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () => createBroker(env, baseInput({ businessEmail: "not-an-email" }), { loginIndexSecret: LOGIN_INDEX_SECRET }),
+    ValidationError,
+  );
+});
+
+test("updateBrokerProfile updates the new private/public fields", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+
+  const updated = await updateBrokerProfile(env, broker.brokerId, {
+    fullName: "João Atualizado da Silva",
+    nationality: "Brasileira",
+    businessPhone: "4333221100",
+    businessEmail: "novo-contato@joaoimoveis.com.br",
+  });
+
+  assert.equal(updated.fullName, "João Atualizado da Silva");
+  assert.equal(updated.nationality, "Brasileira");
+  assert.equal(updated.businessPhone, "4333221100");
+  assert.equal(updated.businessEmail, "novo-contato@joaoimoveis.com.br");
 });
 
 test("createBroker writes a separate manifest object (§29) alongside the profile draft", async () => {
@@ -278,6 +418,59 @@ test("reactivateBroker rejects a broker that isn't suspended", async () => {
   const env = makeEnv();
   const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
   await assert.rejects(() => reactivateBroker(env, broker.brokerId), BrokerConflictError);
+});
+
+// --- gestão completa de cliente/site: exclusão lógica ("deleted") --------
+
+test("deleteBroker moves an active broker to deleted (logical delete only — never touches the stored record besides status/updatedAt)", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
+
+  const deleted = await deleteBroker(env, broker.brokerId);
+  assert.equal(deleted.status, "deleted");
+  assert.equal(deleted.brokerId, broker.brokerId);
+  assert.equal(deleted.slug, broker.slug);
+
+  // Ainda recuperável por id/slug — nada foi apagado, só o status mudou.
+  assert.equal((await getBrokerById(env, broker.brokerId)).status, "deleted");
+  assert.equal((await getBrokerBySlug(env, broker.slug)).status, "deleted");
+});
+
+test("deleteBroker also accepts a pending or suspended broker", async () => {
+  const env = makeEnv();
+  const pending = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  assert.equal((await deleteBroker(env, pending.brokerId)).status, "deleted");
+
+  const suspendedBroker = await createBroker(
+    env,
+    baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net", status: "active" }),
+    { loginIndexSecret: LOGIN_INDEX_SECRET },
+  );
+  await suspendBroker(env, suspendedBroker.brokerId);
+  assert.equal((await deleteBroker(env, suspendedBroker.brokerId)).status, "deleted");
+});
+
+test("deleteBroker is terminal — rejects a broker that's already deleted (no undelete)", async () => {
+  const env = makeEnv();
+  const broker = await createBroker(env, baseInput({ status: "active" }), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  await deleteBroker(env, broker.brokerId);
+  await assert.rejects(() => deleteBroker(env, broker.brokerId), BrokerConflictError);
+});
+
+test("deleteBroker throws BrokerNotFoundError for an unknown brokerId", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => deleteBroker(env, "broker_ghost"), BrokerNotFoundError);
+});
+
+test("a deleted brokerId is never reused by a later createBroker call (sequential counter never goes backwards)", async () => {
+  const env = makeEnv();
+  const a = await createBroker(env, baseInput(), { loginIndexSecret: LOGIN_INDEX_SECRET });
+  await deleteBroker(env, a.brokerId);
+
+  const b = await createBroker(env, baseInput({ slug: "maria", userId: "user_2", email: "maria@x.net" }), {
+    loginIndexSecret: LOGIN_INDEX_SECRET,
+  });
+  assert.notEqual(b.brokerId, a.brokerId);
 });
 
 // --- SuperAdmin: lista de corretores (§53, Etapa 8) -----------------------

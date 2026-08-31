@@ -89,7 +89,9 @@ const ROLES = ["broker", "superadmin"];
 // profile/draft listings while they wait (nothing in §90/§53 says
 // otherwise, and business/publishing.js#publishBroker already keeps a
 // pending broker's public footprint at zero regardless of what they save).
-const BLOCKED_LOGIN_STATUSES = ["suspended", "disabled"];
+// "deleted" (gestão completa de cliente/site) is here for the obvious
+// reason — a logically-deleted client must never be able to log back in.
+const BLOCKED_LOGIN_STATUSES = ["suspended", "disabled", "deleted"];
 
 // §27 hotfix pt.2 — the exact, closed allowlist. Matched case-insensitively
 // with trim applied (business/auth.js#resolveSpecialIdentifier); anything
@@ -203,6 +205,63 @@ export async function setAuthPassword(env, userId, password, { role = "broker", 
     role: current?.role ?? role,
     pbkdf2Salt: salt,
     pbkdf2Iterations: PBKDF2_ITERATIONS,
+    verifier,
+    authVersion: (current?.authVersion ?? 0) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await putPrivate(env, privateKeys.authUser(userId), record);
+  return record;
+}
+
+/**
+ * Sets initial credentials for a brand-new account from an ALREADY
+ * browser-derived PBKDF2 result — the SuperAdmin "criar cliente/site" flow
+ * (worker/admin.js#handleCreateBroker, gestão completa de cliente/site)
+ * mints a fresh account directly from a live Worker request, with no
+ * CLI/script involved, so it can't reuse `setAuthPassword` above (which
+ * needs the PLAINTEXT password to run the full 600k-iteration derivation
+ * ITSELF via `deriveClientPbkdf2` — safe only outside a Worker request,
+ * exactly the CPU-budget problem the §27 hotfix exists to avoid).
+ *
+ * Here the browser (frontend/admin/data.js) already generated a fresh
+ * random salt and derived `pbkdf2Result` locally with Web Crypto — the
+ * same "browser does PBKDF2, Worker only peppers the result" shape
+ * `login` already uses — so this only ever does the one cheap HMAC
+ * (`core/auth.js#hashPbkdf2Result`), never the plaintext password, and is
+ * safe to call from inside a request handler.
+ */
+export async function setAuthPasswordFromClientResult(
+  env,
+  userId,
+  { salt, pbkdf2Result, iterations = PBKDF2_ITERATIONS } = {},
+  { role = "broker", pepper } = {},
+) {
+  if (!isNonEmptyString(userId)) {
+    throw new ValidationError([{ field: "userId", message: "obrigatório" }]);
+  }
+  if (!isEnum(role, ROLES)) {
+    throw new ValidationError([{ field: "role", message: "valor inválido" }]);
+  }
+  if (!isNonEmptyString(salt)) {
+    throw new ValidationError([{ field: "salt", message: "obrigatório" }]);
+  }
+  if (!isNonEmptyString(pbkdf2Result)) {
+    throw new ValidationError([{ field: "pbkdf2Result", message: "obrigatório" }]);
+  }
+  if (!isNonEmptyString(pepper)) {
+    throw new ValidationError([{ field: "pepper", message: "obrigatório" }]);
+  }
+
+  const current = await getAuthUser(env, userId);
+  const verifier = await hashPbkdf2Result(pbkdf2Result, pepper);
+
+  const record = {
+    schemaVersion: 2,
+    userId,
+    role: current?.role ?? role,
+    pbkdf2Salt: salt,
+    pbkdf2Iterations: iterations,
     verifier,
     authVersion: (current?.authVersion ?? 0) + 1,
     updatedAt: new Date().toISOString(),

@@ -15,7 +15,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleLogin, handleLogout, getSession, requireSession, requireTenant } from "../../worker/auth.js";
 import { login, setAuthPassword } from "../../business/auth.js";
-import { createBroker } from "../../business/brokers.js";
+import { createBroker, deleteBroker } from "../../business/brokers.js";
 import { deriveClientPbkdf2 } from "../../core/auth.js";
 import { createListing, updateListing } from "../../business/listings.js";
 import { SESSION_COOKIE_NAME, createSessionToken, UnauthorizedError } from "../../core/session.js";
@@ -148,6 +148,27 @@ test("getSession/requireSession accept a session minted by a real login", async 
   const { session: sameSession, tenant } = await requireTenant(request, env);
   assert.equal(sameSession.brokerId, broker.brokerId);
   assert.deepEqual(tenant, { brokerId: broker.brokerId, slug: "joao" });
+});
+
+// Gestão completa de cliente/site: a already-issued session must stop
+// working the moment a superadmin marks the broker "deleted" — sessions
+// are stateless (§28), so requireTenant re-checks the broker's live
+// status on every private request instead (mirrors the existing
+// suspended/disabled behavior, worker/auth.js#BLOCKED_TENANT_STATUSES).
+test("requireTenant blocks a still-valid session once its broker is deleted mid-use", async () => {
+  const env = makeEnv();
+  const { broker, authRecord } = await makeBroker(env);
+
+  const loginResponse = await handleLogin(
+    loginRequest(broker.cpf, await pbkdf2ResultFor(authRecord, "correct horse battery staple")),
+    env,
+  );
+  const token = loginResponse.headers.get("Set-Cookie").split(";")[0].split("=").slice(1).join("=");
+  const request = requestWithCookie(token);
+
+  await deleteBroker(env, broker.brokerId);
+
+  await assert.rejects(() => requireTenant(request, env), ForbiddenError);
 });
 
 test("getSession returns null and requireSession throws UnauthorizedError without a cookie", async () => {

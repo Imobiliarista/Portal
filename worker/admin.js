@@ -9,34 +9,42 @@
 // result/errors onto core/response.js envelopes. No CRUD/publish/rebuild
 // logic is reimplemented here.
 //
-// Scope of this lot (Etapa 8a — aprovação/suspensão + rebuild manual; ver
-// PR): broker creation (`POST /api/admin/brokers`, listed in §72) is
-// deliberately NOT wired up — there is no signup flow yet that would ever
-// put a broker in "pending" status for a superadmin to approve, and the
-// task's explicit scope for this lot is "aprovar cadastro pendente e
-// suspender/reativar", not "criar corretor". `business/brokers.createBroker`
-// still exists and is exercised by tests/scripts; see pendências no PR.
-// `GET /api/admin/brokers/:id` and `PUT /api/admin/brokers/:id` (full
-// admin edit) are likewise out of scope — the admin frontend this lot only
-// needs list + approve/suspend/reactivate + rebuild.
-//
-// Etapa 8b (this update — §52/§53): adds `/api/admin/plans*` (CRUD over
+// Etapa 8b (§52/§53): adds `/api/admin/plans*` (CRUD over
 // business/plans.js's catalog) and `PUT /api/admin/brokers/:id/plan`
 // (assign/change a broker's plan). Not in §72's original route list — that
 // section predates the plans system existing at all.
+//
+// Gestão completa de cliente/site: fills in the CRUD this file's own
+// header used to call out of scope — `POST /api/admin/brokers` (create),
+// `GET /api/admin/brokers/:id` (full private+public view) and
+// `PUT /api/admin/brokers/:id` (edit) — plus `POST /api/admin/brokers/:id/delete`
+// (logical delete, mirrors approve/suspend/reactivate's verb-suffixed
+// route style rather than inventing a generic `/status` route this file
+// doesn't otherwise use). Creation never accepts a plaintext password in
+// the body — `{ salt, pbkdf2Result }` is the browser's own already-derived
+// PBKDF2 result (frontend/admin/data.js, same shape `POST /api/auth/login`
+// already uses), peppered here via
+// business/auth.js#setAuthPasswordFromClientResult, never the
+// script/CLI-only `setAuthPassword` (which needs the plaintext password to
+// run 600k PBKDF2 iterations itself — unsafe inside a Worker request).
 
 import { requireSession } from "./auth.js";
 import { requireSuperadmin } from "../core/permissions.js";
-import { success, notFound, conflict } from "../core/response.js";
+import { success, notFound, conflict, badRequest } from "../core/response.js";
 import {
   listBrokers,
   getBrokerById,
+  createBroker,
+  updateBrokerProfile,
   approveBroker,
   suspendBroker,
   reactivateBroker,
+  deleteBroker,
   BrokerNotFoundError,
   BrokerConflictError,
 } from "../business/brokers.js";
+import { setAuthPasswordFromClientResult } from "../business/auth.js";
+import { isNonEmptyString } from "../core/validation.js";
 import { publishBroker, republishBrokerListings, rebuildCity, rebuildAll } from "../business/publishing.js";
 import { UnknownCityError } from "../business/cities.js";
 import { hasAnyFeedSubmoduleEnabled, regenerateFeeds, FEED_SUBMODULE_IDS } from "../modules/feeds/index.js";
@@ -76,6 +84,24 @@ async function readJsonBody(request) {
   }
 }
 
+// Same pattern as worker/auth.js's own (module-private, not exported)
+// secret helpers — duplicated rather than imported because worker/auth.js
+// doesn't export them; both throw the same clear misconfiguration error
+// instead of silently calling business/* with `undefined`.
+function passwordPepper(env) {
+  if (!env?.PASSWORD_PEPPER) {
+    throw new Error("worker/admin: binding PASSWORD_PEPPER ausente em env.");
+  }
+  return env.PASSWORD_PEPPER;
+}
+
+function loginIndexSecret(env) {
+  if (!env?.LOGIN_INDEX_SECRET) {
+    throw new Error("worker/admin: binding LOGIN_INDEX_SECRET ausente em env.");
+  }
+  return env.LOGIN_INDEX_SECRET;
+}
+
 // --- GET /api/admin/brokers --------------------------------------------------
 // `?status=pending` (etc.) lets the admin frontend's "aprovar cadastros
 // pendentes" view ask for just that slice instead of filtering client-side.
@@ -84,6 +110,60 @@ export async function handleListBrokers(request, env) {
   const status = new URL(request.url).searchParams.get("status") || undefined;
   const brokers = await listBrokers(env, { status });
   return success(brokers);
+}
+
+// --- POST /api/admin/brokers -------------------------------------------------
+// Cria um cliente/site completo: todos os campos privados (cliente) e
+// públicos (site), num único corpo (business/brokers.js#CREATE_ALLOWED_FIELDS
+// já filtra pro allowlist real — este handler não reimplementa validação).
+// `salt`/`pbkdf2Result` (obrigatórios) são a senha inicial já derivada no
+// navegador — ver o cabeçalho deste arquivo; a senha crua nunca chega aqui.
+export async function handleCreateBroker(request, env) {
+  await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const { salt, pbkdf2Result, ...brokerInput } = body;
+
+  if (!isNonEmptyString(salt) || !isNonEmptyString(pbkdf2Result)) {
+    return badRequest('Informe "salt" e "pbkdf2Result" (senha inicial derivada no navegador).');
+  }
+
+  try {
+    const broker = await createBroker(env, brokerInput, { loginIndexSecret: loginIndexSecret(env) });
+    await setAuthPasswordFromClientResult(env, broker.userId, { salt, pbkdf2Result }, { pepper: passwordPepper(env) });
+    return success(broker, { status: 201 });
+  } catch (error) {
+    if (error instanceof BrokerConflictError) return conflict(error.message);
+    throw error;
+  }
+}
+
+// --- GET /api/admin/brokers/:id -----------------------------------------------
+// SuperAdmin tem acesso total: devolve o registro privado inteiro (cliente
+// + site juntos, exatamente como business/brokers.js os guarda) — não a
+// projeção pública normalizada que o minisite vê.
+export async function handleGetBroker(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  const broker = await getBrokerById(env, params.id);
+  if (!broker) return notFound(`Corretor "${params.id}" não encontrado.`);
+  return success(broker);
+}
+
+// --- PUT /api/admin/brokers/:id -----------------------------------------------
+// Edita qualquer campo das seções cliente/site (business/brokers.js#
+// PROFILE_UPDATE_ALLOWED_FIELDS) — reaproveita a mesma
+// `updateBrokerProfile` que o próprio corretor usaria, sem reimplementar
+// validação/reindexação de e-mail/CPF.
+export async function handleUpdateBroker(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  try {
+    const broker = await updateBrokerProfile(env, params.id, body, { loginIndexSecret: loginIndexSecret(env) });
+    return success(broker);
+  } catch (error) {
+    if (error instanceof BrokerNotFoundError) return notFound(error.message);
+    if (error instanceof BrokerConflictError) return conflict(error.message);
+    throw error;
+  }
 }
 
 // --- POST /api/admin/brokers/:id/approve --------------------------------------
@@ -130,6 +210,29 @@ export async function handleReactivateBroker(request, env, ctx, params) {
   await requireAdmin(request, env);
   try {
     const broker = await reactivateBroker(env, params.id);
+    await publishBroker(env, broker.brokerId);
+    await republishBrokerListings(env, broker.brokerId);
+    await maybeRegenerateFeeds(env, broker);
+    return success(broker);
+  } catch (error) {
+    if (error instanceof BrokerNotFoundError) return notFound(error.message);
+    if (error instanceof BrokerConflictError) return conflict(error.message);
+    throw error;
+  }
+}
+
+// --- POST /api/admin/brokers/:id/delete ---------------------------------------
+// Exclusão LÓGICA (nunca física) de cliente/site — mesmo mecanismo de
+// transição de estado que approve/suspend/reactivate acima já usam
+// (business/brokers.js#deleteBroker), e o mesmo cascateamento de
+// republicação mínima que suspend/reactivate já fazem: o corretor deletado
+// vira a mesma publicação mínima de um corretor suspenso (business/
+// publishing.js — "deleted" mapeia pro mesmo status público "suspended").
+// Nenhum objeto privado ou público é apagado por esta rota.
+export async function handleDeleteBroker(request, env, ctx, params) {
+  await requireAdmin(request, env);
+  try {
+    const broker = await deleteBroker(env, params.id);
     await publishBroker(env, broker.brokerId);
     await republishBrokerListings(env, broker.brokerId);
     await maybeRegenerateFeeds(env, broker);
