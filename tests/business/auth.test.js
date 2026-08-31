@@ -9,10 +9,11 @@ import assert from "node:assert/strict";
 import {
   login,
   setAuthPassword,
+  setAuthPasswordFromClientResult,
   getAuthUser,
   InvalidCredentialsError,
 } from "../../business/auth.js";
-import { createBroker } from "../../business/brokers.js";
+import { createBroker, deleteBroker } from "../../business/brokers.js";
 import { deriveClientPbkdf2 } from "../../core/auth.js";
 import { verifySessionToken } from "../../core/session.js";
 import { ValidationError } from "../../core/validation.js";
@@ -204,6 +205,66 @@ test("login rejects a disabled broker the same way", async () => {
   await assert.rejects(
     () => login(env, { identifier: broker.cpf, pbkdf2Result }, SECRETS),
     InvalidCredentialsError,
+  );
+});
+
+// --- gestão completa de cliente/site: exclusão lógica bloqueia login ------
+
+test("login rejects a deleted broker the same generic way as suspended/disabled", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const authRecord = await setAuthPassword(env, broker.userId, "correct horse battery staple", { pepper: PEPPER });
+  await deleteBroker(env, broker.brokerId);
+
+  const pbkdf2Result = await pbkdf2ResultFor(authRecord, "correct horse battery staple");
+  await assert.rejects(() => login(env, { identifier: broker.cpf, pbkdf2Result }, SECRETS), InvalidCredentialsError);
+});
+
+// --- setAuthPasswordFromClientResult (gestão completa de cliente/site) ---
+// A senha inicial que o SuperAdmin cria pra um cliente/site novo — o
+// navegador já derivou o PBKDF2 (nunca a senha crua chega até este ponto,
+// nem passa pelas 600k iterações dentro do Worker).
+
+test("setAuthPasswordFromClientResult stores the peppered verifier from an already-derived pbkdf2Result, never a plaintext password", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const salt = "dGVzdC1zYWx0LTE2Ynl0ZXM=";
+  const pbkdf2Result = await deriveClientPbkdf2("correct horse battery staple", salt, 600_000);
+
+  const record = await setAuthPasswordFromClientResult(env, broker.userId, { salt, pbkdf2Result }, { pepper: PEPPER });
+
+  assert.equal(record.userId, broker.userId);
+  assert.equal(record.pbkdf2Salt, salt);
+  assert.equal(record.authVersion, 1);
+  assert.match(record.verifier, /^hmac-sha256\$/);
+  assert.equal(record.verifier.includes(pbkdf2Result), false);
+});
+
+test("setAuthPasswordFromClientResult produces a verifier that actually logs in via the normal login flow", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const salt = "dGVzdC1zYWx0LTE2Ynl0ZXM=";
+  const pbkdf2Result = await deriveClientPbkdf2("correct horse battery staple", salt, 600_000);
+  await setAuthPasswordFromClientResult(env, broker.userId, { salt, pbkdf2Result }, { pepper: PEPPER });
+
+  const { claims } = await login(env, { identifier: broker.cpf, pbkdf2Result }, SECRETS);
+  assert.equal(claims.brokerId, broker.brokerId);
+});
+
+test("setAuthPasswordFromClientResult requires salt, pbkdf2Result and pepper", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  await assert.rejects(
+    () => setAuthPasswordFromClientResult(env, broker.userId, { pbkdf2Result: "x" }, { pepper: PEPPER }),
+    ValidationError,
+  );
+  await assert.rejects(
+    () => setAuthPasswordFromClientResult(env, broker.userId, { salt: "x" }, { pepper: PEPPER }),
+    ValidationError,
+  );
+  await assert.rejects(
+    () => setAuthPasswordFromClientResult(env, broker.userId, { salt: "x", pbkdf2Result: "y" }),
+    ValidationError,
   );
 });
 

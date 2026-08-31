@@ -223,6 +223,26 @@ export async function registerBrokerId(env, brokerId) {
   return brokerIds;
 }
 
+// --- broker id sequence (gestão completa de cliente/site) -----------------
+// Backs `business/brokers.js#newBrokerId`: a plain read-increment-write
+// counter, same best-effort shape as `modules/saved-search/service.js#
+// enforceRateLimit` and `worker/bootstrap.js#withinRateLimit` — R2 has no
+// atomic increment/conditional PUT, so two `createBroker` calls landing in
+// the same instant could both read the same `lastValue` and mint the same
+// next id. Accepted here for the same reason those two counters accept it:
+// broker creation is a rare, admin-driven action, nowhere near frequent
+// enough for the race window to matter in practice. A collision would
+// surface as a downstream conflict (whatever write hits the duplicate
+// brokerId first), never silent data loss.
+
+export async function nextBrokerSequence(env) {
+  const key = privateKeys.brokerIdCounter();
+  const counter = await getPrivate(env, key);
+  const next = (counter?.lastValue ?? 0) + 1;
+  await putPrivate(env, key, { lastValue: next });
+  return next;
+}
+
 // --- plan registry (Etapa 8b, §52/§53) ------------------------------------
 // Every planId ever created, so SuperAdmin's plan catalog listing can
 // enumerate all plans without scanning `plans/` (§26). Mirrors the broker

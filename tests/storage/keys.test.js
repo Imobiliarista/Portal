@@ -35,6 +35,7 @@ test("privateKeys build the §23 layout", () => {
   assert.equal(privateKeys.job("cities", "londrina"), "jobs/cities/londrina.json");
   assert.equal(privateKeys.plan("premium"), "plans/premium.json");
   assert.equal(privateKeys.planRegistry(), "indexes/plans.json");
+  assert.equal(privateKeys.brokerIdCounter(), "indexes/broker-id-counter.json");
 });
 
 // Etapa 2 (missão "materializa read models R2") — contrato canônico das 3

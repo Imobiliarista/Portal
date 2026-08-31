@@ -55,6 +55,12 @@ async function apiFetch(path, options = {}) {
 // IndexedDB. See core/auth.js / business/auth.js for the Worker side.
 
 const PBKDF2_KEY_LENGTH_BITS = 256;
+// Must match core/auth.js#PBKDF2_ITERATIONS — the constant a brand-new
+// account's credentials are always derived with (there's no existing
+// salt/iterations to fetch from the Worker yet, unlike login's
+// `/api/auth/salt` step, since the account doesn't exist yet).
+const PBKDF2_ITERATIONS = 600_000;
+const SALT_BYTES = 16;
 
 function pbkdf2ToBase64(bytes) {
   let binary = "";
@@ -102,10 +108,49 @@ export function logout() {
   return apiFetch("/api/auth/logout", { method: "POST" });
 }
 
-// --- corretores (§72, §53, Etapa 8) -------------------------------------------
+/**
+ * Gestão completa de cliente/site: derives fresh initial credentials for a
+ * brand-new account entirely in the browser — a random salt (there's no
+ * existing record to fetch one from yet, unlike `login` above) plus the
+ * PBKDF2 result over it. `password` never leaves this function; only
+ * `{ salt, pbkdf2Result }` is sent to `POST /api/admin/brokers`
+ * (business/auth.js#setAuthPasswordFromClientResult peppers it into a
+ * storable verifier — the Worker never sees the plaintext password).
+ */
+async function deriveInitialCredentials(password) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  const salt = pbkdf2ToBase64(saltBytes);
+  const pbkdf2Result = await derivePbkdf2(password, salt, PBKDF2_ITERATIONS);
+  return { salt, pbkdf2Result };
+}
+
+// --- corretores (§72, §53, Etapa 8; gestão completa de cliente/site) ---------
 export function listBrokers(status) {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return apiFetch(`/api/admin/brokers${query}`);
+}
+
+/**
+ * Cria um cliente/site completo. `fields` são todos os campos privados
+ * (cliente) e públicos (site) do corpo de `POST /api/admin/brokers`;
+ * `password` só é usado aqui, em memória, para derivar a senha inicial
+ * (ver `deriveInitialCredentials` acima) — nunca é enviado.
+ */
+export async function createBroker(fields, password) {
+  const { salt, pbkdf2Result } = await deriveInitialCredentials(password);
+  return apiFetch("/api/admin/brokers", { method: "POST", body: JSON.stringify({ ...fields, salt, pbkdf2Result }) });
+}
+
+export function getBroker(brokerId) {
+  return apiFetch(`/api/admin/brokers/${encodeURIComponent(brokerId)}`);
+}
+
+export function updateBroker(brokerId, patch) {
+  return apiFetch(`/api/admin/brokers/${encodeURIComponent(brokerId)}`, { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export function deleteBroker(brokerId) {
+  return apiFetch(`/api/admin/brokers/${encodeURIComponent(brokerId)}/delete`, { method: "POST" });
 }
 
 export function approveBroker(brokerId) {

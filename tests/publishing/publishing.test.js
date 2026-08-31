@@ -13,11 +13,12 @@ import {
   rebuildAll,
   republishBrokerListings,
   publishBrokerListingsAggregate,
+  normalizeBrokerForPublic,
   PublishValidationError,
   ListingNotFoundError,
 } from "../../business/publishing.js";
 import { UnknownCityError } from "../../business/cities.js";
-import { createBroker, suspendBroker, reactivateBroker } from "../../business/brokers.js";
+import { createBroker, suspendBroker, reactivateBroker, deleteBroker } from "../../business/brokers.js";
 import { createListing, updateListing } from "../../business/listings.js";
 import { getPublic, putPublic } from "../../storage/public.js";
 import { getPrivate } from "../../storage/private.js";
@@ -34,16 +35,18 @@ function makeEnv() {
 }
 
 async function makeBroker(env, overrides = {}) {
+  const { userId, slug, name, status, creci, cpf, ...rest } = overrides;
   return createBroker(
     env,
     {
-      userId: overrides.userId ?? "user_1",
-      slug: overrides.slug ?? "joao",
-      name: overrides.name ?? "João Imóveis",
+      userId: userId ?? "user_1",
+      slug: slug ?? "joao",
+      name: name ?? "João Imóveis",
       plan: "premium",
-      status: overrides.status ?? "active",
-      creci: overrides.creci ?? "12345-F",
-      cpf: overrides.cpf ?? nextCpf(),
+      status: status ?? "active",
+      creci: creci ?? "12345-F",
+      cpf: cpf ?? nextCpf(),
+      ...rest,
     },
     { loginIndexSecret: LOGIN_INDEX_SECRET },
   );
@@ -393,6 +396,125 @@ test("publishBroker writes broker-public with creciPublic mirroring the private 
   assert.equal(result.published, true);
   assert.equal(result.brokerPublic.creciPublic, "12345-F");
   assert.equal(result.brokerPublic.status, "active");
+});
+
+// --- gestão completa de cliente/site: nenhum dado privado no público -----
+// O TESTE MAIS IMPORTANTE desta funcionalidade inteira: garante que
+// normalizeBrokerForPublic NUNCA inclui os campos privados do cliente —
+// fullName/birthDate/nationality/personalAddress/cpf/email/phone — na
+// projeção pública, mesmo quando todos eles estão presentes no registro
+// privado. `phone` é o único desses 7 que já era exposto antes desta
+// mudança (removido nesta etapa); os outros 6 nunca tiveram um caminho de
+// código que os expusesse.
+
+test("normalizeBrokerForPublic NEVER leaks private client fields (fullName/birthDate/nationality/personalAddress/cpf/email/phone)", () => {
+  const broker = {
+    slug: "joao",
+    name: "João Imóveis",
+    // Campos PRIVADOS — nenhum destes pode aparecer na saída.
+    fullName: "João da Silva Sauro",
+    birthDate: "1990-05-20",
+    nationality: "brasileira",
+    personalAddress: {
+      country: "Brasil",
+      state: "PR",
+      city: "Londrina",
+      street: "Rua Secreta",
+      streetNumber: "42",
+      zipcode: "86000-000",
+    },
+    cpf: "12345678901",
+    email: "joao-privado@example.com",
+    phone: "43999990000",
+    // Campos PÚBLICOS — devem aparecer normalmente.
+    whatsapp: "43988887777",
+    creci: "12345-F",
+    businessPhone: "4333224455",
+    businessEmail: "contato@joaoimoveis.com.br",
+    businessAddress: {
+      country: "Brasil",
+      state: "PR",
+      city: "Londrina",
+      street: "Av. Comercial",
+      streetNumber: "500",
+      zipcode: "86010-000",
+    },
+  };
+
+  const publicProfile = normalizeBrokerForPublic(broker, "active");
+
+  for (const privateField of ["fullName", "birthDate", "nationality", "personalAddress", "cpf", "email", "phone"]) {
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(publicProfile, privateField),
+      false,
+      `broker-public projection must never include "${privateField}"`,
+    );
+  }
+
+  // E os campos públicos correspondentes continuam presentes normalmente.
+  assert.equal(publicProfile.slug, "joao");
+  assert.equal(publicProfile.creciPublic, "12345-F");
+  assert.equal(publicProfile.whatsapp, "43988887777");
+  assert.equal(publicProfile.businessPhone, "4333224455");
+  assert.equal(publicProfile.businessEmail, "contato@joaoimoveis.com.br");
+  assert.deepEqual(publicProfile.businessAddress, broker.businessAddress);
+});
+
+test("publishBroker (end-to-end) never writes private client fields into brokers/{slug}/profile.json", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, {
+    fullName: "João da Silva Sauro",
+    birthDate: "1990-05-20",
+    nationality: "brasileira",
+    personalAddress: {
+      country: "Brasil",
+      state: "PR",
+      city: "Londrina",
+      street: "Rua Secreta",
+      streetNumber: "42",
+      zipcode: "86000-000",
+    },
+    email: "joao-privado@example.com",
+    phone: "43999990000",
+    businessPhone: "4333224455",
+  });
+
+  await publishBroker(env, broker.brokerId);
+  const publicProfile = await getPublic(env, "brokers/joao/profile.json");
+
+  for (const privateField of ["fullName", "birthDate", "nationality", "personalAddress", "cpf", "email", "phone"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(publicProfile, privateField), false);
+  }
+  assert.equal(publicProfile.businessPhone, "4333224455");
+});
+
+// --- gestão completa de cliente/site: exclusão lógica ("deleted") --------
+
+test("a deleted broker's minisite gets the exact same minimal public status a suspended one gets", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  await deleteBroker(env, broker.brokerId);
+
+  const result = await publishBroker(env, broker.brokerId, { force: true });
+  assert.equal(result.published, true);
+  assert.equal(result.brokerPublic.status, "suspended");
+});
+
+test("deleting a broker cascades onto their already-published listings exactly like suspending does", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env, { status: "active" });
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active" }));
+  await publishListing(env, draft.listingId);
+
+  await deleteBroker(env, broker.brokerId);
+  const results = await republishBrokerListings(env, broker.brokerId);
+  assert.equal(results[0].cardActive, false);
+
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+  assert.equal(listingPublic.status, "suspended");
+
+  const shard = await getPublic(env, "cities/londrina/001.json");
+  assert.deepEqual(shard, []);
 });
 
 test("publishBroker skips rewriting when nothing changed since the last publish, but rebuildBroker (force) always rewrites", async () => {

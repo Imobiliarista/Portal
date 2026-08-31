@@ -38,9 +38,13 @@ import { handleCreateCheckout, handleListMyCharges, handleGetMyCharge } from "./
 import { handleAsaasWebhook } from "../modules/financial/index.js";
 import {
   handleListBrokers,
+  handleCreateBroker,
+  handleGetBroker,
+  handleUpdateBroker,
   handleApproveBroker,
   handleSuspendBroker,
   handleReactivateBroker,
+  handleDeleteBroker,
   handlePublishBroker,
   handleRebuildCity,
   handleRebuildAll,
@@ -101,9 +105,13 @@ router.get("/api/me/financial/charges/:id", async (request, env, ctx, params) =>
 router.post("/api/webhooks/asaas", async (request, env) => handleAsaasWebhook(request, env));
 
 router.get("/api/admin/brokers", async (request, env) => handleListBrokers(request, env));
+router.post("/api/admin/brokers", async (request, env) => handleCreateBroker(request, env));
+router.get("/api/admin/brokers/:id", async (request, env, ctx, params) => handleGetBroker(request, env, ctx, params));
+router.put("/api/admin/brokers/:id", async (request, env, ctx, params) => handleUpdateBroker(request, env, ctx, params));
 router.post("/api/admin/brokers/:id/approve", async (request, env, ctx, params) => handleApproveBroker(request, env, ctx, params));
 router.post("/api/admin/brokers/:id/suspend", async (request, env, ctx, params) => handleSuspendBroker(request, env, ctx, params));
 router.post("/api/admin/brokers/:id/activate", async (request, env, ctx, params) => handleReactivateBroker(request, env, ctx, params));
+router.post("/api/admin/brokers/:id/delete", async (request, env, ctx, params) => handleDeleteBroker(request, env, ctx, params));
 router.post("/api/admin/brokers/:id/publish", async (request, env, ctx, params) => handlePublishBroker(request, env, ctx, params));
 
 router.post("/api/admin/rebuild/city/:city", async (request, env, ctx, params) => handleRebuildCity(request, env, ctx, params));

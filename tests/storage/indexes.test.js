@@ -15,6 +15,7 @@ import {
   getKnownPlanIds,
   registerPlanId,
   deregisterPlanId,
+  nextBrokerSequence,
 } from "../../storage/indexes.js";
 import { FakeR2Bucket } from "./fake-r2-bucket.js";
 
@@ -114,4 +115,15 @@ test("plan registry add/dedupe/remove", async () => {
 test("getKnownPlanIds returns an empty array when no plan was ever registered", async () => {
   const env = makeEnv();
   assert.deepEqual(await getKnownPlanIds(env), []);
+});
+
+// --- broker id sequence (gestão completa de cliente/site) -----------------
+
+test("nextBrokerSequence returns increasing integers starting at 1, never repeating", async () => {
+  const env = makeEnv();
+  const values = [];
+  for (let i = 0; i < 5; i += 1) values.push(await nextBrokerSequence(env));
+
+  assert.deepEqual(values, [1, 2, 3, 4, 5]);
+  assert.equal(new Set(values).size, values.length);
 });

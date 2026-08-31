@@ -31,7 +31,7 @@ import { success, unauthorized, badRequest } from "../core/response.js";
 // *after* already holding a valid cookie would otherwise keep using
 // /api/me/* until the token expires. requireTenant below re-checks the
 // broker's live status on every private request instead.
-const BLOCKED_TENANT_STATUSES = ["suspended", "disabled"];
+const BLOCKED_TENANT_STATUSES = ["suspended", "disabled", "deleted"];
 
 function sessionSecret(env) {
   if (!env?.SESSION_SECRET) {
