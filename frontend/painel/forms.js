@@ -10,7 +10,13 @@
 
 // modules/video-youtube (§50): parseYoutubeId is generated from
 // modules/video-youtube/index.js — see frontend/shared/video-youtube.generated.js.
-export { parseYoutubeId } from "../shared/video-youtube.generated.js";
+// Imported (not just re-exported) because buildListingPayload below calls
+// it directly — a bare `export { parseYoutubeId } from "..."` re-export
+// doesn't create a local binding, so that call would throw
+// "parseYoutubeId is not defined" on every submit.
+import { parseYoutubeId } from "../shared/video-youtube.generated.js";
+
+export { parseYoutubeId };
 
 /** Only forwards non-empty allowlisted fields — matches business/brokers.js#PROFILE_UPDATE_ALLOWED_FIELDS. */
 export function buildProfilePatch(entries) {
@@ -55,14 +61,44 @@ export function buildListingPayload(formData) {
   setNum("iptu");
   setNum("latitude");
   setNum("longitude");
+  setStr("street");
+  setStr("streetNumber");
+  setStr("zone");
+  setStr("municipalZoning");
+  setNum("yearBuilt");
+  setStr("municipalRegistrationCode");
 
   const bedrooms = numberOrUndefined(get("bedrooms"));
   const bathrooms = numberOrUndefined(get("bathrooms"));
   const parkingSpaces = numberOrUndefined(get("parkingSpaces"));
-  const area = numberOrUndefined(get("area"));
-  if ([bedrooms, bathrooms, parkingSpaces, area].every((value) => value !== undefined)) {
-    payload.features = { bedrooms, bathrooms, parkingSpaces, area };
+  const livingArea = numberOrUndefined(get("livingArea"));
+  // lotArea/livingRooms/kitchens/suites/unitFloor are optional — unlike
+  // bedrooms/bathrooms/parkingSpaces/livingArea, a missing one just omits
+  // that key instead of dropping the whole `features` object.
+  const lotArea = numberOrUndefined(get("lotArea"));
+  const livingRooms = numberOrUndefined(get("livingRooms"));
+  const kitchens = numberOrUndefined(get("kitchens"));
+  const suites = numberOrUndefined(get("suites"));
+  const unitFloor = numberOrUndefined(get("unitFloor"));
+  if ([bedrooms, bathrooms, parkingSpaces, livingArea].every((value) => value !== undefined)) {
+    payload.features = {
+      bedrooms,
+      bathrooms,
+      parkingSpaces,
+      livingArea,
+      ...(lotArea !== undefined ? { lotArea } : {}),
+      ...(livingRooms !== undefined ? { livingRooms } : {}),
+      ...(kitchens !== undefined ? { kitchens } : {}),
+      ...(suites !== undefined ? { suites } : {}),
+      ...(unitFloor !== undefined ? { unitFloor } : {}),
+    };
   }
+
+  const amenities = formData
+    .getAll("amenities")
+    .map((value) => value.toString())
+    .filter(Boolean);
+  if (amenities.length) payload.amenities = amenities;
 
   const status = get("status");
   if (status) payload.status = status;
