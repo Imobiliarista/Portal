@@ -50,6 +50,24 @@ test("GET /api/admin/brokers without a session cookie surfaces as a 401, not a 5
   assert.equal(response.status, 401);
 });
 
+test("POST /api/admin/bootstrap-special-accounts without SUPERADMIN_BOOTSTRAP_SECRET configured is byte-for-byte indistinguishable from a genuinely unregistered route", async () => {
+  const env = makeEnv(); // no SUPERADMIN_BOOTSTRAP_SECRET
+  const bootstrapResponse = await worker.fetch(
+    new Request(`${ORIGIN}/api/admin/bootstrap-special-accounts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: "whatever", accounts: { master: { password: "12345678" } } }),
+    }),
+    env,
+  );
+  const genuinelyMissingResponse = await worker.fetch(new Request(`${ORIGIN}/nao-e-uma-rota-de-api`), env);
+
+  assert.equal(bootstrapResponse.status, 404);
+  assert.equal(bootstrapResponse.status, genuinelyMissingResponse.status);
+  assert.equal(await bootstrapResponse.text(), await genuinelyMissingResponse.text());
+  assert.equal(bootstrapResponse.headers.get("Content-Type"), genuinelyMissingResponse.headers.get("Content-Type"));
+});
+
 test("POST /api/webhooks/asaas is reachable without a session (public route) and reports the module disabled", async () => {
   const response = await worker.fetch(
     new Request(`${ORIGIN}/api/webhooks/asaas`, {

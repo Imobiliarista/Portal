@@ -169,6 +169,16 @@ export const privateKeys = {
     return `rate-limits/saved-search/${dateStamp}/${ipHash}.json`;
   },
   /**
+   * Per-IP-per-day counter guarding `POST /api/admin/bootstrap-special-accounts`
+   * (worker/bootstrap.js) against secret-guessing — same best-effort R2
+   * counter shape as `savedSearchRateLimit` above, own namespace.
+   */
+  bootstrapAttempt(ipHash, dateStamp) {
+    assertSafeSegment(dateStamp, "dateStamp");
+    assertSafeSegment(ipHash, "ipHash");
+    return `rate-limits/bootstrap-special-accounts/${dateStamp}/${ipHash}.json`;
+  },
+  /**
    * Asaas customer record for a broker (§51, Etapa 10, módulo financial) —
    * flat, keyed by brokerId, so `modules/financial/checkout.js` can reuse an
    * already-created providerCustomerId instead of creating a duplicate

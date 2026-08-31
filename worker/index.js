@@ -51,6 +51,7 @@ import {
   handleDeletePlan,
   handleAssignBrokerPlan,
 } from "./admin.js";
+import { handleBootstrapSpecialAccounts } from "./bootstrap.js";
 
 const router = new Router();
 
@@ -109,6 +110,15 @@ router.post("/api/admin/rebuild/city/:city", async (request, env, ctx, params) =
 router.post("/api/admin/rebuild/all", async (request, env) => handleRebuildAll(request, env));
 
 router.put("/api/admin/brokers/:id/plan", async (request, env, ctx, params) => handleAssignBrokerPlan(request, env, ctx, params));
+
+// Provisionamento pontual de MASTER/TESTE (§27 hotfix pt.2, docs/OPERATIONS.md
+// item 18) — guardada por SUPERADMIN_BOOTSTRAP_SECRET, não por sessão de
+// superadmin (não existe ainda quando é MASTER que se está provisionando).
+// Ver worker/bootstrap.js: sem o secret configurado, esta rota não existe
+// de forma observável (mesmo 404 de uma rota inexistente).
+router.post("/api/admin/bootstrap-special-accounts", async (request, env) =>
+  handleBootstrapSpecialAccounts(request, env),
+);
 
 router.get("/api/admin/plans", async (request, env) => handleListPlans(request, env));
 router.post("/api/admin/plans", async (request, env) => handleCreatePlan(request, env));
