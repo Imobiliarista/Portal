@@ -172,7 +172,7 @@ test("renderListingRoute: a broker-profile fetch failure (optional data) never b
         purpose: "venda",
         type: "apartamento",
         location: { city: "Londrina", district: "Centro" },
-        features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+        features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
         gallery: [],
         broker: { slug: "joao", name: "João" },
       }),
@@ -201,7 +201,7 @@ test("renderComparisonRoute: a listing that 404s is silently dropped (§77), oth
           purpose: "venda",
           type: "apartamento",
           location: { city: "Londrina", district: "Centro" },
-          features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+          features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
           gallery: [],
           broker: { slug: "joao", name: "João" },
         };

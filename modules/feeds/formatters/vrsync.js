@@ -31,6 +31,13 @@
 // Bedrooms/Bathrooms/Garage) — a lista de campos que o solicitante deu
 // nesta etapa é explícita e não inclui esses; ver README#decisões para o
 // porquê de não adicioná-los por conta própria.
+//
+// Etapa "NOVOS CAMPOS NO MODELO DE IMÓVEL" (partes 1 e 2): `Suites`,
+// `UnitFloor`, `YearBuilt` e `Features`/`Feature` (comodidades) entram no
+// XML — mapeamento confirmado pelo dono do projeto contra os elementos
+// VRSync de mesmo nome. `livingRooms`/`kitchens`
+// (`business/listings.js#isValidFeatures`) NÃO têm elemento correspondente
+// no padrão e nunca são incluídos aqui.
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
 const VRSYNC_NAMESPACE = "http://www.vivareal.com/schemas/1.0/VRSync";
@@ -61,9 +68,6 @@ export const PROPERTY_TYPE_BY_LISTING_TYPE = Object.freeze({
   galpao: "Commercial/Warehouse",
   "galpão": "Commercial/Warehouse",
 });
-
-/** PropertyTypes cuja área é reportada em `<LotArea>` em vez de `<LivingArea>` — terrenos/lotes, per solicitação ("LivingArea] ou [LotArea] (terrenos/fazendas)"). Só "Residential/Land" está no mapa confirmado acima — "fazenda"/"sítio" ficaria aqui também se algum dia entrar na tabela de PropertyType. */
-const LOT_AREA_PROPERTY_TYPES = new Set(["Residential/Land"]);
 
 function normalizeTypeKey(type) {
   return String(type ?? "")
@@ -102,9 +106,37 @@ function buildPriceTag(transactionType, price) {
     : `<ListPrice currency="BRL">${Math.round(price)}</ListPrice>`;
 }
 
-function buildAreaTag(propertyType, area) {
-  const tagName = LOT_AREA_PROPERTY_TYPES.has(propertyType) ? "LotArea" : "LivingArea";
-  return `<${tagName}>${area}</${tagName}>`;
+/**
+ * `<LivingArea>`/`<LotArea>` — antes desta etapa ("NOVOS CAMPOS NO MODELO
+ * DE IMÓVEL"), o projeto só tinha um `features.area` ambíguo e este
+ * formatter *inferia* qual das duas tags usar a partir do `PropertyType`
+ * (terreno -> LotArea, resto -> LivingArea). Agora que
+ * `features.livingArea`/`features.lotArea` são dois valores reais e
+ * independentes, usa-se o valor de cada campo diretamente — sem inferência
+ * — e as duas tags podem coexistir (ex.: casa com área construída E
+ * terreno maior). `livingArea` é sempre emitido (obrigatório em
+ * business/listings.js); `lotArea` só quando presente.
+ */
+function buildAreaTag(features) {
+  const tags = [`<LivingArea>${features.livingArea}</LivingArea>`];
+  if (features.lotArea !== undefined && features.lotArea !== null) {
+    tags.push(`<LotArea>${features.lotArea}</LotArea>`);
+  }
+  return tags.join("");
+}
+
+/** `<Suites>`/`<UnitFloor>` — só emitidos quando o campo correspondente está presente (VRSync Suites/UnitFloor). `livingRooms`/`kitchens` não têm elemento equivalente no padrão e nunca entram no XML. */
+function buildOptionalFeatureTags(features) {
+  const tags = [];
+  if (features.suites !== undefined && features.suites !== null) tags.push(`<Suites>${features.suites}</Suites>`);
+  if (features.unitFloor !== undefined && features.unitFloor !== null) tags.push(`<UnitFloor>${features.unitFloor}</UnitFloor>`);
+  return tags.join("");
+}
+
+/** `<Features><Feature>...</Feature></Features>` — um `<Feature>` por item de `listing.amenities` (business/amenities.js), usando o id em inglês exatamente como a tabela VRSync exige. Omitido quando `amenities` está ausente/vazio. */
+function buildFeaturesTag(amenities) {
+  if (!Array.isArray(amenities) || amenities.length === 0) return "";
+  return `<Features>${amenities.map((amenity) => `<Feature>${escapeXmlText(amenity)}</Feature>`).join("")}</Features>`;
 }
 
 /**
@@ -166,7 +198,10 @@ export function buildVrsyncListingXml({ listing, listingId }) {
     buildPriceTag(transactionType, listing.price),
     `<PropertyType>${propertyType}</PropertyType>`,
     `<PostalCode>${escapeXmlText(listing.location.zipcode)}</PostalCode>`,
-    buildAreaTag(propertyType, listing.features.area),
+    buildAreaTag(listing.features),
+    buildOptionalFeatureTags(listing.features),
+    ...(listing.yearBuilt !== undefined && listing.yearBuilt !== null ? [`<YearBuilt>${listing.yearBuilt}</YearBuilt>`] : []),
+    buildFeaturesTag(listing.amenities),
     "</Details>",
     "</Listing>",
   ].join("");

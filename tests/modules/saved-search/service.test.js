@@ -49,7 +49,7 @@ function baseListingPublic(overrides = {}) {
     type: "apartamento",
     price: 450000,
     location: { city: "londrina", district: "Centro" },
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     ...overrides,
   };
 }

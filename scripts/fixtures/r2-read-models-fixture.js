@@ -54,7 +54,7 @@ export async function buildSampleFixtureEnv() {
     type: "apartamento",
     price: 350000,
     district: "Centro",
-    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
     status: "active",
   });
   await publishListing(env, draft.listingId);

@@ -16,7 +16,7 @@ function baseListingPublic(overrides = {}) {
     condominium: 650,
     iptu: 2200,
     location: { city: "londrina", district: "Centro" },
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     gallery: ["https://media.imobiliarista.net/listings/x/gallery/1.webp"],
     video: null,
     tour360: null,
@@ -49,6 +49,26 @@ test("buildListingCard maps listing-public + listingId into a city-shard card (ย
 test("buildListingCard falls back to a null cover when the gallery is empty", () => {
   const card = buildListingCard("listing_000123", baseListingPublic({ gallery: [] }));
   assert.equal(card.cover, null);
+});
+
+test("buildListingCard includes suites/unitFloor when present, but never lotArea/livingRooms/kitchens (detail-page-only fields)", () => {
+  const card = buildListingCard(
+    "listing_000123",
+    baseListingPublic({
+      features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95, lotArea: 360, livingRooms: 2, kitchens: 1, suites: 1, unitFloor: 8 },
+    }),
+  );
+  assert.equal(card.suites, 1);
+  assert.equal(card.unitFloor, 8);
+  assert.equal("lotArea" in card, false);
+  assert.equal("livingRooms" in card, false);
+  assert.equal("kitchens" in card, false);
+});
+
+test("buildListingCard omits suites/unitFloor entirely when absent from features (never null)", () => {
+  const card = buildListingCard("listing_000123", baseListingPublic());
+  assert.equal("suites" in card, false);
+  assert.equal("unitFloor" in card, false);
 });
 
 test("buildIndexEntry derives a city-index entry (ยง21) from a card, given a shard number", () => {

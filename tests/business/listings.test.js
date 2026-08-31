@@ -39,7 +39,7 @@ function baseInput(overrides = {}) {
     purpose: "venda",
     type: "apartamento",
     price: 450000,
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     ...overrides,
   };
 }
@@ -54,7 +54,7 @@ test("createListing persists a draft matching listing-draft.schema.json's requir
   assert.equal(draft.city, "londrina");
   assert.equal(draft.slug, "apartamento-centro-123");
   assert.equal(draft.status, "draft");
-  assert.deepEqual(draft.features, { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 });
+  assert.deepEqual(draft.features, { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 });
   assert.ok(draft.updatedAt);
 });
 
@@ -101,7 +101,134 @@ test("createListing rejects missing required fields", async () => {
 test("createListing rejects malformed features", async () => {
   const env = makeEnv();
   await assert.rejects(
-    () => createListing(env, "broker_1", baseInput({ features: { bedrooms: -1, bathrooms: 2, parkingSpaces: 2, area: 95 } })),
+    () => createListing(env, "broker_1", baseInput({ features: { bedrooms: -1, bathrooms: 2, parkingSpaces: 2, livingArea: 95 } })),
+    ValidationError,
+  );
+});
+
+// --- novos campos do modelo de imóvel (livingArea/lotArea/livingRooms/
+// kitchens/suites/unitFloor/location.zone + endereço/yearBuilt/
+// municipalRegistrationCode/municipalZoning/amenities) -----------------
+
+test("createListing accepts a listing with every new field filled in (features + root + zone/address)", async () => {
+  const env = makeEnv();
+  const draft = await createListing(
+    env,
+    "broker_1",
+    baseInput({
+      features: {
+        bedrooms: 3,
+        bathrooms: 2,
+        parkingSpaces: 2,
+        livingArea: 95,
+        lotArea: 360,
+        livingRooms: 2,
+        kitchens: 1,
+        suites: 1,
+        unitFloor: 8,
+      },
+      zone: "central",
+      street: "Rua das Flores",
+      streetNumber: "123A",
+      municipalZoning: "ZR3",
+      yearBuilt: 2015,
+      municipalRegistrationCode: "12345-67",
+      amenities: ["Pool", "Elevator", "Pets Allowed"],
+    }),
+  );
+
+  assert.deepEqual(draft.features, {
+    bedrooms: 3,
+    bathrooms: 2,
+    parkingSpaces: 2,
+    livingArea: 95,
+    lotArea: 360,
+    livingRooms: 2,
+    kitchens: 1,
+    suites: 1,
+    unitFloor: 8,
+  });
+  assert.equal(draft.zone, "central");
+  assert.equal(draft.street, "Rua das Flores");
+  assert.equal(draft.streetNumber, "123A");
+  assert.equal(draft.municipalZoning, "ZR3");
+  assert.equal(draft.yearBuilt, 2015);
+  assert.equal(draft.municipalRegistrationCode, "12345-67");
+  assert.deepEqual(draft.amenities, ["Pool", "Elevator", "Pets Allowed"]);
+});
+
+test("createListing stays valid when none of the new optional fields are provided (never defaults them onto the draft)", async () => {
+  const env = makeEnv();
+  const draft = await createListing(env, "broker_1", baseInput());
+
+  assert.deepEqual(draft.features, { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 });
+  for (const field of ["lotArea", "livingRooms", "kitchens", "suites", "unitFloor"]) {
+    assert.equal(field in draft.features, false);
+  }
+  for (const field of [
+    "zone",
+    "street",
+    "streetNumber",
+    "municipalZoning",
+    "yearBuilt",
+    "municipalRegistrationCode",
+    "amenities",
+  ]) {
+    assert.equal(field in draft, false);
+  }
+});
+
+test("createListing rejects a location.zone value outside the fixed enum", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => createListing(env, "broker_1", baseInput({ zone: "nordeste" })), ValidationError);
+});
+
+test("createListing accepts every valid zone value", async () => {
+  const env = makeEnv();
+  for (const zone of ["central", "norte", "sul", "leste", "oeste", "rural"]) {
+    const draft = await createListing(env, "broker_1", baseInput({ slug: `imovel-${zone}`, zone }));
+    assert.equal(draft.zone, zone);
+  }
+});
+
+test("createListing rejects an amenities value outside the curated vocabulary (business/amenities.js)", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () => createListing(env, "broker_1", baseInput({ amenities: ["Pool", "Jacuzzi"] })),
+    ValidationError,
+  );
+});
+
+test("createListing rejects a duplicate amenity within the same array", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () => createListing(env, "broker_1", baseInput({ amenities: ["Pool", "Pool"] })),
+    ValidationError,
+  );
+});
+
+test("createListing rejects a yearBuilt far in the past (before 1800)", async () => {
+  const env = makeEnv();
+  await assert.rejects(() => createListing(env, "broker_1", baseInput({ yearBuilt: 1500 })), ValidationError);
+});
+
+test("createListing rejects a yearBuilt too far in the future (beyond current year + 5)", async () => {
+  const env = makeEnv();
+  const tooFarAhead = new Date().getFullYear() + 6;
+  await assert.rejects(() => createListing(env, "broker_1", baseInput({ yearBuilt: tooFarAhead })), ValidationError);
+});
+
+test("createListing accepts a yearBuilt up to current year + 5 (imóvel na planta/em construção)", async () => {
+  const env = makeEnv();
+  const maxYear = new Date().getFullYear() + 5;
+  const draft = await createListing(env, "broker_1", baseInput({ yearBuilt: maxYear }));
+  assert.equal(draft.yearBuilt, maxYear);
+});
+
+test("createListing rejects malformed optional feature counts (lotArea/livingRooms/kitchens/suites/unitFloor)", async () => {
+  const env = makeEnv();
+  await assert.rejects(
+    () => createListing(env, "broker_1", baseInput({ features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95, suites: -1 } })),
     ValidationError,
   );
 });

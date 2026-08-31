@@ -171,6 +171,10 @@ export function normalizeListingForPublic(draft, status, broker, publicationVers
   if (draft.latitude !== undefined && draft.latitude !== null) location.latitude = draft.latitude;
   if (draft.longitude !== undefined && draft.longitude !== null) location.longitude = draft.longitude;
   if (draft.zipcode !== undefined && draft.zipcode !== null) location.zipcode = draft.zipcode;
+  if (draft.street !== undefined) location.street = draft.street;
+  if (draft.streetNumber !== undefined) location.streetNumber = draft.streetNumber;
+  if (draft.zone !== undefined) location.zone = draft.zone;
+  if (draft.municipalZoning !== undefined) location.municipalZoning = draft.municipalZoning;
 
   return {
     schemaVersion: 1,
@@ -184,6 +188,9 @@ export function normalizeListingForPublic(draft, status, broker, publicationVers
     price: draft.price,
     condominium: draft.condominium ?? null,
     iptu: draft.iptu ?? null,
+    ...(draft.yearBuilt !== undefined ? { yearBuilt: draft.yearBuilt } : {}),
+    ...(draft.municipalRegistrationCode !== undefined ? { municipalRegistrationCode: draft.municipalRegistrationCode } : {}),
+    ...(draft.amenities !== undefined ? { amenities: draft.amenities } : {}),
     location,
     features: { ...draft.features },
     gallery: draft.gallery ?? [],
@@ -264,7 +271,7 @@ function assertPresent(label, value, requiredFields) {
 function assertValidListingPublic(listingPublic) {
   assertPresent("listing-public", listingPublic, REQUIRED_LISTING_PUBLIC_FIELDS);
   assertPresent("listing-public.location", listingPublic.location, ["city", "district"]);
-  assertPresent("listing-public.features", listingPublic.features, ["bedrooms", "bathrooms", "parkingSpaces", "area"]);
+  assertPresent("listing-public.features", listingPublic.features, ["bedrooms", "bathrooms", "parkingSpaces", "livingArea"]);
   assertPresent("listing-public.broker", listingPublic.broker, ["slug", "name"]);
   if (listingPublic.location.district === "") {
     throw new PublishValidationError("listing-public.location", ["district (vazio)"]);

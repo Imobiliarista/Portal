@@ -27,7 +27,7 @@ function baseListing(overrides = {}) {
     condominium: 650,
     iptu: 2200,
     location: { city: "londrina", district: "Centro", zipcode: "86010-000" },
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     gallery: ["https://media.imobiliarista.net/listings/1/cover-v1.webp", "https://media.imobiliarista.net/listings/1/gallery/2.webp"],
     video: null,
     tour360: null,
@@ -94,10 +94,51 @@ test("buildVrsyncListingXml uses RentalPrice (not ListPrice) for an aluguel list
   assert.doesNotMatch(xml, /ListPrice/);
 });
 
-test("buildVrsyncListingXml reports area as LotArea (not LivingArea) for a terreno", () => {
+test("buildVrsyncListingXml always emits LivingArea from features.livingArea, regardless of PropertyType (no more type-based inference)", () => {
   const xml = buildVrsyncListingXml({ listing: baseListing({ type: "terreno" }), listingId: LISTING_ID });
-  assert.match(xml, /<LotArea>95<\/LotArea>/);
-  assert.doesNotMatch(xml, /LivingArea/);
+  assert.match(xml, /<LivingArea>95<\/LivingArea>/);
+  assert.doesNotMatch(xml, /LotArea/);
+});
+
+test("buildVrsyncListingXml also emits LotArea from features.lotArea when present, alongside LivingArea", () => {
+  const xml = buildVrsyncListingXml({
+    listing: baseListing({ features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95, lotArea: 360 } }),
+    listingId: LISTING_ID,
+  });
+  assert.match(xml, /<LivingArea>95<\/LivingArea>/);
+  assert.match(xml, /<LotArea>360<\/LotArea>/);
+});
+
+test("buildVrsyncListingXml omits Suites/UnitFloor/YearBuilt/Features when the corresponding fields are absent", () => {
+  const xml = buildVrsyncListingXml({ listing: baseListing(), listingId: LISTING_ID });
+  assert.doesNotMatch(xml, /Suites/);
+  assert.doesNotMatch(xml, /UnitFloor/);
+  assert.doesNotMatch(xml, /YearBuilt/);
+  assert.doesNotMatch(xml, /Features/);
+});
+
+test("buildVrsyncListingXml emits Suites/UnitFloor when present on features", () => {
+  const xml = buildVrsyncListingXml({
+    listing: baseListing({ features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95, suites: 1, unitFloor: 8 } }),
+    listingId: LISTING_ID,
+  });
+  assert.match(xml, /<Suites>1<\/Suites>/);
+  assert.match(xml, /<UnitFloor>8<\/UnitFloor>/);
+});
+
+test("buildVrsyncListingXml emits YearBuilt when present on the listing", () => {
+  const xml = buildVrsyncListingXml({ listing: baseListing({ yearBuilt: 2010 }), listingId: LISTING_ID });
+  assert.match(xml, /<YearBuilt>2010<\/YearBuilt>/);
+});
+
+test("buildVrsyncListingXml emits one Feature per amenity, using the English id verbatim", () => {
+  const xml = buildVrsyncListingXml({ listing: baseListing({ amenities: ["Pool", "Elevator"] }), listingId: LISTING_ID });
+  assert.match(xml, /<Features><Feature>Pool<\/Feature><Feature>Elevator<\/Feature><\/Features>/);
+});
+
+test("buildVrsyncListingXml omits Features entirely when amenities is an empty array", () => {
+  const xml = buildVrsyncListingXml({ listing: baseListing({ amenities: [] }), listingId: LISTING_ID });
+  assert.doesNotMatch(xml, /Features/);
 });
 
 test("buildVrsyncListingXml returns null for a listing whose type has no PropertyType mapping", () => {

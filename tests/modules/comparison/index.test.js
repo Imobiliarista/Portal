@@ -105,7 +105,7 @@ test("buildComparisonRows extracts raw field values from listing-public.schema.j
     condominium: 600,
     iptu: 120,
     location: { city: "Londrina", district: "Centro" },
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
   };
   const listingB = {
     purpose: "aluguel",
@@ -114,7 +114,7 @@ test("buildComparisonRows extracts raw field values from listing-public.schema.j
     condominium: null,
     iptu: null,
     location: { city: "Londrina", district: "Gleba Palhano" },
-    features: { bedrooms: 4, bathrooms: 3, parkingSpaces: 3, area: 180 },
+    features: { bedrooms: 4, bathrooms: 3, parkingSpaces: 3, livingArea: 180 },
   };
 
   const rows = buildComparisonRows([listingA, listingB]);

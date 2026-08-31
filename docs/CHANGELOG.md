@@ -1,5 +1,32 @@
 # Changelog
 
+## Novos campos no modelo de imóvel, parte 2 — endereço, ano de construção, inscrição municipal, zoneamento, comodidades
+
+**Escopo**: só modelo de dados (schema, validação, publicação, feed VRSync) — segue a mesma restrição de escopo da parte 1 abaixo. Continuação direta daquela etapa; os campos aqui são aditivos, não substituem nada do que foi decidido lá.
+
+- `location.street`/`location.streetNumber` (novos, opcionais) — `streetNumber` é texto, não número (endereços reais aceitam "s/n", "123A" etc.).
+- `yearBuilt` (novo, opcional, raiz do listing — não dentro de `features`/`location`) — VRSync `YearBuilt`. Faixa 1800 até `new Date().getFullYear() + 5` (teto DINÂMICO, nunca um número fixo hardcoded) para cobrir imóvel na planta/em construção.
+- `municipalRegistrationCode` (novo, opcional, raiz) — inscrição municipal (IPTU). Sem correspondência no padrão VRSync — campo próprio do projeto.
+- `location.municipalZoning` (novo, opcional) — zoneamento urbano da prefeitura (ex. "ZR3"), texto livre (cada prefeitura tem seu próprio código, não dá pra travar num enum). **Deliberadamente distinto de `location.zone`** (região Central/Norte/Sul/etc., da parte 1) — nomes escolhidos para não serem confundíveis um com o outro em nenhum ponto do código.
+- `amenities` (novo, opcional, raiz) — array de strings, vocabulário fixo alinhado ao elemento `Features`/`Feature` do VRSync. Vocabulário curado pelo dono do projeto (39 ids, comodidades + proximidades) definido em `business/amenities.js` (novo módulo — única fonte de verdade dos ids/rótulos pt-BR, mantida em sincronia à mão com o `enum` duplicado nos dois schemas, mesmo padrão já usado por `PURPOSES`/`LISTING_STATUSES`). Validação em `business/listings.js` rejeita valor fora do vocabulário e duplicata dentro do mesmo array.
+- `modules/feeds/formatters/vrsync.js` — `<YearBuilt>` e `<Features><Feature>...</Feature></Features>` (um `<Feature>` por amenity, id em inglês verbatim) emitidos quando presentes. `street`/`streetNumber`/`municipalZoning`/`municipalRegistrationCode` não têm elemento VRSync equivalente e nunca entram no XML.
+- `business/cards.js#buildListingCard` — nenhum dos 6 campos desta parte entra no card resumido (são detalhes de página completa, não de card de listagem).
+- Fora de escopo (mesma decisão da parte 1): formulário do painel (`frontend/painel/forms.js`/`render.js`) e filtros do portal (`frontend/portal/filters.js`) não foram tocados — ficam para uma tarefa seguinte de UI, depois do modelo de dados confirmado em produção.
+
+## Novos campos no modelo de imóvel, parte 1 — livingArea/lotArea/livingRooms/kitchens/suites/unitFloor/location.zone
+
+**Escopo**: só modelo de dados (schema, validação, publicação, feed VRSync) — **não inclui** o formulário do painel (`frontend/painel/forms.js`) nem os filtros do portal (`frontend/portal/filters.js`); ficam para uma tarefa seguinte, depois que este modelo estiver confirmado em produção. Como o portal ainda não tem nenhum listing real publicado, não houve necessidade de script de migração de dados legados.
+
+- `features.area` **RENOMEADO** para `features.livingArea` (VRSync `LivingArea`) — continua obrigatório, mesma validação de antes (número ≥ 0). O campo do **card**/índice público (`city-shard.schema.json`/`city-index.schema.json`) continua se chamando `area` (contrato §13/§21 inalterado, e é o que `frontend/portal/filters.js#areaMin/areaMax` já lê) — só a *origem* do valor mudou (`business/cards.js#buildListingCard` agora lê `features.livingArea`), nunca o nome do campo do card em si.
+- `features.lotArea` (novo, opcional) — VRSync `LotArea`.
+- `features.livingRooms`/`features.kitchens` (novos, opcionais) — sem elemento correspondente no padrão VRSync hoje; comentado no código como campos próprios do projeto que podem ganhar mapeamento futuro se o padrão adicionar um elemento equivalente.
+- `features.suites` (novo, opcional) — VRSync `Suites`.
+- `features.unitFloor` (novo, opcional) — VRSync `UnitFloor`.
+- `location.zone` (novo, opcional) — VRSync `Location/Zone`. Enum fixo GLOBAL (`central`/`norte`/`sul`/`leste`/`oeste`/`rural`) — não varia por cidade nesta primeira versão; ajustável no futuro se o produto precisar de zonas por cidade.
+- `modules/feeds/formatters/vrsync.js#buildAreaTag` deixou de **inferir** `LivingArea` vs. `LotArea` a partir do `PropertyType` (comportamento antigo, de quando só existia um `features.area` ambíguo) — agora emite `<LivingArea>` sempre (campo obrigatório) e `<LotArea>` quando `features.lotArea` está presente; as duas tags podem coexistir. `<Suites>`/`<UnitFloor>` emitidos quando presentes.
+- `business/cards.js#buildListingCard` — decisão: `suites`/`unitFloor` entram no card resumido (informação comum em thumbnail/resumo de anúncio real); `lotArea`/`livingRooms`/`kitchens` ficam só no imóvel completo.
+- Leituras de exibição de `listing.features.area` fora do painel foram atualizadas para `livingArea` (`frontend/portal/render.js`, `modules/comparison/index.js` + `frontend/shared/comparison.generated.js` regenerado via `npm run generate:comparison`, `modules/saved-search/service.js#matchesCriteria`) — sem isso, imóveis novos apareceriam com área "undefined"/nunca dariam match num `areaMin` salvo. `frontend/painel/render.js`/`forms.js` (formulário de editar imóvel) foram deliberadamente deixados como estão — ainda leem/enviam o nome antigo `area` — porque são "o formulário do painel", explicitamente fora de escopo; até a tarefa de UI seguinte, criar/editar um imóvel pelo painel vai falhar a validação (`features.livingArea` ausente) ou mostrar a área em branco. `frontend/portal/filters.js` não precisou de nenhuma mudança (o card manteve o nome `area`).
+
 ## Painel e admin deixam de ser subdomínio e passam a ser caminho sob o domínio principal (PR #36)
 
 **O que mudou**: `painel.imobiliarista.net` e `admin.imobiliarista.net`

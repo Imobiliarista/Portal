@@ -54,7 +54,7 @@ test("listingViewModel builds a renderable model from listing-public (§15)", ()
     condominium: 650,
     iptu: 2200,
     location: { city: "londrina", district: "Centro" },
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     gallery: ["https://media.imobiliarista.net/1.webp"],
     video: { provider: "youtube", id: "abc123" },
     tour360: null,

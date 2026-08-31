@@ -72,7 +72,7 @@ test("publishPortalCatalogs reflects a published listing's city with the correct
     type: "apartamento",
     price: 450000,
     district: "Centro",
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     status: "active",
   });
   await publishListing(env, draft.listingId);
@@ -121,7 +121,7 @@ test("publishPortalCatalogs run twice with unchanged private state writes byte-i
     type: "apartamento",
     price: 450000,
     district: "Centro",
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     status: "active",
   });
   await publishListing(env, draft.listingId);
@@ -147,7 +147,7 @@ test("published portal/cities.json never leaks private broker/listing fields", a
     type: "apartamento",
     price: 450000,
     district: "Centro",
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     status: "active",
   });
   await publishListing(env, draft.listingId);

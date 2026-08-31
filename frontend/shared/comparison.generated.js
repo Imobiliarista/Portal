@@ -77,7 +77,7 @@ export function buildComparisonRows(listings) {
     { key: "bedrooms", label: "Quartos", get: (l) => (typeof l.features?.bedrooms === "number" ? l.features.bedrooms : null) },
     { key: "bathrooms", label: "Banheiros", get: (l) => (typeof l.features?.bathrooms === "number" ? l.features.bathrooms : null) },
     { key: "parkingSpaces", label: "Vagas", get: (l) => (typeof l.features?.parkingSpaces === "number" ? l.features.parkingSpaces : null) },
-    { key: "area", label: "Área", get: (l) => (typeof l.features?.area === "number" ? l.features.area : null) },
+    { key: "area", label: "Área", get: (l) => (typeof l.features?.livingArea === "number" ? l.features.livingArea : null) },
   ];
   return rows.map(({ key, label, get }) => ({
     key,

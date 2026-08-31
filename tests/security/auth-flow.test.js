@@ -188,7 +188,7 @@ test("cross-tenant write is blocked even with a valid session for a different br
     purpose: "venda",
     type: "apartamento",
     price: 300000,
-    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
   });
 
   const { claims: sessionA } = await login(
