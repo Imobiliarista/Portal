@@ -557,6 +557,22 @@ secrets, `POST /api/saved-searches` e os links de confirmação/cancelamento
 lançam em vez de um 500 silencioso (mesmo espírito de falha explícita do
 `PASSWORD_PEPPER` acima).
 
+`SUPERADMIN_BOOTSTRAP_SECRET` (rota `POST /api/admin/bootstrap-special-accounts`,
+`worker/bootstrap.js`) é diferente de todos os secrets acima: **não fica
+configurado por padrão, nunca**. Ele só é adicionado manualmente pelo painel
+Cloudflare (Workers & Pages → nome do worker → Settings → Variables and
+Secrets — não via `wrangler secret put`/commit, para não deixar rastro em
+histórico de shell ou neste repositório) no momento em que alguém for
+provisionar ou reprovisionar as contas especiais MASTER/TESTE (item 18
+acima) por HTTP em vez de rodar a CLI (`npm run bootstrap:special-accounts`)
+localmente. **Assim que o uso terminar, remova o secret do painel** —
+enquanto ele não estiver configurado, a rota responde 404 de forma
+indistinguível de uma rota que nunca existiu (`worker/bootstrap.js` explica
+o porquê: isso é deliberado, para o caso de alguém esquecer de remover o
+secret por um tempo). Enviar o secret errado no corpo da requisição também
+responde 404, pelo mesmo motivo — nunca 401/403, que confirmariam a
+existência da rota a quem não tem o secret certo.
+
 ## Pendências não-bloqueantes — módulo saved-search (§43)
 
 1. ~~Sem testes neste lote~~ **Coberto na Etapa 11 (sub-lote 2/N, PR #24)**:
