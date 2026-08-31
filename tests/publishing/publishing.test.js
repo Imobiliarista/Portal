@@ -58,7 +58,7 @@ function baseListingInput(overrides = {}) {
     type: "apartamento",
     price: 450000,
     district: "Centro",
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     ...overrides,
   };
 }
@@ -129,6 +129,89 @@ test("publishListing omits location.zipcode entirely when the draft has none", a
   await publishListing(env, draft.listingId);
   const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
   assert.equal("zipcode" in listingPublic.location, false);
+});
+
+// Etapa "NOVOS CAMPOS NO MODELO DE IMÓVEL" (partes 1 e 2) — os campos novos
+// de features (lotArea/livingRooms/kitchens/suites/unitFloor), location
+// (zone/street/streetNumber/municipalZoning) e raiz (yearBuilt/
+// municipalRegistrationCode/amenities) precisam sobreviver a
+// normalizeListingForPublic; o card só carrega suites/unitFloor (decisão
+// de business/cards.js#buildListingCard).
+test("publishListing surfaces every new field (features/location/root) onto the public listing and the card", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const draft = await createListing(
+    env,
+    broker.brokerId,
+    baseListingInput({
+      status: "active",
+      zone: "central",
+      street: "Rua das Flores",
+      streetNumber: "123A",
+      municipalZoning: "ZR3",
+      yearBuilt: 2015,
+      municipalRegistrationCode: "12345-67",
+      amenities: ["Pool", "Elevator"],
+      features: {
+        bedrooms: 3,
+        bathrooms: 2,
+        parkingSpaces: 2,
+        livingArea: 95,
+        lotArea: 360,
+        livingRooms: 2,
+        kitchens: 1,
+        suites: 1,
+        unitFloor: 8,
+      },
+    }),
+  );
+
+  await publishListing(env, draft.listingId);
+  const listingPublic = await getPublic(env, "listings/apartamento-centro-123.json");
+
+  assert.equal(listingPublic.location.zone, "central");
+  assert.equal(listingPublic.location.street, "Rua das Flores");
+  assert.equal(listingPublic.location.streetNumber, "123A");
+  assert.equal(listingPublic.location.municipalZoning, "ZR3");
+  assert.equal(listingPublic.yearBuilt, 2015);
+  assert.equal(listingPublic.municipalRegistrationCode, "12345-67");
+  assert.deepEqual(listingPublic.amenities, ["Pool", "Elevator"]);
+  assert.equal(listingPublic.features.livingArea, 95);
+  assert.equal(listingPublic.features.lotArea, 360);
+  assert.equal(listingPublic.features.livingRooms, 2);
+  assert.equal(listingPublic.features.kitchens, 1);
+  assert.equal(listingPublic.features.suites, 1);
+  assert.equal(listingPublic.features.unitFloor, 8);
+
+  const shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal(shard[0].suites, 1);
+  assert.equal(shard[0].unitFloor, 8);
+  assert.equal("lotArea" in shard[0], false);
+  assert.equal("livingRooms" in shard[0], false);
+  assert.equal("kitchens" in shard[0], false);
+});
+
+test("publishListing omits all new optional fields from the public listing/card when the draft has none of them", async () => {
+  const env = makeEnv();
+  const broker = await makeBroker(env);
+  const draft = await createListing(env, broker.brokerId, baseListingInput({ status: "active", slug: "sem-campos-novos" }));
+
+  await publishListing(env, draft.listingId);
+  const listingPublic = await getPublic(env, "listings/sem-campos-novos.json");
+
+  for (const field of ["zone", "street", "streetNumber", "municipalZoning"]) {
+    assert.equal(field in listingPublic.location, false);
+  }
+  for (const field of ["yearBuilt", "municipalRegistrationCode", "amenities"]) {
+    assert.equal(field in listingPublic, false);
+  }
+  for (const field of ["lotArea", "livingRooms", "kitchens", "suites", "unitFloor"]) {
+    assert.equal(field in listingPublic.features, false);
+  }
+
+  const shard = await getPublic(env, "cities/londrina/001.json");
+  assert.equal("suites" in shard[0], false);
+  assert.equal("unitFloor" in shard[0], false);
 });
 
 test("publishListing only touches the affected city's shard — other cities are untouched", async () => {
@@ -282,7 +365,7 @@ test("publishListing refuses to publish an active listing without a district (ga
     type: "apartamento",
     price: 300000,
     status: "active",
-    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
   });
 
   await assert.rejects(() => publishListing(env, draft.listingId), PublishValidationError);

@@ -36,6 +36,8 @@
       "bathrooms": { "type": "integer", "minimum": 0 },
       "parkingSpaces": { "type": "integer", "minimum": 0 },
       "area": { "type": "number", "minimum": 0 },
+      "suites": { "type": "integer", "minimum": 0, "description": "Só presente quando o listing tem features.suites (business/cards.js#buildListingCard)." },
+      "unitFloor": { "type": "integer", "minimum": 0, "description": "Só presente quando o listing tem features.unitFloor (business/cards.js#buildListingCard)." },
       "cover": { "type": ["string", "null"], "format": "uri" },
       "brokerSlug": { "type": "string", "minLength": 1 },
       "featured": { "type": "boolean" },

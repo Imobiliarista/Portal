@@ -87,7 +87,7 @@ function baseListingInput(overrides = {}) {
     purpose: "venda",
     type: "apartamento",
     price: 450000,
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     ...overrides,
   };
 }

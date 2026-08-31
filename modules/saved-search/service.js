@@ -256,7 +256,7 @@ export function matchesCriteria(criteria, listingPublic) {
   ) {
     return false;
   }
-  if (criteria.areaMin !== undefined && !((features.area ?? 0) >= criteria.areaMin)) return false;
+  if (criteria.areaMin !== undefined && !((features.livingArea ?? 0) >= criteria.areaMin)) return false;
 
   return true;
 }

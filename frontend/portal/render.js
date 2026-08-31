@@ -73,7 +73,7 @@ export function listingViewModel(listing) {
     bedrooms: listing.features?.bedrooms ?? null,
     bathrooms: listing.features?.bathrooms ?? null,
     parkingSpaces: listing.features?.parkingSpaces ?? null,
-    areaLabel: formatArea(listing.features?.area),
+    areaLabel: formatArea(listing.features?.livingArea),
     gallery: listing.gallery ?? [],
     video: listing.video ?? null,
     tour360: listing.tour360 ?? null,

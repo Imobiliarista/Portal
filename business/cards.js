@@ -16,6 +16,17 @@
  * the private draft yet (business/listings.js has no such fields) — this
  * lot defaults both, pending a future product/plans feature to set them
  * (see PR pendencies).
+ *
+ * The card's own `area` field keeps its name (§13/§21 contract, and
+ * frontend/portal/filters.js's `areaMin`/`areaMax` filtering already reads
+ * it) even though the source field was renamed to `features.livingArea` —
+ * only the source changed, not the card's public shape.
+ *
+ * `suites`/`unitFloor` are included here (info that commonly shows up on a
+ * real listing summary/thumbnail); `lotArea`/`livingRooms`/`kitchens` are
+ * deliberately left out of the card — detail-page-only fields, per the PR.
+ * Both are only added to the card object when present on the listing (never
+ * `undefined`), consistent with how optional fields are handled elsewhere.
  */
 export function buildListingCard(listingId, listingPublic) {
   return {
@@ -29,7 +40,9 @@ export function buildListingCard(listingId, listingPublic) {
     bedrooms: listingPublic.features.bedrooms,
     bathrooms: listingPublic.features.bathrooms,
     parkingSpaces: listingPublic.features.parkingSpaces,
-    area: listingPublic.features.area,
+    area: listingPublic.features.livingArea,
+    ...(listingPublic.features.suites !== undefined ? { suites: listingPublic.features.suites } : {}),
+    ...(listingPublic.features.unitFloor !== undefined ? { unitFloor: listingPublic.features.unitFloor } : {}),
     cover: listingPublic.gallery[0] ?? null,
     brokerSlug: listingPublic.broker.slug,
     featured: false,

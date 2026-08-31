@@ -49,7 +49,7 @@ async function publishNewActiveListing(env, brokerId, { city, slug, index }) {
     price: 300000 + index,
     district: "Centro",
     status: "active",
-    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, area: 60 },
+    features: { bedrooms: 2, bathrooms: 1, parkingSpaces: 1, livingArea: 60 },
   });
   await publishListing(env, draft.listingId);
   return draft;

@@ -40,15 +40,48 @@
     "zipcode": { "type": "string", "description": "CEP (§46, formatters/olx.js#zipcode) — opcional aqui (só o feed OLX exige), NNNNN-NNN ou NNNNNNNN." },
     "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
     "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+    "street": { "type": "string", "maxLength": 200 },
+    "streetNumber": { "type": "string", "maxLength": 20, "description": "Texto, não número — endereços reais aceitam \"s/n\", \"123A\" etc." },
+    "zone": {
+      "type": "string",
+      "enum": ["central", "norte", "sul", "leste", "oeste", "rural"],
+      "description": "Região/zona da cidade (VRSync Location/Zone). Lista fixa global nesta primeira versão — não varia por cidade; ajustável no futuro se necessário."
+    },
+    "municipalZoning": { "type": "string", "maxLength": 20, "description": "Zoneamento urbano oficial da prefeitura (ex.: \"ZR3\", \"ZC1\") — DIFERENTE de \"zone\" (região Central/Norte/Sul/etc.), que é outro campo." },
+    "yearBuilt": { "type": "integer", "minimum": 1800, "description": "VRSync YearBuilt. Teto de validação é ano atual + 5 (business/listings.js), não fixo aqui." },
+    "municipalRegistrationCode": { "type": "string", "maxLength": 40, "description": "Inscrição municipal (IPTU) — sem correspondência no padrão VRSync, campo próprio do projeto." },
+    "amenities": {
+      "type": "array",
+      "description": "Comodidades/proximidades (VRSync Features). Ver business/amenities.js para o rótulo pt-BR de cada id.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Pool", "Elevator", "Gym", "Sauna", "Playground", "Party Room", "Sports Court", "BBQ",
+          "Gourmet Area", "Balcony", "Garden Area", "Backyard", "Fireplace", "Builtin Wardrobe",
+          "Closet", "Furnished", "Cooling", "Heating", "Solar Energy", "Generator", "Intercom",
+          "Electronic Gate", "Security Camera", "Security Guard on Duty", "Fenced Yard",
+          "Home Office", "Coworking", "Pet Space", "Pets Allowed", "American Kitchen",
+          "Gourmet Kitchen", "Laundry", "Edicule", "Deck",
+          "Close to schools", "Close to hospitals", "Close to public transportation",
+          "Close to shopping centers", "Close to main roads/avenues"
+        ]
+      },
+      "uniqueItems": true
+    },
     "features": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bedrooms", "bathrooms", "parkingSpaces", "area"],
+      "required": ["bedrooms", "bathrooms", "parkingSpaces", "livingArea"],
       "properties": {
         "bedrooms": { "type": "integer", "minimum": 0 },
         "bathrooms": { "type": "integer", "minimum": 0 },
         "parkingSpaces": { "type": "integer", "minimum": 0 },
-        "area": { "type": "number", "minimum": 0 }
+        "livingArea": { "type": "number", "minimum": 0, "description": "Área útil/construída, m² (VRSync LivingArea). Renomeado de \"area\"." },
+        "lotArea": { "type": "number", "minimum": 0, "description": "Tamanho do terreno, m² (VRSync LotArea)." },
+        "livingRooms": { "type": "integer", "minimum": 0, "description": "Número de salas — sem correspondência no padrão VRSync hoje (campo próprio do projeto); pode ganhar mapeamento pro feed se o padrão adicionar um elemento equivalente no futuro." },
+        "kitchens": { "type": "integer", "minimum": 0, "description": "Número de cozinhas — sem correspondência no padrão VRSync hoje (campo próprio do projeto); mesma observação de livingRooms." },
+        "suites": { "type": "integer", "minimum": 0, "description": "Número de suítes (VRSync Suites)." },
+        "unitFloor": { "type": "integer", "minimum": 0, "description": "Andar da unidade (VRSync UnitFloor)." }
       }
     },
     "gallery": {

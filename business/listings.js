@@ -38,6 +38,7 @@ import {
 import { sanitizeText } from "../core/security.js";
 import { TenantMismatchError } from "../core/tenant.js";
 import { getGalleryLimitForBroker } from "./plans.js";
+import { AMENITY_IDS } from "./amenities.js";
 
 export class ListingNotFoundError extends Error {
   constructor(listingId) {
@@ -79,18 +80,64 @@ const LISTING_STATUSES = ["draft", "active", "paused", "sold", "removed"];
  */
 export const PURPOSES = ["venda", "aluguel"];
 
+/**
+ * Região/zona da cidade (`location.zone`, VRSync `Location/Zone`) — lista
+ * fixa GLOBAL nesta primeira versão (não varia por cidade); ajustável no
+ * futuro se o produto precisar de zonas por cidade.
+ */
+export const ZONES = ["central", "norte", "sul", "leste", "oeste", "rural"];
+export const ZONE_LABELS = Object.freeze({
+  central: "Central",
+  norte: "Norte",
+  sul: "Sul",
+  leste: "Leste",
+  oeste: "Oeste",
+  rural: "Rural",
+});
+
+function isNonNegativeInteger(value) {
+  return isInteger(value) && value >= 0;
+}
+
+/**
+ * `yearBuilt` (VRSync `YearBuilt`) — mínimo 1800, teto DINÂMICO (ano atual
+ * + 5, não um número fixo hardcoded que ficaria desatualizado) para cobrir
+ * imóveis na planta/em construção.
+ */
+function isValidYearBuilt(value) {
+  const maxYear = new Date().getFullYear() + 5;
+  return isInteger(value) && value >= 1800 && value <= maxYear;
+}
+
+/** `amenities` — array de ids do vocabulário fixo (business/amenities.js), sem duplicata. */
+function isValidAmenities(value) {
+  if (!Array.isArray(value)) return false;
+  if (!value.every((item) => AMENITY_IDS.includes(item))) return false;
+  return new Set(value).size === value.length;
+}
+
+/**
+ * `features.livingArea` (renomeado de `features.area` — VRSync `LivingArea`)
+ * continua obrigatório; os demais são opcionais e só validados quando
+ * presentes. `features.lotArea`/`suites`/`unitFloor` têm elemento VRSync
+ * equivalente (`LotArea`/`Suites`/`UnitFloor`); `livingRooms`/`kitchens`
+ * não têm correspondência no padrão hoje — campos próprios do projeto, que
+ * podem ganhar mapeamento pro feed se o padrão adicionar um elemento
+ * equivalente no futuro.
+ */
 function isValidFeatures(value) {
   if (typeof value !== "object" || value === null) return false;
-  const { bedrooms, bathrooms, parkingSpaces, area } = value;
-  return (
-    isInteger(bedrooms) &&
-    bedrooms >= 0 &&
-    isInteger(bathrooms) &&
-    bathrooms >= 0 &&
-    isInteger(parkingSpaces) &&
-    parkingSpaces >= 0 &&
-    isPositiveNumber(area)
-  );
+  const { bedrooms, bathrooms, parkingSpaces, livingArea, lotArea, livingRooms, kitchens, suites, unitFloor } = value;
+  if (!isNonNegativeInteger(bedrooms)) return false;
+  if (!isNonNegativeInteger(bathrooms)) return false;
+  if (!isNonNegativeInteger(parkingSpaces)) return false;
+  if (!isPositiveNumber(livingArea)) return false;
+  if (lotArea !== undefined && !isPositiveNumber(lotArea)) return false;
+  if (livingRooms !== undefined && !isNonNegativeInteger(livingRooms)) return false;
+  if (kitchens !== undefined && !isNonNegativeInteger(kitchens)) return false;
+  if (suites !== undefined && !isNonNegativeInteger(suites)) return false;
+  if (unitFloor !== undefined && !isNonNegativeInteger(unitFloor)) return false;
+  return true;
 }
 
 // Shape-only: every item must be a URL. The *count* limit is no longer a
@@ -135,6 +182,13 @@ const CREATE_ALLOWED_FIELDS = [
   "zipcode",
   "latitude",
   "longitude",
+  "street",
+  "streetNumber",
+  "zone",
+  "municipalZoning",
+  "yearBuilt",
+  "municipalRegistrationCode",
+  "amenities",
   "features",
   "gallery",
   "video",
@@ -158,6 +212,13 @@ const FIELD_RULES = {
   zipcode: isZipcode,
   latitude: (v) => v === null || isLatitude(v),
   longitude: (v) => v === null || isLongitude(v),
+  street: (v) => isNonEmptyString(v, { maxLength: 200 }),
+  streetNumber: (v) => isNonEmptyString(v, { maxLength: 20 }),
+  zone: (v) => isEnum(v, ZONES),
+  municipalZoning: (v) => isNonEmptyString(v, { maxLength: 20 }),
+  yearBuilt: isValidYearBuilt,
+  municipalRegistrationCode: (v) => isNonEmptyString(v, { maxLength: 40 }),
+  amenities: isValidAmenities,
   features: isValidFeatures,
   gallery: isValidGallery,
   video: isValidVideo,
@@ -215,6 +276,13 @@ export async function createListing(env, brokerId, input) {
     ...(picked.zipcode !== undefined ? { zipcode: picked.zipcode } : {}),
     ...(picked.latitude !== undefined ? { latitude: picked.latitude } : {}),
     ...(picked.longitude !== undefined ? { longitude: picked.longitude } : {}),
+    ...(picked.street !== undefined ? { street: picked.street } : {}),
+    ...(picked.streetNumber !== undefined ? { streetNumber: picked.streetNumber } : {}),
+    ...(picked.zone !== undefined ? { zone: picked.zone } : {}),
+    ...(picked.municipalZoning !== undefined ? { municipalZoning: picked.municipalZoning } : {}),
+    ...(picked.yearBuilt !== undefined ? { yearBuilt: picked.yearBuilt } : {}),
+    ...(picked.municipalRegistrationCode !== undefined ? { municipalRegistrationCode: picked.municipalRegistrationCode } : {}),
+    ...(picked.amenities !== undefined ? { amenities: picked.amenities } : {}),
     ...(picked.gallery !== undefined ? { gallery: picked.gallery } : {}),
     ...(picked.video !== undefined ? { video: picked.video } : {}),
     ...(picked.tour360 !== undefined ? { tour360: picked.tour360 } : {}),

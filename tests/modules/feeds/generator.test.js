@@ -56,7 +56,7 @@ function baseListingInput(overrides = {}) {
     price: 450000,
     district: "Centro",
     zipcode: "86010-000",
-    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, area: 95 },
+    features: { bedrooms: 3, bathrooms: 2, parkingSpaces: 2, livingArea: 95 },
     ...overrides,
   };
 }
